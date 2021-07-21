@@ -6,20 +6,32 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
+	"time"
 )
 
-func rtm() error {
-	token := os.Getenv("SLACK_BOT_TOKEN")
-	if token == "" {
-		return errors.New("SLACK_BOT_TOKEN must be set")
-	} else if !strings.HasPrefix(token, "xoxb-") {
-		return errors.New("SLACK_BOT_TOKEN must have the prefix \"xoxb-\"")
-	}
-	api := slack.New(token, slack.OptionLog(log.New(os.Stdout, "slack-bot: ", log.Lshortfile|log.LstdFlags)))
+type Config struct {
+	Token string
+}
 
-	sessions := make(map[string]*Session)
+type Bot struct {
+	config *Config
+	sessions map[string]*Session
+	mu sync.Mutex
+}
+
+func NewBot(config *Config) (*Bot, error) {
+	return &Bot{
+		config: config,
+		sessions: make(map[string]*Session),
+	}, nil
+}
+
+func (b *Bot) Start() error {
+	api := slack.New(b.config.Token, slack.OptionLog(log.New(os.Stdout, "slack-bot: ", log.Lshortfile|log.LstdFlags)))
 	rtm := api.NewRTM()
 	go rtm.ManageConnection()
+	go b.manageSessions() // FIXME
 
 	for msg := range rtm.IncomingEvents {
 		switch ev := msg.Data.(type) {
@@ -31,11 +43,15 @@ func rtm() error {
 			}
 			if ev.ThreadTimestamp == "" && strings.TrimSpace(ev.Text) == "repl" {
 				log.Printf("Starting new session %s, requested by user %s\n", ev.Timestamp, ev.User)
-				sessions[ev.Timestamp] = NewSession(rtm, ev.Channel, ev.Timestamp)
+				b.mu.Lock()
+				b.sessions[ev.Timestamp] = NewSession(rtm, ev.Channel, ev.Timestamp)
+				b.mu.Unlock()
 			} else if ev.ThreadTimestamp != "" {
-				if session, ok := sessions[ev.ThreadTimestamp]; ok {
+				b.mu.Lock()
+				if session, ok := b.sessions[ev.ThreadTimestamp]; ok {
 					session.inputChan <- ev.Text
 				}
+				b.mu.Unlock()
 			}
 		case *slack.LatencyReport:
 			log.Printf("Current latency: %v\n", ev.Value)
@@ -51,8 +67,29 @@ func rtm() error {
 	return errors.New("unexpected end of incoming events stream")
 }
 
+func (b *Bot) manageSessions() {
+	for {
+		b.mu.Lock()
+		for id, session := range b.sessions {
+			if session.closed { // FIXME
+				log.Printf("Removing session %s", session.threadTS)
+				delete(b.sessions, id)
+			}
+		}
+		b.mu.Unlock()
+		time.Sleep(5 * time.Second)
+	}
+}
+
 func main() {
-	if err := rtm(); err != nil {
+	config := &Config{
+		Token: os.Getenv("SLACK_BOT_TOKEN"),
+	}
+	bot, err := NewBot(config)
+	if err != nil {
+		panic(err)
+	}
+	if err := bot.Start(); err != nil {
 		panic(err)
 	}
 }

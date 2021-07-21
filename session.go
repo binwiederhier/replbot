@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/creack/pty"
 	"github.com/slack-go/slack"
@@ -89,6 +90,7 @@ func (s *Session) inputLoop() {
 			continue
 		}
 		s.replSession(command)
+		s.pty = nil
 		s.sendMarkdown(fmt.Sprintf(sessionExitedMessage, strings.Join(repls, ", ")))
 	}
 }
@@ -100,10 +102,15 @@ func (s *Session) replSession(command string) {
 		s.close(fmt.Sprintf("Cannot start REPL session: %s", err.Error()))
 		return
 	}
-	// Make sure to close the pty at the end.
-	defer func() { _ = ptmx.Close() }() // Best effort.
 
-	go s.outputLoop(ptmx)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() {
+		cancel()
+		ptmx.Close()
+		log.Printf("Closed REPL session")
+	}()
+
+	go s.outputLoop(ctx, ptmx)
 
 	s.sendMarkdown("Started a new REPL session")
 	for input := range s.inputChan {
@@ -112,8 +119,7 @@ func (s *Session) replSession(command string) {
 				s.sendMarkdown(availableCommandsMessage)
 				continue
 			} else if input == "!exit" {
-				s.close(byeMessage)
-				return // FIXME
+				return
 			} else {
 				controlChar, ok := controlCharTable[input[1:]]
 				if ok {
@@ -123,9 +129,61 @@ func (s *Session) replSession(command string) {
 			}
 			// Fallthrough to underlying REPL
 		}
-		log.Printf("dispatching input %s", input)
 		if _, err := io.WriteString(ptmx, fmt.Sprintf("%s\n", input)); err != nil {
 			s.close(err.Error())
+			return
+		}
+	}
+}
+
+func (s *Session) outputLoop(ctx context.Context, ptmx *os.File) {
+	var message string
+	readChan := make(chan *result, 10)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("Exiting read loop")
+				return
+			default:
+			}
+			buf := make([]byte, 4096) // FIXME alloc in a loop!
+			n, err := ptmx.Read(buf)
+			log.Printf("read loop: %#v", err)
+			readChan <- &result{buf[:n], err}
+		}
+	}()
+
+	for {
+		log.Printf("read chan loop")
+		select {
+		case result := <-readChan:
+			if result.err != nil && result.err != io.EOF {
+				s.close(fmt.Sprintf("Error reading from REPL: %s", result.err.Error()))
+				return
+			}
+			if len(result.bytes) > 0 {
+				message += shellEscapeRegex.ReplaceAllString(string(result.bytes), "")
+			}
+			if len(message) > maxMessageLength {
+				s.sendCode(message)
+				message = ""
+			}
+			if result.err == io.EOF {
+				if len(message) > 0 {
+					s.sendCode(message)
+				}
+				s.close("REPL exited. Terminating session")
+				return
+			}
+		case <-time.After(300 * time.Millisecond):
+			if len(message) > 0 {
+				s.sendCode(message)
+				message = ""
+			}
+		case <-ctx.Done():
+			log.Printf("Exiting main output loop")
 			return
 		}
 	}
@@ -170,49 +228,6 @@ func (s *Session) close(message string) {
 type result struct {
 	bytes []byte
 	err error
-}
-
-func (s *Session) outputLoop(ptmx *os.File) {
-	var message string
-	readChan := make(chan *result, 10)
-
-	go func() {
-		for {
-			buf := make([]byte, 4096) // FIXME alloc in a loop!
-			n, err := ptmx.Read(buf)
-			readChan <- &result{buf[:n], err}
-		}
-	}()
-
-	for {
-		log.Printf("read")
-		select {
-		case result := <-readChan:
-			if result.err != nil && result.err != io.EOF {
-				s.close(fmt.Sprintf("Error reading from REPL: %s", result.err.Error()))
-				return
-			}
-			if len(result.bytes) > 0 {
-				message += shellEscapeRegex.ReplaceAllString(string(result.bytes), "")
-			}
-			if len(message) > maxMessageLength {
-				s.sendCode(message)
-				message = ""
-			}
-			if result.err == io.EOF {
-				if len(message) > 0 {
-					s.sendCode(message)
-				}
-				s.close("REPL exited. Terminating session")
-				return
-			}
-		case <-time.After(300 * time.Millisecond):
-			if len(message) > 0 {
-				s.sendCode(message)
-				message = ""
-			}
-		}
-	}
 }
 
 
