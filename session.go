@@ -26,6 +26,15 @@ var (
 		"bash": "docker run -it ubuntu",
 		"python": "docker run -it python",
 	}
+	welcomeMessage = "REPLbot welcomes you!\n\nYou may start a new session by choosing any one of the " +
+		"available REPLs: %s. Type `!help` for help and `!exit` to exit this session."
+	sessionExitedMessage = "REPL session ended.\n\nYou may start a new session by choosing any one of the " +
+		"available REPLs: %s. Type `!help` for help and `!exit` to exit this session."
+	byeMessage = "REPLbot says bye bye!"
+	availableCommandsMessage = "Available commands:\n" +
+		"  `!ret`, `!r` - Send empty return\n" +
+		"  `!ctrl-c`, `!ctrl-d`, ... - Send command sequence\n" +
+		"  `!exit` - Exit this session"
 )
 
 const (
@@ -55,22 +64,24 @@ func NewSession(rtm *slack.RTM, channel string, threadTS string) *Session {
 		pty: nil,
 		closed: false,
 	}
-	go session.welcomeInputLoop()
+	go session.inputLoop()
 	return session
 }
 
-func (s *Session) welcomeInputLoop() {
+func (s *Session) inputLoop() {
 	repls := make([]string, 0)
 	for name, _ := range availableREPLs {
-		repls = append(repls, name)
+		repls = append(repls, fmt.Sprintf("`%s`", name))
 	}
-	s.sendMarkdown("REPLbot welcomes you!")
-	s.sendMarkdown(fmt.Sprintf("You may send start a new session by choosing any one of the available REPLs: %s", strings.Join(repls, ", ")))
+	s.sendMarkdown(fmt.Sprintf(welcomeMessage, strings.Join(repls, ", ")))
 
 	for input := range s.inputChan {
-		if input == "exit" || input == "!exit" {
-			s.closed = true
-			return // FIXME
+		if input == "!exit" {
+			s.close(byeMessage)
+			return
+		} else if input == "!help" {
+			s.sendMarkdown(availableCommandsMessage)
+			continue
 		}
 		command, ok := availableREPLs[input]
 		if !ok {
@@ -78,7 +89,7 @@ func (s *Session) welcomeInputLoop() {
 			continue
 		}
 		s.replSession(command)
-		s.sendMarkdown("REPL session ended.\n\nYou may start a new session by choosing any one of the available REPLs: %s\",\n\t\tstrings.Join(repls, \", \")")
+		s.sendMarkdown(fmt.Sprintf(sessionExitedMessage, strings.Join(repls, ", ")))
 	}
 }
 
@@ -94,13 +105,14 @@ func (s *Session) replSession(command string) {
 
 	go s.outputLoop(ptmx)
 
-	s.sendMarkdown("Started a REPL session\n")
+	s.sendMarkdown("Started a new REPL session")
 	for input := range s.inputChan {
 		if strings.HasPrefix(input, "!") {
 			if input == "!help" {
-				s.sendHelp()
+				s.sendMarkdown(availableCommandsMessage)
 				continue
 			} else if input == "!exit" {
+				s.close(byeMessage)
 				return // FIXME
 			} else {
 				controlChar, ok := controlCharTable[input[1:]]
@@ -203,8 +215,5 @@ func (s *Session) outputLoop(ptmx *os.File) {
 	}
 }
 
-func (s *Session) sendHelp() {
-	s.sendMarkdown("Available commands:```\n  !ret    Send empty return\n  !ctrl-c Send Ctrl-C\n  !ctrl-d Send Ctrl-D\n  !exit   Terminate session```")
-}
 
 

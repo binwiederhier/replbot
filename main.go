@@ -2,12 +2,10 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"github.com/slack-go/slack"
 	"log"
 	"os"
 	"strings"
-	"sync"
 )
 
 func rtm() error {
@@ -19,7 +17,6 @@ func rtm() error {
 	}
 	api := slack.New(token, slack.OptionLog(log.New(os.Stdout, "slack-bot: ", log.Lshortfile|log.LstdFlags)))
 
-	var mu sync.Mutex
 	sessions := make(map[string]*Session)
 	rtm := api.NewRTM()
 	go rtm.ManageConnection()
@@ -30,16 +27,12 @@ func rtm() error {
 			log.Print("Slack connected")
 		case *slack.MessageEvent:
 			if ev.User == "" {
-				continue
+				continue // Ignore my own messages
 			}
 			if ev.ThreadTimestamp == "" && strings.TrimSpace(ev.Text) == "repl" {
-				fmt.Printf("Message: %s\n", ev.Text)
-				mu.Lock()
-				session := NewSession(rtm, ev.Channel, ev.Timestamp)
-				sessions[ev.Timestamp] = session
-				mu.Unlock()
+				log.Printf("Starting new session %s, requested by user %s\n", ev.Timestamp, ev.User)
+				sessions[ev.Timestamp] = NewSession(rtm, ev.Channel, ev.Timestamp)
 			} else if ev.ThreadTimestamp != "" {
-				fmt.Printf("Message: %s\n", ev.Text)
 				if session, ok := sessions[ev.ThreadTimestamp]; ok {
 					session.inputChan <- ev.Text
 				}
