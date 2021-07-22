@@ -9,10 +9,12 @@ import (
 	"golang.org/x/sync/errgroup"
 	"io"
 	"log"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -27,7 +29,8 @@ var (
 	availableREPLs = map[string]string{
 		"bash":   "docker run -it ubuntu",
 		"python": "docker run -it python",
-		"nodejs": "docker run -it node",
+		"node": "docker run -it node",
+		"php": "docker run -it php",
 		"scala": "docker run -it bigtruedata/scala",
 		"phil": "/home/pheckel/Code/philbot/phil",
 	}
@@ -138,7 +141,6 @@ func (s *Session) replSession(command string) error {
 	errg.Go(func() error {
 		defer log.Printf("Exiting shutdown routine")
 		<-ctx.Done()
-		//syscall.Close(ptmx.Fd())
 		ptmx.Close()
 		c.Process.Kill()
 		return nil
@@ -152,8 +154,12 @@ func (s *Session) replSession(command string) error {
 			case <-ctx.Done():
 				return nil
 			default:
-				log.Printf("read %s", string(buf[:n]))
 				readChan <- &result{buf[:n], err}
+				if e, ok := err.(*os.PathError); ok && e.Err == syscall.EIO {
+					// An expected error when the ptmx is closed to break the Read() call.
+					// Since we don't want to send this error to the user, we convert it to errExit.
+					return errExit
+				}
 				if err != nil {
 					return err
 				}
