@@ -82,6 +82,33 @@ func (b *Bot) manageSessions() {
 }
 
 func main() {
+	/*c := exec.Command("sh", "-c", "for i in $(seq 1 5); do date; sleep 1; done")
+	ptmx, err := pty.Start(c)
+	if err != nil {
+		panic(err)
+	}
+	go func() {
+		for {
+			buf := make([]byte, 4096)
+			n, err := ptmx.Read(buf)
+			if err != nil {
+				panic(err)
+			}
+			log.Printf("read: %s", string(buf[:n]))
+		}
+		log.Printf("exiting go routine")
+	}()
+
+	time.Sleep(20 * time.Second)
+	log.Printf("killing")
+	c.Process.Kill()
+	ptmx.Close()
+
+	time.Sleep(30 * time.Second)
+	log.Printf("exiting main prog")
+
+	os.Exit(0)*/
+
 	/*
 		c := exec.Command("sh", "-c", "rm /tmp/date; while true; do date >> /tmp/date; sleep 1; done")
 		ptmx, err := pty.Start(c)

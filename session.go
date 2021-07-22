@@ -134,17 +134,7 @@ func (s *Session) replSession(command string) error {
 	var message string
 	readChan := make(chan *result, 10)
 
-	errg.Go(func() error {
-		defer log.Printf("Exiting ptmx keepalive routine")
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(time.Second):
-				ptmx.SetWriteDeadline(time.Now().Add(2 * time.Second))
-			}
-		}
-	})
+
 	errg.Go(func() error {
 		defer log.Printf("Exiting shutdown routine")
 		<-ctx.Done()
@@ -164,6 +154,9 @@ func (s *Session) replSession(command string) error {
 			default:
 				log.Printf("read %s", string(buf[:n]))
 				readChan <- &result{buf[:n], err}
+				if err != nil {
+					return err
+				}
 			}
 		}
 	})
@@ -203,27 +196,32 @@ func (s *Session) replSession(command string) error {
 
 	s.sendMarkdown("Started a new REPL session")
 	errg.Go(func() error {
-		for input := range s.inputChan {
-			if strings.HasPrefix(input, "!") {
-				if input == "!help" {
-					s.sendMarkdown(availableCommandsMessage)
-					continue
-				} else if input == "!exit" {
-					return errExit
-				} else {
-					controlChar, ok := controlCharTable[input[1:]]
-					if ok {
-						ptmx.Write([]byte{controlChar})
+		defer log.Printf("Exiting inputChan loop")
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case input := <- s.inputChan:
+				if strings.HasPrefix(input, "!") {
+					if input == "!help" {
+						s.sendMarkdown(availableCommandsMessage)
 						continue
+					} else if input == "!exit" {
+						return errExit
+					} else {
+						controlChar, ok := controlCharTable[input[1:]]
+						if ok {
+							ptmx.Write([]byte{controlChar})
+							continue
+						}
 					}
+					// Fallthrough to underlying REPL
 				}
-				// Fallthrough to underlying REPL
-			}
-			if _, err := io.WriteString(ptmx, fmt.Sprintf("%s\n", input)); err != nil {
-				return err
+				if _, err := io.WriteString(ptmx, fmt.Sprintf("%s\n", input)); err != nil {
+					return err
+				}
 			}
 		}
-		return errors.New("input chan exited")
 	})
 
 	return errg.Wait()
