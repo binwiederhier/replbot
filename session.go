@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/creack/pty"
 	"github.com/slack-go/slack"
+	"golang.org/x/sync/errgroup"
 	"io"
 	"log"
 	"os/exec"
@@ -16,26 +18,29 @@ import (
 
 var (
 	shellEscapeRegex = regexp.MustCompile(`\x1B\[[0-9;]*[a-zA-Z]`)
-	controlCharTable = map[string]byte {
-		"r": 0x10,
-		"ret": 0x10,
+	controlCharTable = map[string]byte{
+		"r":      0x10,
+		"ret":    0x10,
 		"ctrl-c": 0x03,
 		"ctrl-d": 0x04,
 	}
-	availableREPLs = map[string]string {
-		"bash": "docker run -it ubuntu",
+	availableREPLs = map[string]string{
+		"bash":   "docker run -it ubuntu",
 		"python": "docker run -it python",
 		"nodejs": "docker run -it node",
+		"scala": "docker run -it bigtruedata/scala",
+		"phil": "/home/pheckel/Code/philbot/phil",
 	}
 	welcomeMessage = "REPLbot welcomes you!\n\nYou may start a new session by choosing any one of the " +
 		"available REPLs: %s. Type `!help` for help and `!exit` to exit this session."
 	sessionExitedMessage = "REPL session ended.\n\nYou may start a new session by choosing any one of the " +
 		"available REPLs: %s. Type `!help` for help and `!exit` to exit this session."
-	byeMessage = "REPLbot says bye bye!"
+	byeMessage               = "REPLbot says bye bye!"
 	availableCommandsMessage = "Available commands:\n" +
 		"  `!ret`, `!r` - Send empty return\n" +
 		"  `!ctrl-c`, `!ctrl-d`, ... - Send command sequence\n" +
 		"  `!exit` - Exit this session"
+	errExit = errors.New("exited REPL session")
 )
 
 const (
@@ -43,25 +48,25 @@ const (
 )
 
 type Session struct {
-	rtm *slack.RTM
-	started time.Time
+	rtm        *slack.RTM
+	started    time.Time
 	lastAction time.Time
-	channel string
-	threadTS string
-	inputChan chan string
-	closed bool
-	mu sync.Mutex
+	channel    string
+	threadTS   string
+	inputChan  chan string
+	closed     bool
+	mu         sync.Mutex
 }
 
 func NewSession(rtm *slack.RTM, channel string, threadTS string) *Session {
 	session := &Session{
-		rtm: rtm,
-		started: time.Now(),
+		rtm:        rtm,
+		started:    time.Now(),
 		lastAction: time.Now(),
-		channel: channel,
-		threadTS: threadTS,
-		inputChan: make(chan string, 10), // buffered!
-		closed: false,
+		channel:    channel,
+		threadTS:   threadTS,
+		inputChan:  make(chan string, 10), // buffered!
+		closed:     false,
 	}
 	go session.inputLoop()
 	return session
@@ -89,7 +94,9 @@ func (s *Session) inputLoop() {
 			s.sendMarkdown("Invalid command")
 			continue
 		}
-		s.replSession(command)
+		if err := s.replSession(command); err != nil && err != errExit {
+			s.sendMarkdown(err.Error())
+		}
 		s.sayExited()
 	}
 }
@@ -113,45 +120,62 @@ func (s *Session) replList() []string {
 }
 
 func (s *Session) replSession(command string) error {
+	defer log.Printf("Closed REPL session")
+
 	c := exec.Command("sh", "-c", command)
 	ptmx, err := pty.Start(c)
 	if err != nil {
 		return fmt.Errorf("cannot start REPL session: %s", err.Error())
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer func() {
-		cancel()
-		ptmx.Close()
-		c.Process.Kill()
-		log.Printf("Closed REPL session")
-	}()
+	log.Printf("ptmx fd: %#v", ptmx.Fd())
+	errg, ctx := errgroup.WithContext(context.Background())
 
 	var message string
 	readChan := make(chan *result, 10)
 
-	go func() {
+	errg.Go(func() error {
+		defer log.Printf("Exiting ptmx keepalive routine")
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(time.Second):
+				ptmx.SetWriteDeadline(time.Now().Add(2 * time.Second))
+			}
+		}
+	})
+	errg.Go(func() error {
+		defer log.Printf("Exiting shutdown routine")
+		<-ctx.Done()
+		//syscall.Close(ptmx.Fd())
+		ptmx.Close()
+		c.Process.Kill()
+		return nil
+	})
+	errg.Go(func() error {
+		defer log.Printf("Exiting read loop")
 		for {
 			buf := make([]byte, 4096) // FIXME alloc in a loop!
 			n, err := ptmx.Read(buf)
 			select {
 			case <-ctx.Done():
-				log.Printf("Exiting read loop")
-				return
+				return nil
 			default:
+				log.Printf("read %s", string(buf[:n]))
 				readChan <- &result{buf[:n], err}
 			}
 		}
-	}()
-	go func() {
+	})
+	errg.Go(func() error {
+		defer log.Printf("Exiting readChan loop")
 		for {
-			log.Printf("read chan loop")
+			log.Printf("readChan loop")
 			select {
 			case result := <-readChan:
 				if result.err != nil && result.err != io.EOF {
-					log.Printf("Error reading from REPL: %s", result.err.Error())
-					cancel()
-					return
+					log.Printf("readChan error: %s", result.err.Error())
+					return result.err
 				}
 				if len(result.bytes) > 0 {
 					message += shellEscapeRegex.ReplaceAllString(string(result.bytes), "")
@@ -164,8 +188,7 @@ func (s *Session) replSession(command string) error {
 					if len(message) > 0 {
 						s.sendCode(message)
 					}
-					s.close("REPL exited. Terminating session")
-					return
+					return errExit
 				}
 			case <-time.After(300 * time.Millisecond):
 				if len(message) > 0 {
@@ -173,37 +196,38 @@ func (s *Session) replSession(command string) error {
 					message = ""
 				}
 			case <-ctx.Done():
-				log.Printf("Exiting main output loop")
-				return
+				return nil
 			}
 		}
-	}()
+	})
 
 	s.sendMarkdown("Started a new REPL session")
-	for input := range s.inputChan {
-		if strings.HasPrefix(input, "!") {
-			if input == "!help" {
-				s.sendMarkdown(availableCommandsMessage)
-				continue
-			} else if input == "!exit" {
-				return nil
-			} else {
-				controlChar, ok := controlCharTable[input[1:]]
-				if ok {
-					ptmx.Write([]byte{controlChar})
+	errg.Go(func() error {
+		for input := range s.inputChan {
+			if strings.HasPrefix(input, "!") {
+				if input == "!help" {
+					s.sendMarkdown(availableCommandsMessage)
 					continue
+				} else if input == "!exit" {
+					return errExit
+				} else {
+					controlChar, ok := controlCharTable[input[1:]]
+					if ok {
+						ptmx.Write([]byte{controlChar})
+						continue
+					}
 				}
+				// Fallthrough to underlying REPL
 			}
-			// Fallthrough to underlying REPL
+			if _, err := io.WriteString(ptmx, fmt.Sprintf("%s\n", input)); err != nil {
+				return err
+			}
 		}
-		if _, err := io.WriteString(ptmx, fmt.Sprintf("%s\n", input)); err != nil {
-			return err
-		}
-	}
+		return errors.New("input chan exited")
+	})
 
-	return nil
+	return errg.Wait()
 }
-
 
 func (s *Session) sendText(message string) (string, error) {
 	return s.send(slack.MsgOptionText(message, false))
@@ -243,8 +267,5 @@ func (s *Session) close(message string) {
 
 type result struct {
 	bytes []byte
-	err error
+	err   error
 }
-
-
-

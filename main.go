@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bufio"
-	"context"
 	"errors"
 	"github.com/slack-go/slack"
-	"golang.org/x/sync/errgroup"
 	"log"
 	"os"
 	"strings"
@@ -18,14 +15,14 @@ type Config struct {
 }
 
 type Bot struct {
-	config *Config
+	config   *Config
 	sessions map[string]*Session
-	mu sync.Mutex
+	mu       sync.Mutex
 }
 
 func NewBot(config *Config) (*Bot, error) {
 	return &Bot{
-		config: config,
+		config:   config,
 		sessions: make(map[string]*Session),
 	}, nil
 }
@@ -86,49 +83,49 @@ func (b *Bot) manageSessions() {
 
 func main() {
 	/*
-	c := exec.Command("sh", "-c", "rm /tmp/date; while true; do date >> /tmp/date; sleep 1; done")
-	ptmx, err := pty.Start(c)
-	if err != nil {
-		panic(err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer func() {
-		cancel()
-		ptmx.Close()
-		log.Printf("Closed REPL session")
-	}()
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				log.Printf("Exiting read loop")
-				return
-			default:
-			}
-			buf := make([]byte, 4096) // FIXME alloc in a loop!
-			n, err := ptmx.Read(buf)
-			log.Printf("read loop: %s %#v", string(buf[:n]), err)
+		c := exec.Command("sh", "-c", "rm /tmp/date; while true; do date >> /tmp/date; sleep 1; done")
+		ptmx, err := pty.Start(c)
+		if err != nil {
+			panic(err)
 		}
-	}()
 
-	println("sleep")
-	time.Sleep(5 * time.Second)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer func() {
+			cancel()
+			ptmx.Close()
+			log.Printf("Closed REPL session")
+		}()
 
-	println("cancel")
-	cancel()
-	time.Sleep(5 * time.Second)
-	println("close")
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					log.Printf("Exiting read loop")
+					return
+				default:
+				}
+				buf := make([]byte, 4096) // FIXME alloc in a loop!
+				n, err := ptmx.Read(buf)
+				log.Printf("read loop: %s %#v", string(buf[:n]), err)
+			}
+		}()
 
-	c.Process.Kill()
-	ptmx.Close()
+		println("sleep")
+		time.Sleep(5 * time.Second)
 
-	time.Sleep(5 * time.Second)
-	println("exit")
+		println("cancel")
+		cancel()
+		time.Sleep(5 * time.Second)
+		println("close")
 
-	os.Exit(0)*/
+		c.Process.Kill()
+		ptmx.Close()
 
+		time.Sleep(5 * time.Second)
+		println("exit")
+
+		os.Exit(0)*/
+/*
 	var ErrExit = errors.New("exit")
 
 	for i := 1; ; i++ {
@@ -168,7 +165,7 @@ func main() {
 		})
 
 		go func() {
-			time.Sleep(3*time.Second)
+			time.Sleep(3 * time.Second)
 			log.Printf("[%d] canceling stuff", i)
 			cancel()
 		}()
@@ -179,7 +176,7 @@ func main() {
 		log.Printf("[%d] EXIT main session", i)
 	}
 
-	os.Exit(0)
+	os.Exit(0)*/
 
 	config := &Config{
 		Token: os.Getenv("SLACK_BOT_TOKEN"),
