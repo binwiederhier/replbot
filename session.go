@@ -7,7 +7,6 @@ import (
 	"github.com/slack-go/slack"
 	"io"
 	"log"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -113,12 +112,11 @@ func (s *Session) replList() []string {
 	return repls
 }
 
-func (s *Session) replSession(command string) {
+func (s *Session) replSession(command string) error {
 	c := exec.Command("sh", "-c", command)
 	ptmx, err := pty.Start(c)
 	if err != nil {
-		s.close(fmt.Sprintf("Cannot start REPL session: %s", err.Error()))
-		return
+		return fmt.Errorf("cannot start REPL session: %s", err.Error())
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -129,33 +127,6 @@ func (s *Session) replSession(command string) {
 		log.Printf("Closed REPL session")
 	}()
 
-	go s.outputLoop(ctx, ptmx)
-
-	s.sendMarkdown("Started a new REPL session")
-	for input := range s.inputChan {
-		if strings.HasPrefix(input, "!") {
-			if input == "!help" {
-				s.sendMarkdown(availableCommandsMessage)
-				continue
-			} else if input == "!exit" {
-				return
-			} else {
-				controlChar, ok := controlCharTable[input[1:]]
-				if ok {
-					ptmx.Write([]byte{controlChar})
-					continue
-				}
-			}
-			// Fallthrough to underlying REPL
-		}
-		if _, err := io.WriteString(ptmx, fmt.Sprintf("%s\n", input)); err != nil {
-			s.close(err.Error())
-			return
-		}
-	}
-}
-
-func (s *Session) outputLoop(ctx context.Context, ptmx *os.File) {
 	var message string
 	readChan := make(chan *result, 10)
 
@@ -172,40 +143,67 @@ func (s *Session) outputLoop(ctx context.Context, ptmx *os.File) {
 			}
 		}
 	}()
-
-	for {
-		log.Printf("read chan loop")
-		select {
-		case result := <-readChan:
-			if result.err != nil && result.err != io.EOF {
-				s.close(fmt.Sprintf("Error reading from REPL: %s", result.err.Error()))
-				return
-			}
-			if len(result.bytes) > 0 {
-				message += shellEscapeRegex.ReplaceAllString(string(result.bytes), "")
-			}
-			if len(message) > maxMessageLength {
-				s.sendCode(message)
-				message = ""
-			}
-			if result.err == io.EOF {
+	go func() {
+		for {
+			log.Printf("read chan loop")
+			select {
+			case result := <-readChan:
+				if result.err != nil && result.err != io.EOF {
+					log.Printf("Error reading from REPL: %s", result.err.Error())
+					cancel()
+					return
+				}
+				if len(result.bytes) > 0 {
+					message += shellEscapeRegex.ReplaceAllString(string(result.bytes), "")
+				}
+				if len(message) > maxMessageLength {
+					s.sendCode(message)
+					message = ""
+				}
+				if result.err == io.EOF {
+					if len(message) > 0 {
+						s.sendCode(message)
+					}
+					s.close("REPL exited. Terminating session")
+					return
+				}
+			case <-time.After(300 * time.Millisecond):
 				if len(message) > 0 {
 					s.sendCode(message)
+					message = ""
 				}
-				s.close("REPL exited. Terminating session")
+			case <-ctx.Done():
+				log.Printf("Exiting main output loop")
 				return
 			}
-		case <-time.After(300 * time.Millisecond):
-			if len(message) > 0 {
-				s.sendCode(message)
-				message = ""
+		}
+	}()
+
+	s.sendMarkdown("Started a new REPL session")
+	for input := range s.inputChan {
+		if strings.HasPrefix(input, "!") {
+			if input == "!help" {
+				s.sendMarkdown(availableCommandsMessage)
+				continue
+			} else if input == "!exit" {
+				return nil
+			} else {
+				controlChar, ok := controlCharTable[input[1:]]
+				if ok {
+					ptmx.Write([]byte{controlChar})
+					continue
+				}
 			}
-		case <-ctx.Done():
-			log.Printf("Exiting main output loop")
-			return
+			// Fallthrough to underlying REPL
+		}
+		if _, err := io.WriteString(ptmx, fmt.Sprintf("%s\n", input)); err != nil {
+			return err
 		}
 	}
+
+	return nil
 }
+
 
 func (s *Session) sendText(message string) (string, error) {
 	return s.send(slack.MsgOptionText(message, false))
