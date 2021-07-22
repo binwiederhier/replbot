@@ -26,6 +26,7 @@ var (
 	availableREPLs = map[string]string {
 		"bash": "docker run -it ubuntu",
 		"python": "docker run -it python",
+		"nodejs": "docker run -it node",
 	}
 	welcomeMessage = "REPLbot welcomes you!\n\nYou may start a new session by choosing any one of the " +
 		"available REPLs: %s. Type `!help` for help and `!exit` to exit this session."
@@ -49,7 +50,6 @@ type Session struct {
 	channel string
 	threadTS string
 	inputChan chan string
-	pty *os.File
 	closed bool
 	mu sync.Mutex
 }
@@ -62,19 +62,20 @@ func NewSession(rtm *slack.RTM, channel string, threadTS string) *Session {
 		channel: channel,
 		threadTS: threadTS,
 		inputChan: make(chan string, 10), // buffered!
-		pty: nil,
 		closed: false,
 	}
 	go session.inputLoop()
 	return session
 }
 
+func (s *Session) IsClosed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.closed
+}
+
 func (s *Session) inputLoop() {
-	repls := make([]string, 0)
-	for name, _ := range availableREPLs {
-		repls = append(repls, fmt.Sprintf("`%s`", name))
-	}
-	s.sendMarkdown(fmt.Sprintf(welcomeMessage, strings.Join(repls, ", ")))
+	s.sayHello()
 
 	for input := range s.inputChan {
 		if input == "!exit" {
@@ -90,9 +91,26 @@ func (s *Session) inputLoop() {
 			continue
 		}
 		s.replSession(command)
-		s.pty = nil
-		s.sendMarkdown(fmt.Sprintf(sessionExitedMessage, strings.Join(repls, ", ")))
+		s.sayExited()
 	}
+}
+
+func (s *Session) sayHello() error {
+	_, err := s.sendMarkdown(fmt.Sprintf(welcomeMessage, strings.Join(s.replList(), ", ")))
+	return err
+}
+
+func (s *Session) sayExited() error {
+	_, err := s.sendMarkdown(fmt.Sprintf(sessionExitedMessage, strings.Join(s.replList(), ", ")))
+	return err
+}
+
+func (s *Session) replList() []string {
+	repls := make([]string, 0)
+	for name, _ := range availableREPLs {
+		repls = append(repls, fmt.Sprintf("`%s`", name))
+	}
+	return repls
 }
 
 func (s *Session) replSession(command string) {
@@ -107,6 +125,7 @@ func (s *Session) replSession(command string) {
 	defer func() {
 		cancel()
 		ptmx.Close()
+		c.Process.Kill()
 		log.Printf("Closed REPL session")
 	}()
 
@@ -142,16 +161,15 @@ func (s *Session) outputLoop(ctx context.Context, ptmx *os.File) {
 
 	go func() {
 		for {
+			buf := make([]byte, 4096) // FIXME alloc in a loop!
+			n, err := ptmx.Read(buf)
 			select {
 			case <-ctx.Done():
 				log.Printf("Exiting read loop")
 				return
 			default:
+				readChan <- &result{buf[:n], err}
 			}
-			buf := make([]byte, 4096) // FIXME alloc in a loop!
-			n, err := ptmx.Read(buf)
-			log.Printf("read loop: %#v", err)
-			readChan <- &result{buf[:n], err}
 		}
 	}()
 

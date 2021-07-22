@@ -71,7 +71,7 @@ func (b *Bot) manageSessions() {
 	for {
 		b.mu.Lock()
 		for id, session := range b.sessions {
-			if session.closed { // FIXME
+			if session.IsClosed() {
 				log.Printf("Removing session %s", session.threadTS)
 				delete(b.sessions, id)
 			}
@@ -82,6 +82,50 @@ func (b *Bot) manageSessions() {
 }
 
 func main() {
+	/*
+	c := exec.Command("sh", "-c", "rm /tmp/date; while true; do date >> /tmp/date; sleep 1; done")
+	ptmx, err := pty.Start(c)
+	if err != nil {
+		panic(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() {
+		cancel()
+		ptmx.Close()
+		log.Printf("Closed REPL session")
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("Exiting read loop")
+				return
+			default:
+			}
+			buf := make([]byte, 4096) // FIXME alloc in a loop!
+			n, err := ptmx.Read(buf)
+			log.Printf("read loop: %s %#v", string(buf[:n]), err)
+		}
+	}()
+
+	println("sleep")
+	time.Sleep(5 * time.Second)
+
+	println("cancel")
+	cancel()
+	time.Sleep(5 * time.Second)
+	println("close")
+
+	c.Process.Kill()
+	ptmx.Close()
+
+	time.Sleep(5 * time.Second)
+	println("exit")
+
+	os.Exit(0)*/
+
 	config := &Config{
 		Token: os.Getenv("SLACK_BOT_TOKEN"),
 	}
