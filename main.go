@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"github.com/slack-go/slack"
+	"golang.org/x/sync/errgroup"
 	"log"
 	"os"
 	"strings"
@@ -127,53 +129,47 @@ func main() {
 
 	os.Exit(0)*/
 
-	for i := 1; ; i++ {
-		doneChan := make(chan bool)
-		errChan := make(chan error)
+	var ErrExit = errors.New("exit")
 
-		go func(i int) {
+	for i := 1; ; i++ {
+		errg, ctx := errgroup.WithContext(context.Background())
+		errg.Go(func() error {
 			defer log.Printf("[%d] EXIT fn 1 ", i)
 			for {
 				time.Sleep(time.Second)
 				select {
-				case <-doneChan:
-					return
+				case <-ctx.Done():
+					return nil
 				default:
 					log.Printf("[%d] fn 1", i)
 				}
 			}
-		}(i)
+		})
 
-		go func(i int) {
+		errg.Go(func() error {
 			defer log.Printf("[%d] EXIT fn 2", i)
 			rd := bufio.NewReader(os.Stdin)
 			for {
 				s, _ := rd.ReadString('\n')
 				select {
-				case <-doneChan:
-					return
+				case <-ctx.Done():
+					return nil
 				default:
 					if strings.TrimSpace(s) == "exit" {
-						close(doneChan)
-						return
+						return ErrExit
 					}
 					if strings.TrimSpace(s) == "err" {
-						errChan <- errors.New("ERROR happened oh no")
-						return
+						return errors.New("ERROR happened oh no")
 					}
 					log.Printf("[%d] fn 2: %s", i, s)
 				}
 			}
-		}(i)
-		
-		select {
-		case <-doneChan:
-		case err := <-errChan:
+		})
+
+		if err := errg.Wait(); err != nil && err != ErrExit {
 			log.Printf("[%d] ERR received in main session: %s", i, err.Error())
-			close(doneChan)
 		}
-		//<-doneChan
-		//close(doneChan)
+
 		log.Printf("[%d] EXIT main session", i)
 	}
 
