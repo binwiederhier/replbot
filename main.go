@@ -132,7 +132,8 @@ func main() {
 	var ErrExit = errors.New("exit")
 
 	for i := 1; ; i++ {
-		errg, ctx := errgroup.WithContext(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
+		errg, ctx := errgroup.WithContext(ctx)
 		errg.Go(func() error {
 			defer log.Printf("[%d] EXIT fn 1 ", i)
 			for {
@@ -166,6 +167,11 @@ func main() {
 			}
 		})
 
+		go func() {
+			time.Sleep(3*time.Second)
+			log.Printf("[%d] canceling stuff", i)
+			cancel()
+		}()
 		if err := errg.Wait(); err != nil && err != ErrExit {
 			log.Printf("[%d] ERR received in main session: %s", i, err.Error())
 		}
