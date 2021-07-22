@@ -128,15 +128,15 @@ func main() {
 	os.Exit(0)*/
 
 	for i := 1; ; i++ {
-		done := make(chan bool)
-
+		doneChan := make(chan bool)
+		errChan := make(chan error)
 
 		go func(i int) {
 			defer log.Printf("[%d] EXIT fn 1 ", i)
 			for {
 				time.Sleep(time.Second)
 				select {
-				case <-done:
+				case <-doneChan:
 					return
 				default:
 					log.Printf("[%d] fn 1", i)
@@ -150,27 +150,30 @@ func main() {
 			for {
 				s, _ := rd.ReadString('\n')
 				select {
-				case a, more := <-done:
-					log.Printf("[%d] DONE read fn 2: %t, more: %t", i, a, more)
+				case <-doneChan:
 					return
 				default:
 					if strings.TrimSpace(s) == "exit" {
-						close(done)
+						close(doneChan)
 						return
 					}
 					if strings.TrimSpace(s) == "err" {
-						close(done)
+						errChan <- errors.New("ERROR happened oh no")
 						return
 					}
 					log.Printf("[%d] fn 2: %s", i, s)
 				}
 			}
 		}(i)
-
-		time.Sleep(10*time.Second)
-		close(done)
-		//<-done
-		//close(done)
+		
+		select {
+		case <-doneChan:
+		case err := <-errChan:
+			log.Printf("[%d] ERR received in main session: %s", i, err.Error())
+			close(doneChan)
+		}
+		//<-doneChan
+		//close(doneChan)
 		log.Printf("[%d] EXIT main session", i)
 	}
 
