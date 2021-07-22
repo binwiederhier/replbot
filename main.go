@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"github.com/slack-go/slack"
 	"log"
@@ -125,6 +126,55 @@ func main() {
 	println("exit")
 
 	os.Exit(0)*/
+
+	for i := 1; ; i++ {
+		done := make(chan bool)
+
+
+		go func(i int) {
+			defer log.Printf("[%d] EXIT fn 1 ", i)
+			for {
+				time.Sleep(time.Second)
+				select {
+				case <-done:
+					return
+				default:
+					log.Printf("[%d] fn 1", i)
+				}
+			}
+		}(i)
+
+		go func(i int) {
+			defer log.Printf("[%d] EXIT fn 2", i)
+			rd := bufio.NewReader(os.Stdin)
+			for {
+				s, _ := rd.ReadString('\n')
+				select {
+				case a, more := <-done:
+					log.Printf("[%d] DONE read fn 2: %t, more: %t", i, a, more)
+					return
+				default:
+					if strings.TrimSpace(s) == "exit" {
+						close(done)
+						return
+					}
+					if strings.TrimSpace(s) == "err" {
+						close(done)
+						return
+					}
+					log.Printf("[%d] fn 2: %s", i, s)
+				}
+			}
+		}(i)
+
+		time.Sleep(10*time.Second)
+		close(done)
+		//<-done
+		//close(done)
+		log.Printf("[%d] EXIT main session", i)
+	}
+
+	os.Exit(0)
 
 	config := &Config{
 		Token: os.Getenv("SLACK_BOT_TOKEN"),
