@@ -125,6 +125,10 @@ func (s *Session) replSession(command string) error {
 		return fmt.Errorf("cannot start REPL session: %s", err.Error())
 	}
 
+	// It is of vital importance
+	// ptyFD := int(ptmx.Fd())
+
+
 	log.Printf("ptmx fd: %#v", ptmx.Fd())
 	errg, ctx := errgroup.WithContext(context.Background())
 

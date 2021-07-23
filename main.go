@@ -2,14 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"github.com/creack/pty"
 	"golang.org/x/sync/errgroup"
-	"io"
 	"log"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -39,7 +36,6 @@ func main() {
 
 func test1() {
 	c := exec.Command("sh", "-c", "docker run -it node")
-	pty.Open()
 	ptmx, err := pty.Start(c)
 	if err != nil {
 		panic(err)
@@ -80,29 +76,24 @@ func test2() {
 	if err != nil {
 		panic(err)
 	}
-
+	fd := int(ptmx.Fd())
 	log.Printf("ptmx fd: %#v", ptmx.Fd())
 	errg, ctx := errgroup.WithContext(context.Background())
 
-	var message string
-	readChan := make(chan *result, 10)
 	inputChan := make(chan string)
-	
+
 	errg.Go(func() error {
 		defer log.Printf("Exiting shutdown routine")
 		<-ctx.Done()
-		ptmx.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+		// c.Process.Kill()
+		//ptmx.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+		//time.Sleep(2*time.Second)
+		// ptmx.Write([]byte{0x03})
 		time.Sleep(2*time.Second)
-		ptmx.Write([]byte{0x03})
-		time.Sleep(2*time.Second)
-		close(readChan)
 		log.Printf("killing %d", ptmx.Fd())
-		syscall.Close(int(ptmx.Fd())) // Force kill the Read()
-		time.Sleep(2*time.Second)
+		syscall.Close(fd) // Force kill the Read()
 		ptmx.Close()
-		time.Sleep(2*time.Second)
 		c.Process.Kill()
-		time.Sleep(2*time.Second)
 		return nil
 	})
 	errg.Go(func() error {
@@ -116,50 +107,10 @@ func test2() {
 			case <-ctx.Done():
 				return nil
 			default:
-				if e, ok := err.(*os.PathError); ok && e.Err == syscall.EIO {
-					// An expected error when the ptmx is closed to break the Read() call.
-					// Since we don't want to send this error to the user, we convert it to errExit.
-					return errExit
-				}
-				log.Printf("before readChan<-")
-				readChan <- &result{buf[:n], err}
-				log.Printf("after readChan<-")
 				if err != nil {
 					return err
 				}
-			}
-		}
-	})
-	errg.Go(func() error {
-		defer log.Printf("Exiting readChan loop")
-		for {
-			log.Printf("readChan loop")
-			select {
-			case result := <-readChan:
-				if result.err != nil && result.err != io.EOF {
-					log.Printf("readChan error: %s", result.err.Error())
-					return result.err
-				}
-				if len(result.bytes) > 0 {
-					message += shellEscapeRegex.ReplaceAllString(string(result.bytes), "")
-				}
-				if len(message) > maxMessageLength {
-					println(message)
-					message = ""
-				}
-				if result.err == io.EOF {
-					if len(message) > 0 {
-						println(message)
-					}
-					return errExit
-				}
-			case <-time.After(300 * time.Millisecond):
-				if len(message) > 0 {
-					println(message)
-					message = ""
-				}
-			case <-ctx.Done():
-				return nil
+				println(string(buf[:n]))
 			}
 		}
 	})
@@ -170,31 +121,18 @@ func test2() {
 			select {
 			case <-ctx.Done():
 				return nil
-			case input := <- inputChan:
-				if strings.HasPrefix(input, "!") {
-					if input == "!help" {
-						println(availableCommandsMessage)
-						continue
-					} else if input == "!exit" {
-						log.Printf("!exit")
-						return errExit
-					} else {
-						controlChar, ok := controlCharTable[input[1:]]
-						if ok {
-							ptmx.Write([]byte{controlChar})
-							continue
-						}
-					}
-					// Fallthrough to underlying REPL
-				}
-				if _, err := io.WriteString(ptmx, fmt.Sprintf("%s\n", input)); err != nil {
-					return err
-				}
+			case <- inputChan:
+				return errExit
 			}
 		}
 	})
 
+	//time.Sleep(5 * time.Second)
+	//println("killing FD")
+	//syscall.Close(int(ptmx.Fd())) // Force kill the Read()
+
 	time.Sleep(5 * time.Second)
+	println("sending exit")
 	inputChan <- "!exit"
 
 	time.Sleep(10 * time.Second)
