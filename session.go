@@ -26,14 +26,6 @@ var (
 		"ctrl-c": 0x03,
 		"ctrl-d": 0x04,
 	}
-	availableREPLs = map[string]string{
-		"bash":   "docker run -it ubuntu",
-		"python": "docker run -it python",
-		"node": "docker run -it node",
-		"php": "docker run -it php",
-		"scala": "docker run -it bigtruedata/scala",
-		"phil": "/home/pheckel/Code/philbot/phil",
-	}
 	welcomeMessage = "REPLbot welcomes you!\n\nYou may start a new session by choosing any one of the " +
 		"available REPLs: %s. Type `!help` for help and `!exit` to exit this session."
 	sessionExitedMessage = "REPL session ended.\n\nYou may start a new session by choosing any one of the " +
@@ -51,6 +43,7 @@ const (
 )
 
 type Session struct {
+	scripts    map[string]string
 	rtm        *slack.RTM
 	started    time.Time
 	lastAction time.Time
@@ -61,8 +54,9 @@ type Session struct {
 	mu         sync.Mutex
 }
 
-func NewSession(rtm *slack.RTM, channel string, threadTS string) *Session {
+func NewSession(scripts map[string]string, rtm *slack.RTM, channel string, threadTS string) *Session {
 	session := &Session{
+		scripts: scripts,
 		rtm:        rtm,
 		started:    time.Now(),
 		lastAction: time.Now(),
@@ -92,7 +86,7 @@ func (s *Session) inputLoop() {
 			s.sendMarkdown(availableCommandsMessage)
 			continue
 		}
-		command, ok := availableREPLs[input]
+		command, ok := s.scripts[input]
 		if !ok {
 			s.sendMarkdown("Invalid command")
 			continue
@@ -116,7 +110,7 @@ func (s *Session) sayExited() error {
 
 func (s *Session) replList() []string {
 	repls := make([]string, 0)
-	for name, _ := range availableREPLs {
+	for name, _ := range s.scripts {
 		repls = append(repls, fmt.Sprintf("`%s`", name))
 	}
 	return repls

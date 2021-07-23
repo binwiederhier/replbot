@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -15,17 +16,28 @@ import (
 
 type Config struct {
 	Token string
+	ScriptDir string
 }
 
 type Bot struct {
 	config   *Config
+	scripts map[string]string
 	sessions map[string]*Session
 	mu       sync.Mutex
 }
 
 func NewBot(config *Config) (*Bot, error) {
+	scripts := make(map[string]string, 0)
+	entries, err := os.ReadDir(config.ScriptDir)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		scripts[entry.Name()] = filepath.Join(config.ScriptDir, entry.Name())
+	}
 	return &Bot{
 		config:   config,
+		scripts: scripts,
 		sessions: make(map[string]*Session),
 	}, nil
 }
@@ -47,7 +59,7 @@ func (b *Bot) Start() error {
 			if ev.ThreadTimestamp == "" && strings.TrimSpace(ev.Text) == "repl" {
 				log.Printf("Starting new session %s, requested by user %s\n", ev.Timestamp, ev.User)
 				b.mu.Lock()
-				b.sessions[ev.Timestamp] = NewSession(rtm, ev.Channel, ev.Timestamp)
+				b.sessions[ev.Timestamp] = NewSession(b.scripts, rtm, ev.Channel, ev.Timestamp)
 				b.mu.Unlock()
 			} else if ev.ThreadTimestamp != "" {
 				b.mu.Lock()
@@ -222,6 +234,7 @@ func main() {
 
 	config := &Config{
 		Token: os.Getenv("SLACK_BOT_TOKEN"),
+		ScriptDir: "repls.d",
 	}
 	bot, err := NewBot(config)
 	if err != nil {
