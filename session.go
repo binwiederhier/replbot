@@ -135,7 +135,9 @@ func (s *Session) replSession(command string) error {
 	errg.Go(func() error {
 		defer log.Printf("Exiting shutdown routine")
 		<-ctx.Done()
+		ptmx.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
 		time.Sleep(2*time.Second)
+		ptmx.Write([]byte{0x00})
 		close(readChan)
 		time.Sleep(2*time.Second)
 		log.Printf("killing %d", ptmx.Fd())
