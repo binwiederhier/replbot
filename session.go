@@ -119,14 +119,12 @@ func (s *Session) replList() []string {
 func (s *Session) replSession(command string) error {
 	defer log.Printf("Closed REPL session")
 
-	c := exec.Command("sh", "-c", command)
+	c := exec.Command("sh", "-c", command + "; echo exited")
 	ptmx, err := pty.Start(c)
 	if err != nil {
 		return fmt.Errorf("cannot start REPL session: %s", err.Error())
 	}
 
-	// It is of vital importance
-	// ptyFD := int(ptmx.Fd())
 
 
 	log.Printf("ptmx fd: %#v", ptmx.Fd())
@@ -135,22 +133,14 @@ func (s *Session) replSession(command string) error {
 	var message string
 	readChan := make(chan *result, 10)
 
-
 	errg.Go(func() error {
-		defer log.Printf("Exiting shutdown routine")
+		defer log.Printf("Exiting shutdown fn")
 		<-ctx.Done()
-		ptmx.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+		log.Printf("killing %d's kids", c.Process.Pid)
+		killChildren(c.Process.Pid)
 		time.Sleep(2*time.Second)
-		ptmx.Write([]byte{0x03})
-		time.Sleep(2*time.Second)
-		close(readChan)
-		log.Printf("killing %d", ptmx.Fd())
-		syscall.Close(int(ptmx.Fd())) // Force kill the Read()
-		time.Sleep(2*time.Second)
+		//syscall.Close(ptyFD) // Force kill the Read()
 		ptmx.Close()
-		time.Sleep(2*time.Second)
-		c.Process.Kill()
-		time.Sleep(2*time.Second)
 		return nil
 	})
 	errg.Go(func() error {
@@ -159,7 +149,7 @@ func (s *Session) replSession(command string) error {
 			buf := make([]byte, 4096) // FIXME alloc in a loop!
 			log.Printf("before read")
 			n, err := ptmx.Read(buf)
-			log.Printf("read something: %d %v", n, err)
+			log.Printf("read something: %s %v", buf[:n], err)
 			select {
 			case <-ctx.Done():
 				return nil
@@ -174,6 +164,9 @@ func (s *Session) replSession(command string) error {
 				log.Printf("after readChan<-")
 				if err != nil {
 					return err
+				}
+				if strings.TrimSpace(string(buf[:n])) == "exited" {
+					return errExit
 				}
 			}
 		}

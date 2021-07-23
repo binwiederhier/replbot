@@ -1,12 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"github.com/creack/pty"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sys/unix"
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -17,6 +23,9 @@ func main() {
 		return
 	} else if len(os.Args) > 1 && os.Args[1] == "2" {
 		test2()
+		return
+	} else if len(os.Args) > 1 && os.Args[1] == "launcher" {
+		launcher()
 		return
 	}
 
@@ -77,7 +86,7 @@ func test2() {
 		panic(err)
 	}
 	fd := int(ptmx.Fd())
-	log.Printf("ptmx fd: %#v", ptmx.Fd())
+	//log.Printf("ptmx fd: %#v", ptmx.Fd())
 	errg, ctx := errgroup.WithContext(context.Background())
 
 	inputChan := make(chan string)
@@ -85,15 +94,18 @@ func test2() {
 	errg.Go(func() error {
 		defer log.Printf("Exiting shutdown routine")
 		<-ctx.Done()
+		println("killing kids")
+		killChildren(c.Process.Pid)
 		// c.Process.Kill()
 		//ptmx.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
 		//time.Sleep(2*time.Second)
 		// ptmx.Write([]byte{0x03})
 		time.Sleep(2*time.Second)
-		log.Printf("killing %d", ptmx.Fd())
+		log.Printf("killing %d", fd)
+
 		syscall.Close(fd) // Force kill the Read()
 		ptmx.Close()
-		c.Process.Kill()
+
 		return nil
 	})
 	errg.Go(func() error {
@@ -109,6 +121,9 @@ func test2() {
 			default:
 				if err != nil {
 					return err
+				}
+				if strings.TrimSpace(string(buf[:n])) == "exited" {
+					return nil
 				}
 				println(string(buf[:n]))
 			}
@@ -137,4 +152,39 @@ func test2() {
 
 	time.Sleep(10 * time.Second)
 	println("exited main prog")
+}
+
+func killChildren(pid int) (killed int, err error) {
+	fmt.Printf("pid: %d", pid)
+	if pid == 0 {
+		return 0, errors.New("you seem to be insane, refusing to kill pid 0's kids")
+	}
+	children, err := os.ReadFile(fmt.Sprintf("/proc/%d/task/%d/children", pid, pid))
+	if err != nil {
+		println(err)
+		return 0, err
+	}
+	println(string(children))
+	pids := strings.Split(string(bytes.TrimSpace(children)), " ")
+	for _, pid := range pids {
+		println("pid: " + pid + "|")
+		p, err := strconv.Atoi(pid)
+		if err != nil {
+			continue
+		}
+		log.Printf("Killing PID %d (SIGTERM)", p)
+		if err := syscall.Kill(p, unix.SIGTERM); err != nil {
+			log.Printf("Killing PID %d (SIGKILL)", p)
+			if err := syscall.Kill(p, unix.SIGKILL); err != nil {
+				continue
+			}
+		}
+		log.Printf("Killed PID %d", p)
+		killed++
+	}
+	return killed, nil
+}
+
+func launcher() {
+
 }
