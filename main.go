@@ -2,11 +2,14 @@ package main
 
 import (
 	"errors"
+	"github.com/creack/pty"
 	"github.com/slack-go/slack"
 	"log"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -82,32 +85,44 @@ func (b *Bot) manageSessions() {
 }
 
 func main() {
-	/*c := exec.Command("sh", "-c", "for i in $(seq 1 5); do date; sleep 1; done")
-	ptmx, err := pty.Start(c)
-	if err != nil {
-		panic(err)
-	}
-	go func() {
-		for {
-			buf := make([]byte, 4096)
-			n, err := ptmx.Read(buf)
-			if err != nil {
-				panic(err)
-			}
-			log.Printf("read: %s", string(buf[:n]))
+	if len(os.Args) > 1 {
+		c := exec.Command("sh", "-c", "docker run -it node")
+		pty.Open()
+		ptmx, err := pty.Start(c)
+		if err != nil {
+			panic(err)
 		}
-		log.Printf("exiting go routine")
-	}()
+		go func() {
+			defer log.Printf("exiting read loop routine")
+			for {
+				buf := make([]byte, 4096)
+				log.Printf("before read")
+				n, err := ptmx.Read(buf)
+				log.Printf("after read")
+				if err != nil {
+					log.Printf("read loop err: %s", err.Error())
+					return
+				}
+				log.Printf("read: %s", string(buf[:n]))
+			}
 
-	time.Sleep(20 * time.Second)
-	log.Printf("killing")
-	c.Process.Kill()
-	ptmx.Close()
+		}()
 
-	time.Sleep(30 * time.Second)
-	log.Printf("exiting main prog")
+		//time.Sleep(2 * time.Second)
+		//log.Printf("sending ctrl-d")
+		//ptmx.Write([]byte{0x04})
 
-	os.Exit(0)*/
+		time.Sleep(10 * time.Second)
+		log.Printf("killing")
+		syscall.Close(int(ptmx.Fd()))
+		c.Process.Kill()
+		ptmx.Close()
+
+		time.Sleep(30 * time.Second)
+		log.Printf("exiting main prog")
+
+		return
+	}
 
 	/*
 		c := exec.Command("sh", "-c", "rm /tmp/date; while true; do date >> /tmp/date; sleep 1; done")

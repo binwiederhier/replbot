@@ -141,25 +141,37 @@ func (s *Session) replSession(command string) error {
 	errg.Go(func() error {
 		defer log.Printf("Exiting shutdown routine")
 		<-ctx.Done()
+		time.Sleep(2*time.Second)
+		close(readChan)
+		time.Sleep(2*time.Second)
+		log.Printf("killing %d", ptmx.Fd())
+		syscall.Close(int(ptmx.Fd())) // Force kill the Read()
+		time.Sleep(2*time.Second)
 		ptmx.Close()
+		time.Sleep(2*time.Second)
 		c.Process.Kill()
+		time.Sleep(2*time.Second)
 		return nil
 	})
 	errg.Go(func() error {
 		defer log.Printf("Exiting read loop")
 		for {
 			buf := make([]byte, 4096) // FIXME alloc in a loop!
+			log.Printf("before read")
 			n, err := ptmx.Read(buf)
+			log.Printf("read something: %d %v", n, err)
 			select {
 			case <-ctx.Done():
 				return nil
 			default:
-				readChan <- &result{buf[:n], err}
 				if e, ok := err.(*os.PathError); ok && e.Err == syscall.EIO {
 					// An expected error when the ptmx is closed to break the Read() call.
 					// Since we don't want to send this error to the user, we convert it to errExit.
 					return errExit
 				}
+				log.Printf("before readChan<-")
+				readChan <- &result{buf[:n], err}
+				log.Printf("after readChan<-")
 				if err != nil {
 					return err
 				}
@@ -213,6 +225,7 @@ func (s *Session) replSession(command string) error {
 						s.sendMarkdown(availableCommandsMessage)
 						continue
 					} else if input == "!exit" {
+						log.Printf("!exit")
 						return errExit
 					} else {
 						controlChar, ok := controlCharTable[input[1:]]
