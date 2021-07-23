@@ -119,7 +119,7 @@ func (s *Session) replList() []string {
 func (s *Session) replSession(command string) error {
 	defer log.Printf("Closed REPL session")
 
-	c := exec.Command("sh", "-c", command + "; echo exited")
+	c := exec.Command("sh", "-c", "stty -echo; " + command + "; echo; echo exited")
 	ptmx, err := pty.Start(c)
 	if err != nil {
 		return fmt.Errorf("cannot start REPL session: %s", err.Error())
@@ -136,9 +136,7 @@ func (s *Session) replSession(command string) error {
 	errg.Go(func() error {
 		defer log.Printf("Exiting shutdown fn")
 		<-ctx.Done()
-		log.Printf("killing %d's kids", c.Process.Pid)
 		killChildren(c.Process.Pid)
-		time.Sleep(2*time.Second)
 		//syscall.Close(ptyFD) // Force kill the Read()
 		ptmx.Close()
 		return nil
