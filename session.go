@@ -27,7 +27,8 @@ var (
 		"r":      0x10,
 		"ret":    0x10,
 	}
-	errExit = errors.New("exited REPL session")
+	errExit          = errors.New("exited REPL")
+	errSessionClosed = errors.New("session closed")
 )
 
 const (
@@ -49,25 +50,25 @@ const (
 )
 
 type Session struct {
-	id            string
+	ID            string
 	sender        Sender
 	scripts       map[string]string
 	started       time.Time
 	lastAction    time.Time
 	userInputChan chan string
-	closed        bool
-	mu            sync.Mutex
+	active        bool
+	mu            sync.RWMutex
 }
 
 func NewSession(id string, sender Sender, scripts map[string]string) *Session {
 	session := &Session{
-		id:            id,
+		ID:            id,
+		started:       time.Now(),
+		lastAction:    time.Now(), // TODO close stale sessions
 		sender:        sender,
 		scripts:       scripts,
-		started:       time.Now(),
-		lastAction:    time.Now(),            // TODO close stale sessions
 		userInputChan: make(chan string, 10), // buffered!
-		closed:        false,
+		active:        true,
 	}
 	go func() {
 		if err := session.userInputLoop(); err != nil {
@@ -77,14 +78,21 @@ func NewSession(id string, sender Sender, scripts map[string]string) *Session {
 	return session
 }
 
-func (s *Session) Send(message string) {
-	s.userInputChan <- message // TODO deal with closed session
-}
-
-func (s *Session) IsClosed() bool {
+// Send handles user input by forwarding to the underlying shell
+func (s *Session) Send(message string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.closed
+	if !s.active {
+		return errSessionClosed
+	}
+	s.userInputChan <- message
+	return nil
+}
+
+func (s *Session) Active() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.active
 }
 
 func (s *Session) userInputLoop() error {
@@ -137,8 +145,8 @@ func (s *Session) replList() []string {
 }
 
 func (s *Session) execREPL(command string) error {
-	log.Printf("[session %s] Started REPL session", s.id)
-	defer log.Printf("[session %s] Closed REPL session", s.id)
+	log.Printf("[session %s] Started REPL session", s.ID)
+	defer log.Printf("[session %s] Closed REPL session", s.ID)
 
 	if err := s.sender.Send(sessionStartedMessage, Text); err != nil {
 		return err
@@ -154,8 +162,8 @@ func (s *Session) execREPL(command string) error {
 	outChan := make(chan []byte, 10)
 	g, ctx := errgroup.WithContext(context.Background())
 	g.Go(func() error {
-		log.Printf("[session %s] Started command output loop", s.id)
-		defer log.Printf("[session %s] Exiting command output loop", s.id)
+		log.Printf("[session %s] Started command output loop", s.ID)
+		defer log.Printf("[session %s] Exiting command output loop", s.ID)
 		for {
 			buf := make([]byte, 4096) // Allocation in a loop, ahhh ...
 			n, err := ptmx.Read(buf)
@@ -183,8 +191,8 @@ func (s *Session) execREPL(command string) error {
 		}
 	})
 	g.Go(func() error {
-		log.Printf("[session %s] Started response loop", s.id)
-		defer log.Printf("[session %s] Exiting response loop", s.id)
+		log.Printf("[session %s] Started response loop", s.ID)
+		defer log.Printf("[session %s] Exiting response loop", s.ID)
 		var message string
 		for {
 			select {
@@ -214,8 +222,8 @@ func (s *Session) execREPL(command string) error {
 		}
 	})
 	g.Go(func() error {
-		log.Printf("[session %s] Started user input loop", s.id)
-		defer log.Printf("[session %s] Exiting user input loop", s.id)
+		log.Printf("[session %s] Started user input loop", s.ID)
+		defer log.Printf("[session %s] Exiting user input loop", s.ID)
 		for {
 			select {
 			case line := <-s.userInputChan:
@@ -228,7 +236,7 @@ func (s *Session) execREPL(command string) error {
 		}
 	})
 	g.Go(func() error {
-		defer log.Printf("[session %s] Command cleanup finished", s.id)
+		defer log.Printf("[session %s] Command cleanup finished", s.ID)
 		<-ctx.Done()
 		if err := KillChildProcesses(cmd.Process.Pid); err != nil {
 			log.Printf("warning: %s", err.Error())
@@ -261,6 +269,6 @@ func (s *Session) handleUserInput(input string, outputWriter io.Writer) error {
 func (s *Session) close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.closed = true
-	log.Printf("[session %s] Session closed", s.id)
+	s.active = false
+	log.Printf("[session %s] Session closed", s.ID)
 }
