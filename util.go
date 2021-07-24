@@ -6,15 +6,21 @@ import (
 	"fmt"
 	"golang.org/x/sys/unix"
 	"log"
+	"math/rand"
 	"os"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
-func killChildren(pid int) error {
+var (
+	random = rand.New(rand.NewSource(time.Now().UnixNano()))
+)
+
+func KillChildProcesses(pid int) error {
 	if pid == 0 {
-		return errors.New("you seem to be insane, refusing to kill pid 0's kids")
+		return errors.New("refusing to kill child processes of PID 0")
 	}
 	children, err := os.ReadFile(fmt.Sprintf("/proc/%d/task/%d/children", pid, pid))
 	if err != nil {
@@ -34,4 +40,13 @@ func killChildren(pid int) error {
 		}
 	}
 	return nil
+}
+
+// RandomStringWithCharset returns a random string with a given length, using the defined charset
+func RandomStringWithCharset(length int, charset string) string {
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[random.Intn(len(charset))]
+	}
+	return string(b)
 }
