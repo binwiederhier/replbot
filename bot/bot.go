@@ -1,8 +1,9 @@
-package main
+package bot
 
 import (
 	"errors"
 	"github.com/slack-go/slack"
+	"heckel.io/replbot/config"
 	"log"
 	"os"
 	"path/filepath"
@@ -11,19 +12,14 @@ import (
 	"time"
 )
 
-type Config struct {
-	Token     string
-	ScriptDir string
-}
-
 type Bot struct {
-	config   *Config
+	config   *config.Config
 	scripts  map[string]string
 	sessions map[string]*Session
 	mu       sync.Mutex
 }
 
-func NewBot(config *Config) (*Bot, error) {
+func New(config *config.Config) (*Bot, error) {
 	scripts := make(map[string]string, 0)
 	entries, err := os.ReadDir(config.ScriptDir)
 	if err != nil {

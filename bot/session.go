@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/creack/pty"
 	"golang.org/x/sync/errgroup"
+	"heckel.io/replbot/util"
 	"io"
 	"log"
 	"os"
@@ -152,7 +153,7 @@ func (s *Session) execREPL(command string) error {
 		return err
 	}
 
-	exitMarker := RandomStringWithCharset(10, exitMarkerCharset)
+	exitMarker := util.RandomStringWithCharset(10, exitMarkerCharset)
 	cmd := exec.Command("sh", "-c", fmt.Sprintf(launcherScript, command, exitMarker))
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
@@ -238,7 +239,7 @@ func (s *Session) execREPL(command string) error {
 	g.Go(func() error {
 		defer log.Printf("[session %s] Command cleanup finished", s.ID)
 		<-ctx.Done()
-		if err := KillChildProcesses(cmd.Process.Pid); err != nil {
+		if err := util.KillChildProcesses(cmd.Process.Pid); err != nil {
 			log.Printf("warning: %s", err.Error())
 		}
 		if err := ptmx.Close(); err != nil {
