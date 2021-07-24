@@ -53,7 +53,7 @@ func (b *Bot) Start() error {
 			if ev.User == "" {
 				continue // Ignore my own messages
 			}
-			if ev.ThreadTimestamp == "" && strings.TrimSpace(ev.Text) == "repl" {
+			if ev.ThreadTimestamp == "" && strings.TrimSpace(ev.Text) == "repl" { // TODO react on name instead
 				log.Printf("Starting new session %s, requested by user %s\n", ev.Timestamp, ev.User)
 				b.mu.Lock()
 				sender := NewSlackSender(rtm, ev.Channel, ev.Timestamp)
@@ -62,7 +62,7 @@ func (b *Bot) Start() error {
 			} else if ev.ThreadTimestamp != "" {
 				b.mu.Lock()
 				if session, ok := b.sessions[ev.ThreadTimestamp]; ok {
-					session.userInputChan <- ev.Text
+					session.Send(ev.Text) // TODO deal with URLs
 				}
 				b.mu.Unlock()
 			}

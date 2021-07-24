@@ -14,6 +14,8 @@ const (
 	Code
 )
 
+// TODO deal with rate limiting
+
 type Sender interface {
 	Send(message string, format Format) error
 	SendWithID(message string, format Format) (string, error)

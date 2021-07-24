@@ -65,7 +65,7 @@ func NewSession(id string, sender Sender, scripts map[string]string) *Session {
 		sender:        sender,
 		scripts:       scripts,
 		started:       time.Now(),
-		lastAction:    time.Now(),
+		lastAction:    time.Now(),            // TODO close stale sessions
 		userInputChan: make(chan string, 10), // buffered!
 		closed:        false,
 	}
@@ -75,6 +75,10 @@ func NewSession(id string, sender Sender, scripts map[string]string) *Session {
 		}
 	}()
 	return session
+}
+
+func (s *Session) Send(message string) {
+	s.userInputChan <- message // TODO deal with closed session
 }
 
 func (s *Session) IsClosed() bool {
@@ -244,6 +248,7 @@ func (s *Session) handleUserInput(input string, outputWriter io.Writer) error {
 	case exitCommand:
 		return errExit
 	default:
+		// TODO properly handle empty lines
 		if controlChar, ok := controlCharTable[input[1:]]; ok {
 			_, err := outputWriter.Write([]byte{controlChar})
 			return err
