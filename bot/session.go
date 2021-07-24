@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"heckel.io/replbot/config"
 	"log"
 	"regexp"
 	"strings"
@@ -43,12 +44,11 @@ const (
 		"  `!ctrl-c`, `!ctrl-d`, ... - Send command sequence\n" +
 		"  `!exit` - Exit this session"
 	launcherScript = "stty -echo; %s; echo; echo %s"
-	warnIdleTime   = 5 * time.Minute
-	maxIdleTime    = 6 * time.Minute
 )
 
 type session struct {
 	ID            string
+	config        *config.Config
 	sender        Sender
 	scripts       map[string]string
 	userInputChan chan string
@@ -60,17 +60,18 @@ type session struct {
 	mu            sync.RWMutex
 }
 
-func NewSession(id string, sender Sender, scripts map[string]string) *session {
+func NewSession(config *config.Config, id string, sender Sender, scripts map[string]string) *session {
 	s := &session{
 		ID:            id,
+		config:        config,
 		sender:        sender,
 		scripts:       scripts,
 		userInputChan: make(chan string, 10), // buffered!
 		cancelFn:      nil,
 		active:        true,
 		closing:       false,
-		warnTimer:     time.NewTimer(warnIdleTime),
-		closeTimer:    time.NewTimer(maxIdleTime),
+		warnTimer:     time.NewTimer(config.IdleTimeout - time.Minute),
+		closeTimer:    time.NewTimer(config.IdleTimeout),
 	}
 	go func() {
 		if err := s.userInputLoop(); err != nil {
@@ -88,8 +89,8 @@ func (s *session) Send(message string) error {
 	if !s.active {
 		return errSessionClosed
 	}
-	s.warnTimer.Reset(warnIdleTime)
-	s.closeTimer.Reset(maxIdleTime)
+	s.warnTimer.Reset(s.config.IdleTimeout - time.Minute)
+	s.closeTimer.Reset(s.config.IdleTimeout)
 	s.userInputChan <- message
 	return nil
 }
@@ -181,7 +182,7 @@ func (s *session) activityMonitor() {
 		select {
 		case <-s.warnTimer.C:
 			_ = s.sender.Send(timeoutWarningMessage, Text)
-			log.Printf("[session %s] Session has been idle for %s. Warning sent to user.", s.ID, warnIdleTime.String())
+			log.Printf("[session %s] Session has been idle for a long time. Warning sent to user.", s.ID)
 		case <-s.closeTimer.C:
 			_ = s.sender.Send(timeoutReachedMessage, Text)
 			log.Printf("[session %s] Idle timeout reached. Closing session.", s.ID)

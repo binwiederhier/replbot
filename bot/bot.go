@@ -59,7 +59,7 @@ func (b *Bot) Start() error {
 				log.Printf("[session %s] Starting session requested by user %s\n", ev.Timestamp, ev.User)
 				b.mu.Lock()
 				sender := NewSlackSender(rtm, ev.Channel, ev.Timestamp)
-				b.sessions[ev.Timestamp] = NewSession(ev.Timestamp, sender, b.scripts)
+				b.sessions[ev.Timestamp] = NewSession(b.config, ev.Timestamp, sender, b.scripts)
 				b.mu.Unlock()
 			} else if ev.ThreadTimestamp != "" {
 				b.mu.Lock()
