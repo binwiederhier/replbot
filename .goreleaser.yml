@@ -1,0 +1,55 @@
+before:
+  hooks:
+    - go mod download
+builds:
+  - binary: replbot
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+nfpms:
+  -
+    package_name: replbot
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}"
+    homepage: https://heckel.io/replbot
+    maintainer: Philipp C. Heckel <philipp.heckel@gmail.com>
+    description: Slack bot that provides interactive REPLs
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+    suggests:
+      - bash-completion
+    bindir: /usr/bin
+    empty_folders:
+      - /etc/replbot
+    contents:
+      - src: config/replbot.service
+        dst: /lib/systemd/system/replbot.service
+    scripts:
+      postinstall: "scripts/postinst.sh"
+      postremove: "scripts/postrm.sh"
+archives:
+  - replacements:
+      386: i386
+      amd64: x86_64
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ .Tag }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+dockers:
+  - dockerfile: Dockerfile
+    ids:
+      - replbot
+    image_templates:
+      - "binwiederhier/replbot:latest"
+      - "binwiederhier/replbot:{{ .Tag }}"
+      - "binwiederhier/replbot:v{{ .Major }}.{{ .Minor }}"
