@@ -48,6 +48,8 @@ const (
 		"  `!ctrl-c`, `!ctrl-d`, ... - Send command sequence\n" +
 		"  `!exit` - Exit this session"
 	launcherScript = "stty -echo; %s; echo; echo %s"
+	warnIdleTime = 10 * time.Second// 5 * time.Minute
+	maxIdleTime = 15 * time.Second // 6 * time.Minute
 )
 
 type Session struct {
@@ -58,6 +60,8 @@ type Session struct {
 	lastAction    time.Time
 	userInputChan chan string
 	active        bool
+	warnTimer *time.Timer
+	closeTimer *time.Timer
 	mu            sync.RWMutex
 }
 
@@ -70,12 +74,15 @@ func NewSession(id string, sender Sender, scripts map[string]string) *Session {
 		scripts:       scripts,
 		userInputChan: make(chan string, 10), // buffered!
 		active:        true,
+		warnTimer: time.NewTimer(warnIdleTime),
+		closeTimer: time.NewTimer(maxIdleTime),
 	}
 	go func() {
 		if err := session.userInputLoop(); err != nil {
 			log.Printf("[session %s] fatal error: %s", id, err.Error())
 		}
 	}()
+	go session.activityMonitor()
 	return session
 }
 
@@ -86,6 +93,9 @@ func (s *Session) Send(message string) error {
 	if !s.active {
 		return errSessionClosed
 	}
+	s.lastAction = time.Now()
+	s.warnTimer.Reset(warnIdleTime)
+	s.closeTimer.Reset(maxIdleTime)
 	s.userInputChan <- message
 	return nil
 }
@@ -267,9 +277,26 @@ func (s *Session) handleUserInput(input string, outputWriter io.Writer) error {
 	}
 }
 
+func (s *Session) activityMonitor() {
+	for {
+		select {
+		case <-s.warnTimer.C:
+			_ = s.sender.Send("Are you still there? Your session will time out in one minute.", Text)
+			log.Printf("[session %s] Session has been idle for %s. Warning sent to user.", s.ID, warnIdleTime.String())
+		case <- s.closeTimer.C:
+			_ = s.sender.Send("Timeout reached. Bye!", Text)
+			log.Printf("[session %s] Idle timeout reached. Closing session.", s.ID)
+			s.close()
+			return
+		}
+	}
+}
+
 func (s *Session) close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.active = false
+	s.warnTimer.Stop()
+	s.closeTimer.Stop()
 	log.Printf("[session %s] Session closed", s.ID)
 }
