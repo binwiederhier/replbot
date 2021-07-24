@@ -1,20 +1,12 @@
 package bot
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"github.com/creack/pty"
-	"golang.org/x/sync/errgroup"
-	"heckel.io/replbot/util"
-	"io"
 	"log"
-	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -48,11 +40,11 @@ const (
 		"  `!ctrl-c`, `!ctrl-d`, ... - Send command sequence\n" +
 		"  `!exit` - Exit this session"
 	launcherScript = "stty -echo; %s; echo; echo %s"
-	warnIdleTime = 10 * time.Second// 5 * time.Minute
-	maxIdleTime = 15 * time.Second // 6 * time.Minute
+	warnIdleTime   = 10 * time.Second // 5 * time.Minute
+	maxIdleTime    = 15 * time.Second // 6 * time.Minute
 )
 
-type Session struct {
+type session struct {
 	ID            string
 	sender        Sender
 	scripts       map[string]string
@@ -60,13 +52,13 @@ type Session struct {
 	lastAction    time.Time
 	userInputChan chan string
 	active        bool
-	warnTimer *time.Timer
-	closeTimer *time.Timer
+	warnTimer     *time.Timer
+	closeTimer    *time.Timer
 	mu            sync.RWMutex
 }
 
-func NewSession(id string, sender Sender, scripts map[string]string) *Session {
-	session := &Session{
+func NewSession(id string, sender Sender, scripts map[string]string) *session {
+	session := &session{
 		ID:            id,
 		started:       time.Now(),
 		lastAction:    time.Now(), // TODO close stale sessions
@@ -74,8 +66,8 @@ func NewSession(id string, sender Sender, scripts map[string]string) *Session {
 		scripts:       scripts,
 		userInputChan: make(chan string, 10), // buffered!
 		active:        true,
-		warnTimer: time.NewTimer(warnIdleTime),
-		closeTimer: time.NewTimer(maxIdleTime),
+		warnTimer:     time.NewTimer(warnIdleTime),
+		closeTimer:    time.NewTimer(maxIdleTime),
 	}
 	go func() {
 		if err := session.userInputLoop(); err != nil {
@@ -87,7 +79,7 @@ func NewSession(id string, sender Sender, scripts map[string]string) *Session {
 }
 
 // Send handles user input by forwarding to the underlying shell
-func (s *Session) Send(message string) error {
+func (s *session) Send(message string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.active {
@@ -100,13 +92,13 @@ func (s *Session) Send(message string) error {
 	return nil
 }
 
-func (s *Session) Active() bool {
+func (s *session) Active() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.active
 }
 
-func (s *Session) userInputLoop() error {
+func (s *session) userInputLoop() error {
 	defer s.close()
 	if err := s.sayHello(); err != nil {
 		return err
@@ -139,15 +131,15 @@ func (s *Session) userInputLoop() error {
 	return nil
 }
 
-func (s *Session) sayHello() error {
+func (s *session) sayHello() error {
 	return s.sender.Send(fmt.Sprintf(welcomeMessage, strings.Join(s.replList(), ", ")), Markdown)
 }
 
-func (s *Session) sayExited() error {
+func (s *session) sayExited() error {
 	return s.sender.Send(fmt.Sprintf(sessionExitedMessage, strings.Join(s.replList(), ", ")), Markdown)
 }
 
-func (s *Session) replList() []string {
+func (s *session) replList() []string {
 	repls := make([]string, 0)
 	for name, _ := range s.scripts {
 		repls = append(repls, fmt.Sprintf("`%s`", name))
@@ -155,135 +147,25 @@ func (s *Session) replList() []string {
 	return repls
 }
 
-func (s *Session) execREPL(command string) error {
+func (s *session) execREPL(command string) error {
 	log.Printf("[session %s] Started REPL session", s.ID)
 	defer log.Printf("[session %s] Closed REPL session", s.ID)
 
-	if err := s.sender.Send(sessionStartedMessage, Text); err != nil {
-		return err
+	r := &repl{
+		sessionID:     s.ID,
+		sender:        s.sender,
+		userInputChan: s.userInputChan,
 	}
-
-	exitMarker := util.RandomStringWithCharset(10, exitMarkerCharset)
-	cmd := exec.Command("sh", "-c", fmt.Sprintf(launcherScript, command, exitMarker))
-	ptmx, err := pty.Start(cmd)
-	if err != nil {
-		return fmt.Errorf("cannot start REPL session: %s", err.Error())
-	}
-
-	outChan := make(chan []byte, 10)
-	g, ctx := errgroup.WithContext(context.Background())
-	g.Go(func() error {
-		log.Printf("[session %s] Started command output loop", s.ID)
-		defer log.Printf("[session %s] Exiting command output loop", s.ID)
-		for {
-			buf := make([]byte, 4096) // Allocation in a loop, ahhh ...
-			n, err := ptmx.Read(buf)
-			select {
-			case <-ctx.Done():
-				return nil
-			default:
-				if e, ok := err.(*os.PathError); ok && e.Err == syscall.EIO {
-					// An expected error when the ptmx is closed to break the Read() call.
-					// Since we don't want to send this error to the user, we convert it to errExit.
-					return errExit
-				} else if err == io.EOF {
-					if n > 0 {
-						outChan <- buf[:n]
-					}
-					return errExit
-				} else if err != nil {
-					return err
-				} else if strings.TrimSpace(string(buf[:n])) == exitMarker {
-					return errExit
-				} else if n > 0 {
-					outChan <- buf[:n]
-				}
-			}
-		}
-	})
-	g.Go(func() error {
-		log.Printf("[session %s] Started response loop", s.ID)
-		defer log.Printf("[session %s] Exiting response loop", s.ID)
-		var message string
-		for {
-			select {
-			case result := <-outChan:
-				message += shellEscapeRegex.ReplaceAllString(string(result), "")
-				if len(message) > maxMessageLength {
-					if err := s.sender.Send(message, Code); err != nil {
-						return err
-					}
-					message = ""
-				}
-			case <-time.After(300 * time.Millisecond):
-				if len(message) > 0 {
-					if err := s.sender.Send(message, Code); err != nil {
-						return err
-					}
-					message = ""
-				}
-			case <-ctx.Done():
-				if len(message) > 0 {
-					if err := s.sender.Send(message, Code); err != nil {
-						return err
-					}
-				}
-				return nil
-			}
-		}
-	})
-	g.Go(func() error {
-		log.Printf("[session %s] Started user input loop", s.ID)
-		defer log.Printf("[session %s] Exiting user input loop", s.ID)
-		for {
-			select {
-			case line := <-s.userInputChan:
-				if err := s.handleUserInput(line, ptmx); err != nil {
-					return err
-				}
-			case <-ctx.Done():
-				return nil
-			}
-		}
-	})
-	g.Go(func() error {
-		defer log.Printf("[session %s] Command cleanup finished", s.ID)
-		<-ctx.Done()
-		if err := util.KillChildProcesses(cmd.Process.Pid); err != nil {
-			log.Printf("warning: %s", err.Error())
-		}
-		if err := ptmx.Close(); err != nil {
-			log.Printf("warning: %s", err.Error())
-		}
-		return nil
-	})
-	return g.Wait()
+	return r.execREPL(command)
 }
 
-func (s *Session) handleUserInput(input string, outputWriter io.Writer) error {
-	switch input {
-	case helpCommand:
-		return s.sender.Send(availableCommandsMessage, Markdown)
-	case exitCommand:
-		return errExit
-	default:
-		// TODO properly handle empty lines
-		if controlChar, ok := controlCharTable[input[1:]]; ok {
-			_, err := outputWriter.Write([]byte{controlChar})
-			return err
-		}
-		_, err := io.WriteString(outputWriter, fmt.Sprintf("%s\n", input))
-		return err
-	}
-}
-
-func (s *Session) activityMonitor() {
+func (s *session) activityMonitor() {
 	for {
 		select {
 		case <-s.warnTimer.C:
 			_ = s.sender.Send("Are you still there? Your session will time out in one minute.", Text)
 			log.Printf("[session %s] Session has been idle for %s. Warning sent to user.", s.ID, warnIdleTime.String())
-		case <- s.closeTimer.C:
+		case <-s.closeTimer.C:
 			_ = s.sender.Send("Timeout reached. Bye!", Text)
 			log.Printf("[session %s] Idle timeout reached. Closing session.", s.ID)
 			s.close()
@@ -292,7 +174,7 @@ func (s *Session) activityMonitor() {
 	}
 }
 
-func (s *Session) close() {
+func (s *session) close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.active = false

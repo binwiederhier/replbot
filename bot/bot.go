@@ -15,7 +15,7 @@ import (
 type Bot struct {
 	config   *config.Config
 	scripts  map[string]string
-	sessions map[string]*Session
+	sessions map[string]*session
 	mu       sync.Mutex
 }
 
@@ -31,7 +31,7 @@ func New(config *config.Config) (*Bot, error) {
 	return &Bot{
 		config:   config,
 		scripts:  scripts,
-		sessions: make(map[string]*Session),
+		sessions: make(map[string]*session),
 	}, nil
 }
 

@@ -23,7 +23,7 @@ func New() *cli.App {
 		Reader:                 os.Stdin,
 		Writer:                 os.Stdout,
 		ErrWriter:              os.Stderr,
-		Action:    execRun,
+		Action:                 execRun,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "slack-token", Aliases: []string{"t"}, EnvVars: []string{"REPLBOT_SLACK_BOT_TOKEN"}, DefaultText: "none", Usage: "bot token for the Slack app"},
 			&cli.StringFlag{Name: "repl-dir", Aliases: []string{"d"}, EnvVars: []string{"REPLBOT_REPL_DIR"}, Value: "repls.d", DefaultText: "repls.d", Usage: "script directory"},
