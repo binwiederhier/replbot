@@ -31,6 +31,8 @@ var (
 	sessionExitedMessage = "REPL session ended.\n\nYou may start a new session by choosing any one of the " +
 		"available REPLs: %s. Type `!help` for help and `!exit` to exit this session."
 	byeMessage               = "REPLbot says bye bye!"
+	helpCommand = "!help"
+	exitCommand = "!exit"
 	availableCommandsMessage = "Available commands:\n" +
 		"  `!ret`, `!r` - Send empty return\n" +
 		"  `!ctrl-c`, `!ctrl-d`, ... - Send command sequence\n" +
@@ -125,9 +127,6 @@ func (s *Session) replSession(command string) error {
 		return fmt.Errorf("cannot start REPL session: %s", err.Error())
 	}
 
-
-
-	log.Printf("ptmx fd: %#v", ptmx.Fd())
 	errg, ctx := errgroup.WithContext(context.Background())
 
 	var message string
@@ -205,31 +204,15 @@ func (s *Session) replSession(command string) error {
 
 	s.sendMarkdown("Started a new REPL session")
 	errg.Go(func() error {
-		defer log.Printf("Exiting inputChan loop")
+		defer log.Printf("[session %s] Exiting input loop", s.threadTS)
 		for {
 			select {
-			case <-ctx.Done():
-				return nil
 			case input := <- s.inputChan:
-				if strings.HasPrefix(input, "!") {
-					if input == "!help" {
-						s.sendMarkdown(availableCommandsMessage)
-						continue
-					} else if input == "!exit" {
-						log.Printf("!exit")
-						return errExit
-					} else {
-						controlChar, ok := controlCharTable[input[1:]]
-						if ok {
-							ptmx.Write([]byte{controlChar})
-							continue
-						}
-					}
-					// Fallthrough to underlying REPL
-				}
-				if _, err := io.WriteString(ptmx, fmt.Sprintf("%s\n", input)); err != nil {
+				if err := s.handleInput(input, ptmx); err != nil {
 					return err
 				}
+			case <-ctx.Done():
+				return nil
 			}
 		}
 	})
@@ -271,6 +254,23 @@ func (s *Session) close(message string) {
 	log.Printf(message)
 	s.sendText(message)
 	s.closed = true
+}
+
+func (s *Session) handleInput(input string, outputWriter io.Writer) error {
+	switch input {
+	case helpCommand:
+		_, err := s.sendMarkdown(availableCommandsMessage)
+		return err
+	case exitCommand:
+		return errExit
+	default:
+		if controlChar, ok := controlCharTable[input[1:]]; ok {
+			_, err := outputWriter.Write([]byte{controlChar})
+			return err
+		}
+		_, err := io.WriteString(outputWriter, fmt.Sprintf("%s\n", input))
+		return err
+	}
 }
 
 type result struct {
