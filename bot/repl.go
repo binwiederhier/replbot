@@ -21,7 +21,7 @@ type repl struct {
 	userInputChan chan string
 }
 
-func (r *repl) execREPL(command string) error {
+func (r *repl) Exec(ctx context.Context, command string) error {
 	log.Printf("[session %s] Started REPL session", r.sessionID)
 	defer log.Printf("[session %s] Closed REPL session", r.sessionID)
 
@@ -37,7 +37,7 @@ func (r *repl) execREPL(command string) error {
 	}
 
 	outChan := make(chan []byte, 10)
-	g, ctx := errgroup.WithContext(context.Background())
+	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		log.Printf("[session %s] Started command output loop", r.sessionID)
 		defer log.Printf("[session %s] Exiting command output loop", r.sessionID)
@@ -46,7 +46,7 @@ func (r *repl) execREPL(command string) error {
 			n, err := ptmx.Read(buf)
 			select {
 			case <-ctx.Done():
-				return nil
+				return errExit
 			default:
 				if e, ok := err.(*os.PathError); ok && e.Err == syscall.EIO {
 					// An expected error when the ptmx is closed to break the Read() call.
@@ -94,7 +94,7 @@ func (r *repl) execREPL(command string) error {
 						return err
 					}
 				}
-				return nil
+				return errExit
 			}
 		}
 	})
@@ -108,7 +108,7 @@ func (r *repl) execREPL(command string) error {
 					return err
 				}
 			case <-ctx.Done():
-				return nil
+				return errExit
 			}
 		}
 	})
