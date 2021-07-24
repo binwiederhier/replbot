@@ -132,24 +132,12 @@ func (s *Session) replSession(command string) error {
 		return fmt.Errorf("cannot start REPL session: %s", err.Error())
 	}
 
-	errg, ctx := errgroup.WithContext(context.Background())
-	readChan := make(chan *result, 10)
+	outChan := make(chan []byte, 10)
+	g, ctx := errgroup.WithContext(context.Background())
 
-	errg.Go(func() error {
-		log.Printf("[session %s] Started command cleanup", s.threadTS)
-		defer log.Printf("[session %s] Exiting command cleanup", s.threadTS)
-		<-ctx.Done()
-		if err := killChildren(c.Process.Pid); err != nil {
-			log.Printf("warning: %s", err.Error())
-		}
-		if err := ptmx.Close(); err != nil {
-			log.Printf("warning: %s", err.Error())
-		}
-		return nil
-	})
-	errg.Go(func() error {
-		log.Printf("[session %s] Started command input loop", s.threadTS)
-		defer log.Printf("[session %s] Exiting command input loop", s.threadTS)
+	g.Go(func() error {
+		log.Printf("[session %s] Started command output loop", s.threadTS)
+		defer log.Printf("[session %s] Exiting command output loop", s.threadTS)
 		for {
 			buf := make([]byte, 4096) // Allocation in a loop, ahhh ...
 			n, err := ptmx.Read(buf)
@@ -161,42 +149,32 @@ func (s *Session) replSession(command string) error {
 					// An expected error when the ptmx is closed to break the Read() call.
 					// Since we don't want to send this error to the user, we convert it to errExit.
 					return errExit
-				}
-				log.Printf("before readChan<-")
-				readChan <- &result{buf[:n], err}
-				log.Printf("after readChan<-")
-				if err != nil {
-					return err
-				}
-				if strings.TrimSpace(string(buf[:n])) == "exited" {
+				} else if err == io.EOF {
+					if n > 0 {
+						outChan <- buf[:n]
+					}
 					return errExit
+				} else if err != nil {
+					return err
+				} else if strings.TrimSpace(string(buf[:n])) == "exited" {
+					return errExit
+				} else if n > 0 {
+					outChan <- buf[:n]
 				}
 			}
 		}
 	})
-	errg.Go(func() error {
+	g.Go(func() error {
 		log.Printf("[session %s] Started response loop", s.threadTS)
 		defer log.Printf("[session %s] Exiting response loop", s.threadTS)
 		var message string
 		for {
 			select {
-			case result := <-readChan:
-				if result.err != nil && result.err != io.EOF {
-					log.Printf("readChan error: %s", result.err.Error())
-					return result.err
-				}
-				if len(result.bytes) > 0 {
-					message += shellEscapeRegex.ReplaceAllString(string(result.bytes), "")
-				}
+			case result := <-outChan:
+				message += shellEscapeRegex.ReplaceAllString(string(result), "")
 				if len(message) > maxMessageLength {
 					s.sendCode(message)
 					message = ""
-				}
-				if result.err == io.EOF {
-					if len(message) > 0 {
-						s.sendCode(message)
-					}
-					return errExit
 				}
 			case <-time.After(300 * time.Millisecond):
 				if len(message) > 0 {
@@ -204,13 +182,17 @@ func (s *Session) replSession(command string) error {
 					message = ""
 				}
 			case <-ctx.Done():
+				if len(message) > 0 {
+					s.sendCode(message)
+				}
 				return nil
 			}
 		}
 	})
 
-	errg.Go(func() error {
-		defer log.Printf("[session %s] Exiting input loop", s.threadTS)
+	g.Go(func() error {
+		log.Printf("[session %s] Started user input loop", s.threadTS)
+		defer log.Printf("[session %s] Exiting user input loop", s.threadTS)
 		for {
 			select {
 			case line := <-s.userInputChan:
@@ -222,8 +204,19 @@ func (s *Session) replSession(command string) error {
 			}
 		}
 	})
+	g.Go(func() error {
+		defer log.Printf("[session %s] Command cleanup finished", s.threadTS)
+		<-ctx.Done()
+		if err := killChildren(c.Process.Pid); err != nil {
+			log.Printf("warning: %s", err.Error())
+		}
+		if err := ptmx.Close(); err != nil {
+			log.Printf("warning: %s", err.Error())
+		}
+		return nil
+	})
 
-	return errg.Wait()
+	return g.Wait()
 }
 
 func (s *Session) sendText(message string) (string, error) {
