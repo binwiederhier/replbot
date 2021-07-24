@@ -1,2 +1,2 @@
 #!/bin/sh
-docker run -it node
+docker run --rm -it node

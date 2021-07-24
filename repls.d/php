@@ -1,2 +1,2 @@
 #!/bin/sh
-docker run -it php
+docker run --rm -it php

@@ -1,2 +1,2 @@
 #!/bin/sh
-docker run -it ubuntu
+docker run --rm -it ubuntu

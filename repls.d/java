@@ -1,2 +1,2 @@
 #!/bin/sh
-docker run -it java
+docker run --rm -it openjdk

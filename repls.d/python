@@ -1,2 +1,2 @@
 #!/bin/sh
-docker run -it python
+docker run --rm -it python

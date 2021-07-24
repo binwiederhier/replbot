@@ -1,2 +1,2 @@
 #!/bin/sh
-docker run -it bigtruedata/scala
+docker run --rm -it bigtruedata/scala
