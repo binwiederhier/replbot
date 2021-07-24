@@ -56,7 +56,8 @@ func (b *Bot) Start() error {
 			if ev.ThreadTimestamp == "" && strings.TrimSpace(ev.Text) == "repl" {
 				log.Printf("Starting new session %s, requested by user %s\n", ev.Timestamp, ev.User)
 				b.mu.Lock()
-				b.sessions[ev.Timestamp] = NewSession(b.scripts, rtm, ev.Channel, ev.Timestamp)
+				sender := NewSlackSender(rtm, ev.Channel, ev.Timestamp)
+				b.sessions[ev.Timestamp] = NewSession(ev.Timestamp, sender, b.scripts)
 				b.mu.Unlock()
 			} else if ev.ThreadTimestamp != "" {
 				b.mu.Lock()
@@ -84,7 +85,7 @@ func (b *Bot) manageSessions() {
 		b.mu.Lock()
 		for id, session := range b.sessions {
 			if session.IsClosed() {
-				log.Printf("Removing session %s", session.threadTS)
+				log.Printf("Removing session %s", session.id)
 				delete(b.sessions, id)
 			}
 		}

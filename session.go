@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/creack/pty"
-	"github.com/slack-go/slack"
 	"golang.org/x/sync/errgroup"
 	"io"
 	"log"
@@ -21,14 +20,17 @@ import (
 var (
 	shellEscapeRegex = regexp.MustCompile(`\x1B\[[0-9;]*[a-zA-Z]`)
 	controlCharTable = map[string]byte{
+		"c":      0x03,
+		"ctrl-c": 0x03,
+		"d":      0x04,
+		"ctrl-d": 0x04,
 		"r":      0x10,
 		"ret":    0x10,
-		"ctrl-c": 0x03,
-		"ctrl-d": 0x04,
 	}
 	welcomeMessage = "REPLbot welcomes you!\n\nYou may start a new session by choosing any one of the " +
 		"available REPLs: %s. Type `!help` for help and `!exit` to exit this session."
-	sessionExitedMessage = "REPL session ended.\n\nYou may start a new session by choosing any one of the " +
+	sessionStartedMessage = "Started a new REPL session"
+	sessionExitedMessage  = "REPL session ended.\n\nYou may start a new session by choosing any one of the " +
 		"available REPLs: %s. Type `!help` for help and `!exit` to exit this session."
 	byeMessage               = "REPLbot says bye bye!"
 	helpCommand              = "!help"
@@ -45,25 +47,23 @@ const (
 )
 
 type Session struct {
+	id            string
+	sender        Sender
 	scripts       map[string]string
-	rtm           *slack.RTM
 	started       time.Time
 	lastAction    time.Time
-	channel       string
-	threadTS      string
 	userInputChan chan string
 	closed        bool
 	mu            sync.Mutex
 }
 
-func NewSession(scripts map[string]string, rtm *slack.RTM, channel string, threadTS string) *Session {
+func NewSession(id string, sender Sender, scripts map[string]string) *Session {
 	session := &Session{
+		id:            id,
+		sender:        sender,
 		scripts:       scripts,
-		rtm:           rtm,
 		started:       time.Now(),
 		lastAction:    time.Now(),
-		channel:       channel,
-		threadTS:      threadTS,
 		userInputChan: make(chan string, 10), // buffered!
 		closed:        false,
 	}
@@ -82,32 +82,30 @@ func (s *Session) userInputLoop() {
 
 	for input := range s.userInputChan {
 		if input == exitCommand {
-			s.close(byeMessage)
+			s.close()
 			return
 		} else if input == helpCommand {
-			s.sendMarkdown(availableCommandsMessage)
+			s.sender.Send(availableCommandsMessage, Markdown)
 			continue
 		}
 		command, ok := s.scripts[input]
 		if !ok {
-			s.sendMarkdown("Invalid command")
+			s.sender.Send("Invalid command", Text)
 			continue
 		}
 		if err := s.replSession(command); err != nil && err != errExit {
-			s.sendMarkdown(err.Error())
+			s.sender.Send(err.Error(), Text)
 		}
 		s.sayExited()
 	}
 }
 
 func (s *Session) sayHello() error {
-	_, err := s.sendMarkdown(fmt.Sprintf(welcomeMessage, strings.Join(s.replList(), ", ")))
-	return err
+	return s.sender.Send(fmt.Sprintf(welcomeMessage, strings.Join(s.replList(), ", ")), Markdown)
 }
 
 func (s *Session) sayExited() error {
-	_, err := s.sendMarkdown(fmt.Sprintf(sessionExitedMessage, strings.Join(s.replList(), ", ")))
-	return err
+	return s.sender.Send(fmt.Sprintf(sessionExitedMessage, strings.Join(s.replList(), ", ")), Markdown)
 }
 
 func (s *Session) replList() []string {
@@ -119,10 +117,10 @@ func (s *Session) replList() []string {
 }
 
 func (s *Session) replSession(command string) error {
-	log.Printf("[session %s] Started REPL session", s.threadTS)
-	defer log.Printf("[session %s] Closed REPL session", s.threadTS)
+	log.Printf("[session %s] Started REPL session", s.id)
+	defer log.Printf("[session %s] Closed REPL session", s.id)
 
-	if _, err := s.sendMarkdown("Started a new REPL session"); err != nil {
+	if err := s.sender.Send(sessionStartedMessage, Text); err != nil {
 		return err
 	}
 
@@ -136,8 +134,8 @@ func (s *Session) replSession(command string) error {
 	g, ctx := errgroup.WithContext(context.Background())
 
 	g.Go(func() error {
-		log.Printf("[session %s] Started command output loop", s.threadTS)
-		defer log.Printf("[session %s] Exiting command output loop", s.threadTS)
+		log.Printf("[session %s] Started command output loop", s.id)
+		defer log.Printf("[session %s] Exiting command output loop", s.id)
 		for {
 			buf := make([]byte, 4096) // Allocation in a loop, ahhh ...
 			n, err := ptmx.Read(buf)
@@ -165,25 +163,31 @@ func (s *Session) replSession(command string) error {
 		}
 	})
 	g.Go(func() error {
-		log.Printf("[session %s] Started response loop", s.threadTS)
-		defer log.Printf("[session %s] Exiting response loop", s.threadTS)
+		log.Printf("[session %s] Started response loop", s.id)
+		defer log.Printf("[session %s] Exiting response loop", s.id)
 		var message string
 		for {
 			select {
 			case result := <-outChan:
 				message += shellEscapeRegex.ReplaceAllString(string(result), "")
 				if len(message) > maxMessageLength {
-					s.sendCode(message)
+					if err := s.sender.Send(message, Code); err != nil {
+						return err
+					}
 					message = ""
 				}
 			case <-time.After(300 * time.Millisecond):
 				if len(message) > 0 {
-					s.sendCode(message)
+					if err := s.sender.Send(message, Code); err != nil {
+						return err
+					}
 					message = ""
 				}
 			case <-ctx.Done():
 				if len(message) > 0 {
-					s.sendCode(message)
+					if err := s.sender.Send(message, Code); err != nil {
+						return err
+					}
 				}
 				return nil
 			}
@@ -191,8 +195,8 @@ func (s *Session) replSession(command string) error {
 	})
 
 	g.Go(func() error {
-		log.Printf("[session %s] Started user input loop", s.threadTS)
-		defer log.Printf("[session %s] Exiting user input loop", s.threadTS)
+		log.Printf("[session %s] Started user input loop", s.id)
+		defer log.Printf("[session %s] Exiting user input loop", s.id)
 		for {
 			select {
 			case line := <-s.userInputChan:
@@ -205,7 +209,7 @@ func (s *Session) replSession(command string) error {
 		}
 	})
 	g.Go(func() error {
-		defer log.Printf("[session %s] Command cleanup finished", s.threadTS)
+		defer log.Printf("[session %s] Command cleanup finished", s.id)
 		<-ctx.Done()
 		if err := killChildren(c.Process.Pid); err != nil {
 			log.Printf("warning: %s", err.Error())
@@ -219,47 +223,21 @@ func (s *Session) replSession(command string) error {
 	return g.Wait()
 }
 
-func (s *Session) sendText(message string) (string, error) {
-	return s.send(slack.MsgOptionText(message, false))
-}
-
-func (s *Session) sendCode(message string) (string, error) {
-	markdown := fmt.Sprintf("```%s```", strings.ReplaceAll(message, "```", "` ` `")) // Hack ...
-	return s.sendMarkdown(markdown)
-}
-
-func (s *Session) sendMarkdown(markdown string) (string, error) {
-	textBlock := slack.NewTextBlockObject("mrkdwn", markdown, false, true)
-	sectionBlock := slack.NewSectionBlock(textBlock, nil, nil)
-	return s.send(slack.MsgOptionBlocks(sectionBlock))
-}
-
-func (s *Session) send(options ...slack.MsgOption) (string, error) {
-	options = append(options, slack.MsgOptionTS(s.threadTS))
-	_, responseTS, err := s.rtm.PostMessage(s.channel, options...)
-	if err != nil {
-		log.Printf("Cannot send message: %s", err.Error())
-		return "", err
-	}
-	return responseTS, nil
-}
-
-func (s *Session) close(message string) {
+func (s *Session) close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return
 	}
-	log.Printf(message)
-	s.sendText(message)
+	s.sender.Send(byeMessage, Text)
 	s.closed = true
+	log.Printf("[session %s] Session closed", s.id)
 }
 
 func (s *Session) handleUserInput(input string, outputWriter io.Writer) error {
 	switch input {
 	case helpCommand:
-		_, err := s.sendMarkdown(availableCommandsMessage)
-		return err
+		return s.sender.Send(availableCommandsMessage, Markdown)
 	case exitCommand:
 		return errExit
 	default:
@@ -270,9 +248,4 @@ func (s *Session) handleUserInput(input string, outputWriter io.Writer) error {
 		_, err := io.WriteString(outputWriter, fmt.Sprintf("%s\n", input))
 		return err
 	}
-}
-
-type result struct {
-	bytes []byte
-	err   error
 }
