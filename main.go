@@ -6,7 +6,7 @@ import (
 
 func main() {
 	config := &Config{
-		Token: os.Getenv("SLACK_BOT_TOKEN"),
+		Token:     os.Getenv("SLACK_BOT_TOKEN"),
 		ScriptDir: "repls.d",
 	}
 	bot, err := NewBot(config)

@@ -12,13 +12,13 @@ import (
 )
 
 type Config struct {
-	Token string
+	Token     string
 	ScriptDir string
 }
 
 type Bot struct {
 	config   *Config
-	scripts map[string]string
+	scripts  map[string]string
 	sessions map[string]*Session
 	mu       sync.Mutex
 }
@@ -34,7 +34,7 @@ func NewBot(config *Config) (*Bot, error) {
 	}
 	return &Bot{
 		config:   config,
-		scripts: scripts,
+		scripts:  scripts,
 		sessions: make(map[string]*Session),
 	}, nil
 }
@@ -61,7 +61,7 @@ func (b *Bot) Start() error {
 			} else if ev.ThreadTimestamp != "" {
 				b.mu.Lock()
 				if session, ok := b.sessions[ev.ThreadTimestamp]; ok {
-					session.inputChan <- ev.Text
+					session.userInputChan <- ev.Text
 				}
 				b.mu.Unlock()
 			}
