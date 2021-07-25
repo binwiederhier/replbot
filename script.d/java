@@ -1,0 +1,7 @@
+#!/bin/sh
+# REPLbot script to run a Java/JShell REPL.
+#
+# Scripts are executed as "./script run <id>" to start the REPL,
+# and as "./script kill <id>" to stop it.
+
+CONTAINER=openjdk . "$(dirname "$0")"/helpers/docker

@@ -26,7 +26,9 @@ func New(config *config.Config) (*Bot, error) {
 		return nil, err
 	}
 	for _, entry := range entries {
-		scripts[entry.Name()] = filepath.Join(config.ScriptDir, entry.Name())
+		if !entry.IsDir() {
+			scripts[entry.Name()] = filepath.Join(config.ScriptDir, entry.Name())
+		}
 	}
 	return &Bot{
 		config:   config,

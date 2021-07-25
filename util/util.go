@@ -42,6 +42,30 @@ func KillChildProcesses(pid int) error {
 	return nil
 }
 
+func KillTree(pid int) error {
+	if pid == 0 {
+		return errors.New("refusing to kill child processes of PID 0")
+	}
+	pids := []int{pid}
+	for i := 0; i < 5; i++ {
+		pid = pids[i]
+		children, err := os.ReadFile(fmt.Sprintf("/proc/%d/task/%d/children", pid, pid))
+		if err != nil {
+			return err
+		}
+		childPIDs := strings.Split(string(bytes.TrimSpace(children)), " ")
+		for _, childPID := range childPIDs {
+			p, err := strconv.Atoi(childPID)
+			if err != nil {
+				return err
+			}
+			pids = append(pids, p)
+		}
+		fmt.Printf("%v\n", pids)
+	}
+	return nil
+}
+
 // RandomStringWithCharset returns a random string with a given length, using the defined charset
 func RandomStringWithCharset(length int, charset string) string {
 	b := make([]byte, length)

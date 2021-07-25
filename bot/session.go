@@ -43,7 +43,8 @@ const (
 		"  `!ret`, `!r` - Send empty return\n" +
 		"  `!ctrl-c`, `!ctrl-d`, ... - Send command sequence\n" +
 		"  `!exit` - Exit this session"
-	launcherScript = "stty -echo; %s; echo; echo %s"
+	launcherScript = "stty -echo; %s run %s; echo; echo %s"
+	killScript     = "%s kill %s"
 )
 
 type session struct {

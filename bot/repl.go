@@ -21,7 +21,7 @@ type repl struct {
 	userInputChan chan string
 }
 
-func (r *repl) Exec(ctx context.Context, command string) error {
+func (r *repl) Exec(ctx context.Context, script string) error {
 	log.Printf("[session %s] Started REPL session", r.sessionID)
 	defer log.Printf("[session %s] Closed REPL session", r.sessionID)
 
@@ -30,7 +30,7 @@ func (r *repl) Exec(ctx context.Context, command string) error {
 	}
 
 	exitMarker := util.RandomStringWithCharset(10, exitMarkerCharset)
-	cmd := exec.Command("sh", "-c", fmt.Sprintf(launcherScript, command, exitMarker))
+	cmd := exec.Command("sh", "-c", fmt.Sprintf(launcherScript, script, exitMarker, exitMarker))
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		return fmt.Errorf("cannot start REPL session: %s", err.Error())
@@ -115,6 +115,16 @@ func (r *repl) Exec(ctx context.Context, command string) error {
 	g.Go(func() error {
 		defer log.Printf("[session %s] Command cleanup finished", r.sessionID)
 		<-ctx.Done()
+		killCmd := exec.Command("sh", "-c", fmt.Sprintf(killScript, script, exitMarker))
+		if err := killCmd.Start(); err != nil {
+			log.Printf("warning: %s", err.Error())
+		}
+		for i := 0; i < 20; i++ {
+			if killCmd.ProcessState == nil || killCmd.ProcessState.Exited() {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
 		if err := util.KillChildProcesses(cmd.Process.Pid); err != nil {
 			log.Printf("warning: %s", err.Error())
 		}
