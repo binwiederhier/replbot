@@ -6,7 +6,6 @@ import (
 	"heckel.io/replbot/config"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -14,25 +13,13 @@ import (
 
 type Bot struct {
 	config   *config.Config
-	scripts  map[string]string
 	sessions map[string]*session
 	mu       sync.Mutex
 }
 
 func New(config *config.Config) (*Bot, error) {
-	scripts := make(map[string]string, 0)
-	entries, err := os.ReadDir(config.ScriptDir)
-	if err != nil {
-		return nil, err
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			scripts[entry.Name()] = filepath.Join(config.ScriptDir, entry.Name())
-		}
-	}
 	return &Bot{
 		config:   config,
-		scripts:  scripts,
 		sessions: make(map[string]*session),
 	}, nil
 }
@@ -61,7 +48,7 @@ func (b *Bot) Start() error {
 				log.Printf("[session %s] Starting session requested by user %s\n", ev.Timestamp, ev.User)
 				b.mu.Lock()
 				sender := NewSlackSender(rtm, ev.Channel, ev.Timestamp)
-				b.sessions[ev.Timestamp] = NewSession(b.config, ev.Timestamp, sender, b.scripts)
+				b.sessions[ev.Timestamp] = NewSession(b.config, ev.Timestamp, sender)
 				b.mu.Unlock()
 			} else if ev.ThreadTimestamp != "" {
 				b.mu.Lock()

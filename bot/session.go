@@ -51,7 +51,6 @@ type session struct {
 	ID            string
 	config        *config.Config
 	sender        Sender
-	scripts       map[string]string
 	userInputChan chan string
 	cancelFn      context.CancelFunc
 	active        bool
@@ -61,12 +60,11 @@ type session struct {
 	mu            sync.RWMutex
 }
 
-func NewSession(config *config.Config, id string, sender Sender, scripts map[string]string) *session {
+func NewSession(config *config.Config, id string, sender Sender) *session {
 	s := &session{
 		ID:            id,
 		config:        config,
 		sender:        sender,
-		scripts:       scripts,
 		userInputChan: make(chan string, 10), // buffered!
 		cancelFn:      nil,
 		active:        true,
@@ -117,8 +115,7 @@ func (s *session) userInputLoop() error {
 				return err
 			}
 		default:
-			script, ok := s.scripts[input]
-			if ok {
+			if script := s.config.Script(input); script != "" {
 				if err := s.execREPL(input, script); err != nil && err != errExit {
 					return err
 				}
@@ -136,7 +133,7 @@ func (s *session) userInputLoop() error {
 }
 
 func (s *session) sayHello() error {
-	return s.sender.Send(fmt.Sprintf(welcomeMessage, strings.Join(s.replList(), ", ")), Markdown)
+	return s.sender.Send(fmt.Sprintf(welcomeMessage, s.replList()), Markdown)
 }
 
 func (s *session) maybeSayExited() error {
@@ -145,15 +142,11 @@ func (s *session) maybeSayExited() error {
 	if s.closing {
 		return nil
 	}
-	return s.sender.Send(fmt.Sprintf(sessionExitedMessage, strings.Join(s.replList(), ", ")), Markdown)
+	return s.sender.Send(fmt.Sprintf(sessionExitedMessage, s.replList()), Markdown)
 }
 
-func (s *session) replList() []string {
-	repls := make([]string, 0)
-	for name, _ := range s.scripts {
-		repls = append(repls, fmt.Sprintf("`%s`", name))
-	}
-	return repls
+func (s *session) replList() string {
+	return fmt.Sprintf("`%s`", strings.Join(s.config.Scripts(), "`, `"))
 }
 
 func (s *session) execREPL(name string, command string) error {
