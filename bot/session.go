@@ -15,12 +15,9 @@ import (
 var (
 	shellEscapeRegex = regexp.MustCompile(`\x1B\[[0-9;]*[a-zA-Z]`)
 	controlCharTable = map[string]byte{
-		"c":      0x03,
-		"ctrl-c": 0x03,
-		"d":      0x04,
-		"ctrl-d": 0x04,
-		"r":      0x10,
-		"ret":    0x10,
+		"c": 0x03,
+		"d": 0x04,
+		"r": 0x10,
 	}
 	errExit          = errors.New("exited REPL")
 	errSessionClosed = errors.New("session closed")
@@ -30,19 +27,19 @@ const (
 	maxMessageLength = 512
 	charsetRandomID  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	welcomeMessage   = "REPLbot welcomes you!\n\nYou may start a new session by choosing any one of the " +
-		"available REPLs: %s. Type `!help` for help and `!exit` to exit this session."
+		"available REPLs: %s. Type `!h` for help and `!q` to exit this session."
 	sessionStartedMessage = "Started a new REPL session"
 	sessionExitedMessage  = "REPL session ended.\n\nYou may start a new session by choosing any one of the " +
-		"available REPLs: %s. Type `!help` for help and `!exit` to exit this session."
+		"available REPLs: %s. Type `!h` for help and `!q` to exit this session."
 	byeMessage               = "REPLbot says bye bye!"
 	timeoutWarningMessage    = "Are you still there? Your session will time out in one minute."
 	timeoutReachedMessage    = "Timeout reached. REPLbot says bye bye!"
-	helpCommand              = "!help"
-	exitCommand              = "!exit"
+	helpCommand              = "!h"
+	exitCommand              = "!q"
 	availableCommandsMessage = "Available commands:\n" +
-		"  `!ret`, `!r` - Send empty return\n" +
-		"  `!ctrl-c`, `!ctrl-d`, ... - Send command sequence\n" +
-		"  `!exit` - Exit this session"
+		"  `!r` - Send empty return\n" +
+		"  `!c`, `!d` - Send Ctrl-C/Ctrl-D command sequence\n" +
+		"  `!q` - Exit this session"
 	runScript  = "stty -echo; %s run %s; echo; echo %s"
 	killScript = "%s kill %s"
 )
@@ -116,7 +113,7 @@ func (s *session) userInputLoop() error {
 			}
 		default:
 			if script := s.config.Script(input); script != "" {
-				if err := s.execREPL(input, script); err != nil && err != errExit {
+				if err := s.execREPL(script); err != nil && err != errExit {
 					return err
 				}
 				if err := s.maybeSayExited(); err != nil {
@@ -149,16 +146,13 @@ func (s *session) replList() string {
 	return fmt.Sprintf("`%s`", strings.Join(s.config.Scripts(), "`, `"))
 }
 
-func (s *session) execREPL(name string, command string) error {
-	log.Printf("[session %s] Started REPL %s", s.ID, name)
-	defer log.Printf("[session %s] Closed REPL %s", s.ID, name)
-
+func (s *session) execREPL(script string) error {
 	s.mu.Lock()
 	var ctx context.Context
 	ctx, s.cancelFn = context.WithCancel(context.Background())
 	s.mu.Unlock()
 
-	err := runREPL(ctx, s.ID, s.sender, s.userInputChan, command)
+	err := runREPL(ctx, s.ID, s.sender, s.userInputChan, script)
 
 	s.mu.Lock()
 	s.cancelFn = nil

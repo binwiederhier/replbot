@@ -3,7 +3,9 @@ package bot
 import (
 	"fmt"
 	"github.com/slack-go/slack"
+	"log"
 	"strings"
+	"time"
 )
 
 type Format int
@@ -63,16 +65,23 @@ func (s *SlackSender) sendCode(message string) (string, error) {
 }
 
 func (s *SlackSender) sendMarkdown(markdown string) (string, error) {
-	textBlock := slack.NewTextBlockObject("mrkdwn", markdown, false, true)
-	sectionBlock := slack.NewSectionBlock(textBlock, nil, nil)
-	return s.send(slack.MsgOptionBlocks(sectionBlock))
+	// TODO break large message into smaller one!
+	section := slack.NewSectionBlock(slack.NewTextBlockObject("mrkdwn", markdown, false, true), nil, nil)
+	return s.send(slack.MsgOptionBlocks(section))
 }
 
 func (s *SlackSender) send(options ...slack.MsgOption) (string, error) {
 	options = append(options, slack.MsgOptionTS(s.threadTS))
-	_, responseTS, err := s.rtm.PostMessage(s.channel, options...)
-	if err != nil {
+	for {
+		_, responseTS, err := s.rtm.PostMessage(s.channel, options...)
+		if err == nil {
+			return responseTS, nil
+		}
+		if e, ok := err.(*slack.RateLimitedError); ok {
+			log.Printf("error: %s; sleeping before re-sending", err.Error())
+			time.Sleep(e.RetryAfter + 500*time.Millisecond)
+			continue
+		}
 		return "", err
 	}
-	return responseTS, nil
 }

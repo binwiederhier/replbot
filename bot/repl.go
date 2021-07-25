@@ -72,7 +72,7 @@ func (r *repl) commandOutputLoop() error {
 	log.Printf("[session %s] Started command output loop", r.sessionID)
 	defer log.Printf("[session %s] Exiting command output loop", r.sessionID)
 	for {
-		buf := make([]byte, 4096) // Allocation in a loop, ahhh ...
+		buf := make([]byte, 512) // Allocation in a loop, ahhh ...
 		n, err := r.ptmx.Read(buf)
 		select {
 		case <-r.ctx.Done():
@@ -84,7 +84,11 @@ func (r *repl) commandOutputLoop() error {
 				return errExit
 			} else if err == io.EOF {
 				if n > 0 {
-					r.outChan <- buf[:n]
+					select {
+					case r.outChan <- buf[:n]:
+					case <-r.ctx.Done():
+						return errExit
+					}
 				}
 				return errExit
 			} else if err != nil {
@@ -92,7 +96,11 @@ func (r *repl) commandOutputLoop() error {
 			} else if strings.TrimSpace(string(buf[:n])) == r.exitMarker {
 				return errExit
 			} else if n > 0 {
-				r.outChan <- buf[:n]
+				select {
+				case r.outChan <- buf[:n]:
+				case <-r.ctx.Done():
+					return errExit
+				}
 			}
 		}
 	}

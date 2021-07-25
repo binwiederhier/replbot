@@ -5,7 +5,6 @@ import (
 	"github.com/slack-go/slack"
 	"heckel.io/replbot/config"
 	"log"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -25,10 +24,10 @@ func New(config *config.Config) (*Bot, error) {
 }
 
 func (b *Bot) Start() error {
-	api := slack.New(b.config.Token, slack.OptionLog(log.New(os.Stdout, "slack-bot: ", log.Lshortfile|log.LstdFlags)))
+	api := slack.New(b.config.Token)
 	rtm := api.NewRTM()
 	go rtm.ManageConnection()
-	go b.manageSessions() // FIXME
+	go b.manageSessions()
 
 	for msg := range rtm.IncomingEvents {
 		switch ev := msg.Data.(type) {
