@@ -27,9 +27,9 @@ var (
 )
 
 const (
-	maxMessageLength  = 512
-	exitMarkerCharset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	welcomeMessage    = "REPLbot welcomes you!\n\nYou may start a new session by choosing any one of the " +
+	maxMessageLength = 512
+	charsetRandomID  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	welcomeMessage   = "REPLbot welcomes you!\n\nYou may start a new session by choosing any one of the " +
 		"available REPLs: %s. Type `!help` for help and `!exit` to exit this session."
 	sessionStartedMessage = "Started a new REPL session"
 	sessionExitedMessage  = "REPL session ended.\n\nYou may start a new session by choosing any one of the " +
@@ -43,8 +43,8 @@ const (
 		"  `!ret`, `!r` - Send empty return\n" +
 		"  `!ctrl-c`, `!ctrl-d`, ... - Send command sequence\n" +
 		"  `!exit` - Exit this session"
-	launcherScript = "stty -echo; %s run %s; echo; echo %s"
-	killScript     = "%s kill %s"
+	runScript  = "stty -echo; %s run %s; echo; echo %s"
+	killScript = "%s kill %s"
 )
 
 type session struct {
@@ -153,17 +153,12 @@ func (s *session) execREPL(name string, command string) error {
 	log.Printf("[session %s] Started REPL %s", s.ID, name)
 	defer log.Printf("[session %s] Closed REPL %s", s.ID, name)
 
-	r := &repl{
-		sessionID:     s.ID,
-		sender:        s.sender,
-		userInputChan: s.userInputChan,
-	}
 	s.mu.Lock()
 	var ctx context.Context
 	ctx, s.cancelFn = context.WithCancel(context.Background())
 	s.mu.Unlock()
 
-	err := r.Exec(ctx, command)
+	err := runREPL(ctx, s.ID, s.sender, s.userInputChan, command)
 
 	s.mu.Lock()
 	s.cancelFn = nil
