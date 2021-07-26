@@ -61,11 +61,44 @@ func (r *repl) Exec() error {
 	}
 	var g *errgroup.Group
 	g, r.ctx = errgroup.WithContext(r.ctx)
-	g.Go(r.commandOutputLoop)
-	g.Go(r.responseLoop)
 	g.Go(r.userInputLoop)
-	g.Go(r.cleanup)
+	g.Go(r.commandOutputLoop)
+	g.Go(r.commandOutputForwarder)
+	g.Go(r.cleanupListener)
 	return g.Wait()
+}
+
+func (r *repl) userInputLoop() error {
+	log.Printf("[session %s] Started user input loop", r.sessionID)
+	defer log.Printf("[session %s] Exiting user input loop", r.sessionID)
+	for {
+		select {
+		case line := <-r.userInputChan:
+			if err := r.handleUserInput(line, r.ptmx); err != nil {
+				return err
+			}
+		case <-r.ctx.Done():
+			return errExit
+		}
+	}
+}
+func (r *repl) handleUserInput(input string, outputWriter io.Writer) error {
+	switch input {
+	case helpCommand:
+		return r.sender.Send(availableCommandsMessage, Markdown)
+	case exitCommand:
+		return errExit
+	default:
+		// TODO properly handle empty lines
+		if strings.HasPrefix(input, commentPrefix) {
+			return nil // Ignore comments
+		} else if controlChar, ok := controlCharTable[input[1:]]; ok {
+			_, err := outputWriter.Write([]byte{controlChar})
+			return err
+		}
+		_, err := io.WriteString(outputWriter, fmt.Sprintf("%s\n", input))
+		return err
+	}
 }
 
 func (r *repl) commandOutputLoop() error {
@@ -105,9 +138,10 @@ func (r *repl) commandOutputLoop() error {
 		}
 	}
 }
-func (r *repl) responseLoop() error {
-	log.Printf("[session %s] Started response loop", r.sessionID)
-	defer log.Printf("[session %s] Exiting response loop", r.sessionID)
+
+func (r *repl) commandOutputForwarder() error {
+	log.Printf("[session %s] Started command output forwarder", r.sessionID)
+	defer log.Printf("[session %s] Exiting command output forwarder", r.sessionID)
 	var message string
 	for {
 		select {
@@ -137,23 +171,9 @@ func (r *repl) responseLoop() error {
 	}
 }
 
-func (r *repl) userInputLoop() error {
-	log.Printf("[session %s] Started user input loop", r.sessionID)
-	defer log.Printf("[session %s] Exiting user input loop", r.sessionID)
-	for {
-		select {
-		case line := <-r.userInputChan:
-			if err := r.handleUserInput(line, r.ptmx); err != nil {
-				return err
-			}
-		case <-r.ctx.Done():
-			return errExit
-		}
-	}
-}
-
-func (r *repl) cleanup() error {
-	defer log.Printf("[session %s] Command cleanup finished", r.sessionID)
+func (r *repl) cleanupListener() error {
+	log.Printf("[session %s] Started command cleanup listener", r.sessionID)
+	defer log.Printf("[session %s] Command cleanupListener finished", r.sessionID)
 	<-r.ctx.Done()
 	if err := r.killCmd.Start(); err != nil {
 		log.Printf("warning: %s", err.Error())
@@ -165,27 +185,10 @@ func (r *repl) cleanup() error {
 		time.Sleep(100 * time.Millisecond)
 	}
 	if err := util.KillChildProcesses(r.runCmd.Process.Pid); err != nil {
-		log.Printf("warning: %s", err.Error())
+		log.Printf("[session %s] warning: %s", r.sessionID, err.Error())
 	}
 	if err := r.ptmx.Close(); err != nil {
-		log.Printf("warning: %s", err.Error())
+		log.Printf("[session %s] warning: %s", r.sessionID, err.Error())
 	}
 	return nil
-}
-
-func (r *repl) handleUserInput(input string, outputWriter io.Writer) error {
-	switch input {
-	case helpCommand:
-		return r.sender.Send(availableCommandsMessage, Markdown)
-	case exitCommand:
-		return errExit
-	default:
-		// TODO properly handle empty lines
-		if controlChar, ok := controlCharTable[input[1:]]; ok {
-			_, err := outputWriter.Write([]byte{controlChar})
-			return err
-		}
-		_, err := io.WriteString(outputWriter, fmt.Sprintf("%s\n", input))
-		return err
-	}
 }

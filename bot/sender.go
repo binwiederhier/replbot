@@ -71,7 +71,9 @@ func (s *SlackSender) sendMarkdown(markdown string) (string, error) {
 }
 
 func (s *SlackSender) send(options ...slack.MsgOption) (string, error) {
-	options = append(options, slack.MsgOptionTS(s.threadTS))
+	if s.threadTS != "" {
+		options = append(options, slack.MsgOptionTS(s.threadTS))
+	}
 	for {
 		_, responseTS, err := s.rtm.PostMessage(s.channel, options...)
 		if err == nil {

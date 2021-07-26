@@ -36,6 +36,7 @@ const (
 	timeoutReachedMessage    = "Timeout reached. REPLbot says bye bye!"
 	helpCommand              = "!h"
 	exitCommand              = "!q"
+	commentPrefix            = "## "
 	availableCommandsMessage = "Available commands:\n" +
 		"  `!r` - Send empty return\n" +
 		"  `!c`, `!d` - Send Ctrl-C/Ctrl-D command sequence\n" +
@@ -112,7 +113,9 @@ func (s *session) userInputLoop() error {
 				return err
 			}
 		default:
-			if script := s.config.Script(input); script != "" {
+			if strings.HasPrefix(input, commentPrefix) {
+				// Ignore comments
+			} else if script := s.config.Script(input); script != "" {
 				if err := s.execREPL(script); err != nil && err != errExit {
 					return err
 				}
