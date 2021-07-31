@@ -33,6 +33,11 @@ func runREPL(ctx context.Context, sessionID string, sender Sender, userInputChan
 }
 
 func newREPL(ctx context.Context, sessionID string, sender Sender, userInputChan chan string, script string) *repl {
+	// screen -dmS replbot123 -c $PWD/screenrc /usr/bin/docker run -it ruby
+	// screen -S replbot123 -X readreg x /tmp/replbot123
+	// screen -S replbot123 -X paste x
+
+
 	scriptID := util.RandomStringWithCharset(10, charsetRandomID)
 	exitMarker := util.RandomStringWithCharset(10, charsetRandomID)
 	return &repl{
@@ -41,6 +46,7 @@ func newREPL(ctx context.Context, sessionID string, sender Sender, userInputChan
 		sender:        sender,
 		userInputChan: userInputChan,
 		runCmd:        exec.Command("sh", "-c", fmt.Sprintf(runScript, script, scriptID, exitMarker)),
+		//runCmd:        exec.Command("script", "--quiet", "--flush", "--timing=/tmp/aaa.timing","--command", fmt.Sprintf(runScript, script, scriptID, exitMarker), "/tmp/aaa.script"),
 		killCmd:       exec.Command("sh", "-c", fmt.Sprintf(killScript, script, scriptID)),
 		outChan:       make(chan []byte, 10),
 		exitMarker:    exitMarker,
@@ -59,6 +65,7 @@ func (r *repl) Exec() error {
 	if err != nil {
 		return fmt.Errorf("cannot start REPL session: %s", err.Error())
 	}
+
 	var g *errgroup.Group
 	g, r.ctx = errgroup.WithContext(r.ctx)
 	g.Go(r.userInputLoop)
@@ -104,6 +111,10 @@ func (r *repl) handleUserInput(input string, outputWriter io.Writer) error {
 func (r *repl) commandOutputLoop() error {
 	log.Printf("[session %s] Started command output loop", r.sessionID)
 	defer log.Printf("[session %s] Exiting command output loop", r.sessionID)
+	f, err := os.OpenFile("/home/pheckel/Code/replbot/raw-onebyte.log", os.O_CREATE | os.O_WRONLY | os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
 	for {
 		buf := make([]byte, 512) // Allocation in a loop, ahhh ...
 		n, err := r.ptmx.Read(buf)
@@ -111,6 +122,7 @@ func (r *repl) commandOutputLoop() error {
 		case <-r.ctx.Done():
 			return errExit
 		default:
+			f.Write(buf[:n])
 			if e, ok := err.(*os.PathError); ok && e.Err == syscall.EIO {
 				// An expected error when the ptmx is closed to break the Read() call.
 				// Since we don't want to send this error to the user, we convert it to errExit.
