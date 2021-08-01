@@ -14,10 +14,10 @@ import (
 
 var (
 	shellEscapeRegex = regexp.MustCompile(`\x1B\[[0-9;]*[a-zA-Z]`)
-	controlCharTable = map[string]byte{
-		"c": 0x03,
-		"d": 0x04,
-		"r": 0x10,
+	controlCharTable = map[string]string{
+		"c": "^C",
+		"d": "^D",
+		"r": "^M",
 	}
 	errExit          = errors.New("exited REPL")
 	errSessionClosed = errors.New("session closed")
@@ -40,8 +40,6 @@ const (
 		"  `!r` - Send empty return\n" +
 		"  `!c`, `!d` - Send Ctrl-C/Ctrl-D command sequence\n" +
 		"  `!q` - Exit this session"
-	runScript  = "%s run %s"
-	killScript = "%s kill %s"
 )
 
 type session struct {

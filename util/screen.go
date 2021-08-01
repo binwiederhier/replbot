@@ -63,6 +63,11 @@ func (s *Screen) Active() bool {
 	return err == nil
 }
 
+func (s *Screen) Stuff(stuff string) error {
+	cmd := exec.Command("screen", "-S", s.id, "-X", "stuff", stuff)
+	return cmd.Run()
+}
+
 func (s *Screen) Stop() error {
 	defer func() {
 		os.Remove(s.rcFile())

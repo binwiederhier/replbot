@@ -92,10 +92,7 @@ func (r *repl) handleUserInput(input string) error {
 		if strings.HasPrefix(input, commentPrefix) {
 			return nil // Ignore comments
 		} else if controlChar, ok := controlCharTable[input[1:]]; ok {
-			//_, err := outputWriter.Write([]byte{controlChar})
-			//return err
-			log.Printf("ignoring control char for now %b", controlChar)
-			return nil
+			return r.screen.Stuff(controlChar)
 		}
 		_, err := io.WriteString(r.screen, fmt.Sprintf("%s\n", input))
 		return err
