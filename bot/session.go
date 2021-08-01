@@ -41,7 +41,7 @@ const (
 		"  `!r` - Send empty return\n" +
 		"  `!c`, `!d` - Send Ctrl-C/Ctrl-D command sequence\n" +
 		"  `!q` - Exit this session"
-	runScript  = "%s run %s; echo; echo %s"
+	runScript  = "%s run %s"
 	killScript = "%s kill %s"
 )
 
