@@ -7,7 +7,10 @@ import (
 	"github.com/urfave/cli/v2"
 	"heckel.io/replbot/bot"
 	"heckel.io/replbot/config"
+	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -46,6 +49,8 @@ func execRun(c *cli.Context) error {
 	} else if _, err := os.ReadDir(dir); err != nil {
 		return fmt.Errorf("cannot read script directory: %s", err.Error())
 	}
+
+	// Create main bot
 	robot, err := bot.New(&config.Config{
 		Token:       token,
 		ScriptDir:   dir,
@@ -54,8 +59,20 @@ func execRun(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// Set up signal handling
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigs // Doesn't matter which
+		log.Printf("Signal received. Closing all active sessions.")
+		robot.Stop()
+	}()
+
+	// Start main bot, can be killed by signal
 	if err := robot.Start(); err != nil {
 		return err
 	}
+	log.Printf("Exiting.")
 	return nil
 }

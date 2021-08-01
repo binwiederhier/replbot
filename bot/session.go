@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/errgroup"
 	"heckel.io/replbot/config"
 	"log"
 	"regexp"
@@ -33,6 +34,8 @@ const (
 	byeMessage               = "REPLbot says bye bye!"
 	timeoutWarningMessage    = "Are you still there? Your session will time out in one minute."
 	timeoutReachedMessage    = "Timeout reached. REPLbot says bye bye!"
+	forceCloseMessage        = "REPLbot has to go. Urgent REPL-related business. Bye!"
+	invalidCommandMessage    = "I don't understand. Type `!h` for help."
 	helpCommand              = "!h"
 	exitCommand              = "!q"
 	commentPrefix            = "## "
@@ -47,32 +50,38 @@ type session struct {
 	config        *config.Config
 	sender        Sender
 	userInputChan chan string
+	ctx           context.Context
 	cancelFn      context.CancelFunc
 	active        bool
-	closing       bool
 	warnTimer     *time.Timer
 	closeTimer    *time.Timer
+	closeGroup    *errgroup.Group
 	mu            sync.RWMutex
 }
 
 func NewSession(config *config.Config, id string, sender Sender) *session {
+	ctx, cancel := context.WithCancel(context.Background())
+	closeGroup, ctx := errgroup.WithContext(ctx)
 	s := &session{
 		ID:            id,
 		config:        config,
 		sender:        sender,
 		userInputChan: make(chan string, 10), // buffered!
-		cancelFn:      nil,
+		ctx:           ctx,
+		cancelFn:      cancel,
 		active:        true,
-		closing:       false,
 		warnTimer:     time.NewTimer(config.IdleTimeout - time.Minute),
 		closeTimer:    time.NewTimer(config.IdleTimeout),
+		closeGroup:    closeGroup,
 	}
-	go func() {
-		if err := s.userInputLoop(); err != nil {
-			log.Printf("[session %s] fatal error: %s", id, err.Error())
+	closeGroup.Go(func() error {
+		err := s.userInputLoop()
+		if err != nil {
+			log.Printf("[session %s] FATAL ERROR: %s", id, err.Error())
 		}
-	}()
-	go s.activityMonitor()
+		return err
+	})
+	closeGroup.Go(s.activityMonitor)
 	return s
 }
 
@@ -95,8 +104,29 @@ func (s *session) Active() bool {
 	return s.active
 }
 
+func (s *session) Close() {
+	s.mu.Lock()
+	if !s.active {
+		s.mu.Unlock()
+		return
+	}
+	s.cancelFn()
+	close(s.userInputChan)
+	s.active = false
+	s.mu.Unlock()
+	if err := s.closeGroup.Wait(); err != nil && err != errExit {
+		log.Printf("[session %s] Warning: %s", s.ID, err.Error())
+	}
+	log.Printf("[session %s] Session closed", s.ID)
+}
+
+func (s *session) CloseWithMessage() {
+	_ = s.sender.Send(forceCloseMessage, Text)
+	s.Close()
+}
+
 func (s *session) userInputLoop() error {
-	defer s.close()
+	defer s.Close()
 	if err := s.sayHello(); err != nil {
 		return err
 	}
@@ -120,7 +150,7 @@ func (s *session) userInputLoop() error {
 					return err
 				}
 			} else {
-				if err := s.sender.Send("Invalid command", Text); err != nil {
+				if err := s.sender.Send(invalidCommandMessage, Markdown); err != nil {
 					return err
 				}
 			}
@@ -136,7 +166,7 @@ func (s *session) sayHello() error {
 func (s *session) maybeSayExited() error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.closing {
+	if !s.active {
 		return nil
 	}
 	return s.sender.Send(fmt.Sprintf(sessionExitedMessage, s.replList()), Markdown)
@@ -147,45 +177,24 @@ func (s *session) replList() string {
 }
 
 func (s *session) execREPL(script string) error {
-	s.mu.Lock()
-	var ctx context.Context
-	ctx, s.cancelFn = context.WithCancel(context.Background())
-	s.mu.Unlock()
-
-	err := runREPL(ctx, s.ID, s.sender, s.userInputChan, script)
-
-	s.mu.Lock()
-	s.cancelFn = nil
-	s.mu.Unlock()
-	return err
+	return runREPL(s.ctx, s.ID, s.sender, s.userInputChan, script)
 }
 
-func (s *session) activityMonitor() {
+func (s *session) activityMonitor() error {
+	defer s.warnTimer.Stop()
+	defer s.closeTimer.Stop()
 	for {
 		select {
+		case <-s.ctx.Done():
+			return errExit
 		case <-s.warnTimer.C:
 			_ = s.sender.Send(timeoutWarningMessage, Text)
 			log.Printf("[session %s] Session has been idle for a long time. Warning sent to user.", s.ID)
 		case <-s.closeTimer.C:
 			_ = s.sender.Send(timeoutReachedMessage, Text)
 			log.Printf("[session %s] Idle timeout reached. Closing session.", s.ID)
-			s.mu.Lock()
-			if s.cancelFn != nil {
-				s.cancelFn()
-			}
-			close(s.userInputChan)
-			s.closing = true
-			s.mu.Unlock()
-			return
+			s.Close()
+			return nil
 		}
 	}
-}
-
-func (s *session) close() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.active = false
-	s.warnTimer.Stop()
-	s.closeTimer.Stop()
-	log.Printf("[session %s] Session closed", s.ID)
 }

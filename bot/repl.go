@@ -91,8 +91,10 @@ func (r *repl) handleUserInput(input string) error {
 		// TODO properly handle empty lines
 		if strings.HasPrefix(input, commentPrefix) {
 			return nil // Ignore comments
-		} else if controlChar, ok := controlCharTable[input[1:]]; ok {
-			return r.screen.Stuff(controlChar)
+		} else if len(input) > 1 {
+			if controlChar, ok := controlCharTable[input[1:]]; ok {
+				return r.screen.Stuff(controlChar)
+			}
 		}
 		_, err := io.WriteString(r.screen, fmt.Sprintf("%s\n", input))
 		return err
@@ -178,8 +180,8 @@ func (r *repl) screenWatchLoop() error {
 }
 
 func (r *repl) cleanupListener() error {
-	log.Printf("[session %s] Started command cleanup listener", r.sessionID)
-	defer log.Printf("[session %s] Command cleanupListener finished", r.sessionID)
+	log.Printf("[session %s] Started cleanup listener", r.sessionID)
+	defer log.Printf("[session %s] Exited cleanup finished", r.sessionID)
 	<-r.ctx.Done()
 	if err := r.screen.Stop(); err != nil {
 		log.Printf("warning: unable to stop screen: %s", err.Error())
