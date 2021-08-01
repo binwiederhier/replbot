@@ -1,7 +1,2 @@
 #!/bin/sh
-# REPLbot script to run a Scala REPL.
-#
-# Scripts are executed as "./script run <id>" to start the REPL,
-# and as "./script kill <id>" to stop it.
-
-CONTAINER=bigtruedata/scala . "$(dirname "$0")"/helpers/docker
+docker run --rm -it bigtruedata/scala

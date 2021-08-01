@@ -1,7 +1,2 @@
 #!/bin/sh
-# REPLbot script to run a Bash REPL.
-#
-# Scripts are executed as "./script run <id>" to start the REPL,
-# and as "./script kill <id>" to stop it.
-
-CONTAINER=ubuntu . "$(dirname "$0")"/helpers/docker
+docker run --rm -it ubuntu

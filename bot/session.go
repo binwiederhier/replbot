@@ -25,7 +25,6 @@ var (
 
 const (
 	maxMessageLength = 512
-	charsetRandomID  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	welcomeMessage   = "REPLbot welcomes you!\n\nYou may start a new session by choosing any one of the " +
 		"available REPLs: %s. Type `!h` for help and `!q` to exit this session."
 	sessionStartedMessage = "Started a new REPL session"
