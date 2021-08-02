@@ -141,10 +141,3 @@ func (r *repl) commandOutputLoop() error {
 	}
 }
 
-func (r *repl) cleanupListener() error {
-	log.Printf("[session %s] Started cleanup listener", r.sessionID)
-	defer log.Printf("[session %s] Exited cleanup finished", r.sessionID)
-	<-r.ctx.Done()
-
-	return nil
-}

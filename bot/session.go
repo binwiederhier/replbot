@@ -162,8 +162,7 @@ func (s *session) userInputLoop() error {
 			if strings.HasPrefix(input, commentPrefix) {
 				// Ignore comments
 			} else if script := s.config.Script(input); script != "" {
-				err := s.execREPL(script)
-				if err != nil {
+				if err := s.execREPL(script); err != nil {
 					return err
 				}
 				if err := s.maybeSayExited(); err != nil {
