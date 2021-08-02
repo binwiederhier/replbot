@@ -21,18 +21,30 @@ var (
 	// - Other escape sequences: ESC [N O P X P X ^ ...]
 	// See https://man7.org/linux/man-pages/man4/console_codes.4.html
 	consoleCodeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\[\?[0-9;]*[a-zA-Z]|\x1b[clmnoDEFHMNOPXZ78^\\*+<=|}~]`)
+
+	// controlCharTable is a translation table that translates Slack input commands "!<command>" to
+	// screen key bindings, see https://www.gnu.org/software/screen/manual/html_node/Input-Translation.html#Input-Translation
 	controlCharTable = map[string]string{
-		"c": "^C",
-		"d": "^D",
-		"r": "^M",
+		"c":   "^C",
+		"d":   "^D",
+		"r":   "^M",
+		"esc": "\\033",   // ESC
+		"ku":  "\\033OA", // Cursor up
+		"kd":  "\\033OB", // Cursor down
+		"kr":  "\\033OC", // Cursor right
+		"kl":  "\\033OD", // Cursor left
 	}
-	messageUpdateTimeLimit = 270 * time.Second // 5 minutes in Slack, minus a little bit of a buffer
-	errExit          = errors.New("exited REPL")
-	errSessionClosed = errors.New("session closed")
+
+	// updateMessageUserInputCountLimit is a value that defines when to post a new message as opposed to updating
+	// the existing message
+	updateMessageUserInputCountLimit = int32(5)
+	messageUpdateTimeLimit           = 270 * time.Second // 5 minutes in Slack, minus a little bit of a buffer
+	errExit                          = errors.New("exited REPL")
+	errSessionClosed                 = errors.New("session closed")
 )
 
 const (
-	welcomeMessage   = "REPLbot welcomes you!\n\nYou may start a new session by choosing any one of the " +
+	welcomeMessage = "REPLbot welcomes you!\n\nYou may start a new session by choosing any one of the " +
 		"available REPLs: %s. Type `!h` for help and `!q` to exit this session."
 	sessionStartedMessage = "Started a new REPL session"
 	sessionExitedMessage  = "REPL session ended.\n\nYou may start a new session by choosing any one of the " +

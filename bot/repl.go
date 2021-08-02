@@ -5,20 +5,20 @@ import (
 	"fmt"
 	"golang.org/x/sync/errgroup"
 	"heckel.io/replbot/util"
-	"io"
 	"log"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
 type repl struct {
-	ctx           context.Context
-	script        string
-	screen        *util.Screen
-	sessionID     string
-	sender        Sender
-	userInputChan chan string
-	outChan       chan []byte
+	ctx            context.Context
+	script         string
+	screen         *util.Screen
+	sessionID      string
+	sender         Sender
+	userInputChan  chan string
+	userInputCount int32
 }
 
 func runREPL(ctx context.Context, sessionID string, sender Sender, userInputChan chan string, script string) error {
@@ -41,7 +41,6 @@ func newREPL(ctx context.Context, sessionID string, sender Sender, userInputChan
 		sessionID:     sessionID,
 		sender:        sender,
 		userInputChan: userInputChan,
-		outChan:       make(chan []byte, 10),
 	}, nil
 }
 
@@ -83,11 +82,12 @@ func (r *repl) userInputLoop() error {
 func (r *repl) handleUserInput(input string) error {
 	switch input {
 	case helpCommand:
+		atomic.AddInt32(&r.userInputCount, updateMessageUserInputCountLimit)
 		return r.sender.Send(availableCommandsMessage, Markdown)
 	case exitCommand:
 		return errExit
 	default:
-		// TODO properly handle empty lines
+		atomic.AddInt32(&r.userInputCount, 1)
 		if strings.HasPrefix(input, commentPrefix) {
 			return nil // Ignore comments
 		} else if len(input) > 1 {
@@ -95,8 +95,7 @@ func (r *repl) handleUserInput(input string) error {
 				return r.screen.Stuff(controlChar)
 			}
 		}
-		_, err := io.WriteString(r.screen, fmt.Sprintf("%s\n", input))
-		return err
+		return r.screen.Paste(fmt.Sprintf("%s\n", input))
 	}
 }
 
@@ -117,14 +116,19 @@ func (r *repl) commandOutputLoop() error {
 				continue
 			}
 			sanitized := consoleCodeRegex.ReplaceAllString(current, "")
-			if time.Since(lastTime) < messageUpdateTimeLimit {
+			updateMessage := id != "" && atomic.LoadInt32(&r.userInputCount) < updateMessageUserInputCountLimit && time.Since(lastTime) < messageUpdateTimeLimit
+			if updateMessage {
 				if err := r.sender.Update(lastID, sanitized, Code); err != nil {
 					if id, err = r.sender.SendWithID(sanitized, Code); err != nil {
 						return err
 					}
+					atomic.StoreInt32(&r.userInputCount, 0)
 				}
-			} else if id, err = r.sender.SendWithID(sanitized, Code); err != nil {
-				return err
+			} else {
+				if id, err = r.sender.SendWithID(sanitized, Code); err != nil {
+					return err
+				}
+				atomic.StoreInt32(&r.userInputCount, 0)
 			}
 			last = current
 			lastID = id

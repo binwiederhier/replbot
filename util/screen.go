@@ -38,29 +38,25 @@ func (s *Screen) Start(args ...string) error {
 	return nil
 }
 
-func (s *Screen) Read(p []byte) (n int, err error) {
-	return s.log.Read(p)
-}
-
-func (s *Screen) Write(p []byte) (n int, err error) {
-	if err := os.WriteFile(s.regFile(), p, 0600); err != nil {
-		return 0, err
-	}
-	readRegCmd := exec.Command("screen", "-S", s.id, "-X", "readreg", "x", s.regFile())
-	if err := readRegCmd.Run(); err != nil {
-		return 0, err
-	}
-	pasteCmd := exec.Command("screen", "-S", s.id, "-X", "paste", "x")
-	if err := pasteCmd.Run(); err != nil {
-		return 0, err
-	}
-	return len(p), nil
-}
-
 func (s *Screen) Active() bool {
 	cmd := exec.Command("screen", "-S", s.id, "-Q", "select", ".")
 	err := cmd.Run()
 	return err == nil
+}
+
+func (s *Screen) Paste(input string) error {
+	if err := os.WriteFile(s.regFile(), []byte(input), 0600); err != nil {
+		return err
+	}
+	readRegCmd := exec.Command("screen", "-S", s.id, "-X", "readreg", "x", s.regFile())
+	if err := readRegCmd.Run(); err != nil {
+		return err
+	}
+	pasteCmd := exec.Command("screen", "-S", s.id, "-X", "paste", "x")
+	if err := pasteCmd.Run(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Screen) Stuff(stuff string) error {
