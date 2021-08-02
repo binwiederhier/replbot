@@ -26,7 +26,7 @@ func (s *Screen) Start(args ...string) error {
 	if err != nil {
 		return err
 	}
-	rcBytes := fmt.Sprintf("deflog on\nlogfile %s\nlogfile flush 0\nlog on", s.logFile())
+	rcBytes := fmt.Sprintf("deflog on\nlogfile %s\nlogfile flush 0\nlog on\n", s.logFile())
 	if err := os.WriteFile(s.rcFile(), []byte(rcBytes), 0600); err != nil {
 		return err
 	}
@@ -68,11 +68,24 @@ func (s *Screen) Stuff(stuff string) error {
 	return cmd.Run()
 }
 
+func (s *Screen) Hardcopy() (string, error) {
+	cmd := exec.Command("screen", "-S", s.id, "-X", "hardcopy", s.hardcopyFile())
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	b, err := os.ReadFile(s.hardcopyFile())
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 func (s *Screen) Stop() error {
 	defer func() {
 		os.Remove(s.rcFile())
 		os.Remove(s.logFile())
 		os.Remove(s.regFile())
+		os.Remove(s.hardcopyFile())
 	}()
 	if s.Active() {
 		cmd := exec.Command("screen", "-S", s.id, "-X", "quit")
@@ -93,4 +106,8 @@ func (s *Screen) rcFile() string {
 
 func (s *Screen) regFile() string {
 	return fmt.Sprintf("/dev/shm/%s.reg", s.id)
+}
+
+func (s *Screen) hardcopyFile() string {
+	return fmt.Sprintf("/dev/shm/%s.hardcopy", s.id)
 }

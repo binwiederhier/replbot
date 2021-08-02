@@ -59,7 +59,8 @@ func (r *repl) Exec() error {
 	var g *errgroup.Group
 	g, r.ctx = errgroup.WithContext(r.ctx)
 	g.Go(r.userInputLoop)
-	g.Go(r.commandOutputLoop)
+	//g.Go(r.commandOutputLoop)
+	g.Go(r.commandOutputLoop2)
 	g.Go(r.commandOutputForwarder)
 	g.Go(r.screenWatchLoop)
 	g.Go(r.cleanupListener)
@@ -127,6 +128,31 @@ func (r *repl) commandOutputLoop() error {
 				case <-r.ctx.Done():
 					return errExit
 				}
+			}
+		}
+	}
+}
+
+func (r *repl) commandOutputLoop2() error {
+	log.Printf("[session %s] Started command output loop", r.sessionID)
+	defer log.Printf("[session %s] Exiting command output loop", r.sessionID)
+	var last string
+	for {
+		select {
+		case <-r.ctx.Done():
+			return errExit
+		case <-time.After(200 * time.Millisecond):
+			current, err := r.screen.Hardcopy()
+			if err != nil {
+				return err
+			} else if current == last || current == "" {
+				continue
+			}
+			select {
+			case r.outChan <- []byte(current):
+				last = current
+			case <-r.ctx.Done():
+				return errExit
 			}
 		}
 	}
