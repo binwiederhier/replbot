@@ -59,9 +59,7 @@ func (r *repl) Exec() error {
 	var g *errgroup.Group
 	g, r.ctx = errgroup.WithContext(r.ctx)
 	g.Go(r.userInputLoop)
-	//g.Go(r.commandOutputLoop)
-	g.Go(r.commandOutputLoop2)
-	g.Go(r.commandOutputForwarder)
+	g.Go(r.commandOutputLoop)
 	g.Go(r.screenWatchLoop)
 	g.Go(r.cleanupListener)
 	return g.Wait()
@@ -105,38 +103,8 @@ func (r *repl) handleUserInput(input string) error {
 func (r *repl) commandOutputLoop() error {
 	log.Printf("[session %s] Started command output loop", r.sessionID)
 	defer log.Printf("[session %s] Exiting command output loop", r.sessionID)
-	for {
-		buf := make([]byte, 512) // Allocation in a loop, ahhh ...
-		n, err := r.screen.Read(buf)
-		select {
-		case <-r.ctx.Done():
-			return errExit
-		default:
-			if err != nil && err != io.EOF {
-				return err
-			}
-			if n > 0 {
-				select {
-				case r.outChan <- buf[:n]:
-				case <-r.ctx.Done():
-					return errExit
-				}
-			}
-			if err == io.EOF {
-				select {
-				case <-time.After(200 * time.Millisecond):
-				case <-r.ctx.Done():
-					return errExit
-				}
-			}
-		}
-	}
-}
-
-func (r *repl) commandOutputLoop2() error {
-	log.Printf("[session %s] Started command output loop", r.sessionID)
-	defer log.Printf("[session %s] Exiting command output loop", r.sessionID)
-	var last string
+	var id, last, lastID string
+	var lastTime time.Time
 	for {
 		select {
 		case <-r.ctx.Done():
@@ -148,44 +116,21 @@ func (r *repl) commandOutputLoop2() error {
 			} else if current == last || current == "" {
 				continue
 			}
-			select {
-			case r.outChan <- []byte(current):
-				last = current
-			case <-r.ctx.Done():
-				return errExit
-			}
-		}
-	}
-}
-
-func (r *repl) commandOutputForwarder() error {
-	log.Printf("[session %s] Started command output forwarder", r.sessionID)
-	defer log.Printf("[session %s] Exiting command output forwarder", r.sessionID)
-	var message string
-	for {
-		select {
-		case result := <-r.outChan:
-			message += consoleCodeRegex.ReplaceAllString(string(result), "")
-			if len(message) > maxMessageLength {
-				if err := r.sender.Send(message, Code); err != nil {
-					return err
+			sanitized := consoleCodeRegex.ReplaceAllString(current, "")
+			if time.Since(lastTime) < 270*time.Second {
+				log.Printf("updating with id %s", lastID)
+				if err := r.sender.Update(lastID, sanitized, Code); err != nil {
+					log.Printf("updating failed: %s", err.Error())
+					if id, err = r.sender.SendWithID(sanitized, Code); err != nil {
+						return err
+					}
 				}
-				message = ""
+			} else if id, err = r.sender.SendWithID(sanitized, Code); err != nil {
+				return err
 			}
-		case <-time.After(300 * time.Millisecond):
-			if len(message) > 0 {
-				if err := r.sender.Send(message, Code); err != nil {
-					return err
-				}
-				message = ""
-			}
-		case <-r.ctx.Done():
-			if len(message) > 0 {
-				if err := r.sender.Send(message, Code); err != nil {
-					return err
-				}
-			}
-			return errExit
+			last = current
+			lastID = id
+			lastTime = time.Now()
 		}
 	}
 }
