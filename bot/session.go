@@ -50,7 +50,7 @@ const (
 		"available REPLs: %s. Type `!q` to exit this session."
 	sessionStartedMessage = "🚀 REPL started. Type `!h` to see a list of available commands, or `!q` to forcefully " +
 		"exit the REPL. Lines prefixed with `##` are treated as comments."
-	sessionExitedMessage  = "👋 REPL exited.\n\nYou may start a new session by choosing any one of the " +
+	sessionExitedMessage = "👋 REPL exited.\n\nYou may start a new session by choosing any one of the " +
 		"available REPLs: %s. Type `!q` to exit this session."
 	byeMessage               = "👋 REPLbot says bye bye!"
 	timeoutWarningMessage    = "⏱️ Are you still there? Your session will time out in one minute."

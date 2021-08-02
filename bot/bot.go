@@ -7,6 +7,7 @@ import (
 	"github.com/slack-go/slack"
 	"golang.org/x/sync/errgroup"
 	"heckel.io/replbot/config"
+	"heckel.io/replbot/util"
 	"log"
 	"strings"
 	"sync"
@@ -134,7 +135,7 @@ func (b *Bot) maybeForwardMessage(sessionID string, message string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if session, ok := b.sessions[sessionID]; ok && session.Active() {
-		_ = session.HandleUserInput(message) // TODO deal with URLs
+		_ = session.HandleUserInput(util.RemoveSlackLinks(message)) // TODO deal with URLs
 		return true
 	}
 	return false
