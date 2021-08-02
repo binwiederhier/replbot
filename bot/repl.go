@@ -117,10 +117,8 @@ func (r *repl) commandOutputLoop() error {
 				continue
 			}
 			sanitized := consoleCodeRegex.ReplaceAllString(current, "")
-			if time.Since(lastTime) < 270*time.Second {
-				log.Printf("updating with id %s", lastID)
+			if time.Since(lastTime) < messageUpdateTimeLimit {
 				if err := r.sender.Update(lastID, sanitized, Code); err != nil {
-					log.Printf("updating failed: %s", err.Error())
 					if id, err = r.sender.SendWithID(sanitized, Code); err != nil {
 						return err
 					}

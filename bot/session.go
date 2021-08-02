@@ -26,12 +26,12 @@ var (
 		"d": "^D",
 		"r": "^M",
 	}
+	messageUpdateTimeLimit = 270 * time.Second // 5 minutes in Slack, minus a little bit of a buffer
 	errExit          = errors.New("exited REPL")
 	errSessionClosed = errors.New("session closed")
 )
 
 const (
-	maxMessageLength = 512
 	welcomeMessage   = "REPLbot welcomes you!\n\nYou may start a new session by choosing any one of the " +
 		"available REPLs: %s. Type `!h` for help and `!q` to exit this session."
 	sessionStartedMessage = "Started a new REPL session"
