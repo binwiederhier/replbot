@@ -14,7 +14,13 @@ import (
 )
 
 var (
-	shellEscapeRegex = regexp.MustCompile(`\x1B\[[0-9;]*[a-zA-Z]`)
+	// consoleCodeRegex is a regex describing console escape sequences that we're stripping out.
+	// This regex matches
+	// - ECMA-48 CSI sequences: ESC [ ... <char>
+	// - DEC Private Mode (DECSET/DECRST) sequences: ESC [ ? ... <char>
+	// - Other escape sequences: ESC [N O P X P X ^ ...]
+	// See https://man7.org/linux/man-pages/man4/console_codes.4.html
+	consoleCodeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\[\?[0-9;]*[a-zA-Z]|\x1b[clmnoDEFHMNOPXZ78^\\*+<=|}~]`)
 	controlCharTable = map[string]string{
 		"c": "^C",
 		"d": "^D",

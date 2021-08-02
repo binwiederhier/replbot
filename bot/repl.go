@@ -139,7 +139,7 @@ func (r *repl) commandOutputForwarder() error {
 	for {
 		select {
 		case result := <-r.outChan:
-			message += shellEscapeRegex.ReplaceAllString(string(result), "")
+			message += consoleCodeRegex.ReplaceAllString(string(result), "")
 			if len(message) > maxMessageLength {
 				if err := r.sender.Send(message, Code); err != nil {
 					return err
