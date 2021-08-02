@@ -59,9 +59,13 @@ func (r *repl) Exec() error {
 	g, r.ctx = errgroup.WithContext(r.ctx)
 	g.Go(r.userInputLoop)
 	g.Go(r.commandOutputLoop)
-	g.Go(r.screenWatchLoop)
-	g.Go(r.cleanupListener)
-	return g.Wait()
+	if err := g.Wait(); err != nil && err != errExit {
+		return err
+	}
+	if err := r.screen.Stop(); err != nil {
+		log.Printf("warning: unable to stop screen: %s", err.Error())
+	}
+	return nil
 }
 
 func (r *repl) userInputLoop() error {
@@ -111,7 +115,7 @@ func (r *repl) commandOutputLoop() error {
 		case <-time.After(200 * time.Millisecond):
 			current, err := r.screen.Hardcopy()
 			if err != nil {
-				return err
+				return errExit // Treat this as a failure
 			} else if current == last || current == "" {
 				continue
 			}
@@ -137,27 +141,10 @@ func (r *repl) commandOutputLoop() error {
 	}
 }
 
-func (r *repl) screenWatchLoop() error {
-	log.Printf("[session %s] Started screen watch loop", r.sessionID)
-	defer log.Printf("[session %s] Exiting screen watch loop", r.sessionID)
-	for {
-		select {
-		case <-r.ctx.Done():
-			return errExit
-		case <-time.After(500 * time.Millisecond):
-			if !r.screen.Active() {
-				return errExit
-			}
-		}
-	}
-}
-
 func (r *repl) cleanupListener() error {
 	log.Printf("[session %s] Started cleanup listener", r.sessionID)
 	defer log.Printf("[session %s] Exited cleanup finished", r.sessionID)
 	<-r.ctx.Done()
-	if err := r.screen.Stop(); err != nil {
-		log.Printf("warning: unable to stop screen: %s", err.Error())
-	}
+
 	return nil
 }

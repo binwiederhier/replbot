@@ -103,8 +103,8 @@ func NewSession(config *config.Config, id string, sender Sender) *session {
 	return s
 }
 
-// Send handles user input by forwarding to the underlying shell
-func (s *session) Send(message string) error {
+// HandleUserInput handles user input by forwarding to the underlying shell
+func (s *session) HandleUserInput(message string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.active {
@@ -122,7 +122,17 @@ func (s *session) Active() bool {
 	return s.active
 }
 
-func (s *session) Close() {
+func (s *session) CloseWithMessageAndWait() {
+	_ = s.sender.Send(forceCloseMessage, Text)
+	s.closeNoWait()
+	if err := s.closeGroup.Wait(); err != nil && err != errExit {
+		log.Printf("[session %s] Warning: %s", s.ID, err.Error())
+	}
+}
+
+func (s *session) closeNoWait() {
+	log.Printf("[session %s] Closing session", s.ID)
+	defer log.Printf("[session %s] Session closed", s.ID)
 	s.mu.Lock()
 	if !s.active {
 		s.mu.Unlock()
@@ -132,19 +142,10 @@ func (s *session) Close() {
 	close(s.userInputChan)
 	s.active = false
 	s.mu.Unlock()
-	if err := s.closeGroup.Wait(); err != nil && err != errExit {
-		log.Printf("[session %s] Warning: %s", s.ID, err.Error())
-	}
-	log.Printf("[session %s] Session closed", s.ID)
-}
-
-func (s *session) CloseWithMessage() {
-	_ = s.sender.Send(forceCloseMessage, Text)
-	s.Close()
 }
 
 func (s *session) userInputLoop() error {
-	defer s.Close()
+	defer s.closeNoWait()
 	if err := s.sayHello(); err != nil {
 		return err
 	}
@@ -161,7 +162,8 @@ func (s *session) userInputLoop() error {
 			if strings.HasPrefix(input, commentPrefix) {
 				// Ignore comments
 			} else if script := s.config.Script(input); script != "" {
-				if err := s.execREPL(script); err != nil && err != errExit {
+				err := s.execREPL(script)
+				if err != nil {
 					return err
 				}
 				if err := s.maybeSayExited(); err != nil {
@@ -211,7 +213,7 @@ func (s *session) activityMonitor() error {
 		case <-s.closeTimer.C:
 			_ = s.sender.Send(timeoutReachedMessage, Text)
 			log.Printf("[session %s] Idle timeout reached. Closing session.", s.ID)
-			s.Close()
+			s.closeNoWait()
 			return nil
 		}
 	}

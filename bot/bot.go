@@ -50,7 +50,7 @@ func (b *Bot) Stop() {
 	defer b.mu.Unlock()
 	for sessionID, session := range b.sessions {
 		log.Printf("[session %s] Force-closing session", sessionID)
-		session.CloseWithMessage()
+		session.CloseWithMessageAndWait()
 		delete(b.sessions, sessionID)
 	}
 	b.cancelFn() // This must be at the end, see app.go
@@ -122,7 +122,7 @@ func (b *Bot) maybeForwardMessage(sessionID string, message string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if session, ok := b.sessions[sessionID]; ok && session.Active() {
-		_ = session.Send(message) // TODO deal with URLs
+		_ = session.HandleUserInput(message) // TODO deal with URLs
 		return true
 	}
 	return false
