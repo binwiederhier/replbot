@@ -16,7 +16,7 @@ import (
 type Bot struct {
 	config   *config.Config
 	userID   string
-	sessions map[string]*session
+	sessions map[string]*Session
 	ctx      context.Context
 	cancelFn context.CancelFunc
 	rtm      *slack.RTM
@@ -26,7 +26,7 @@ type Bot struct {
 func New(config *config.Config) (*Bot, error) {
 	return &Bot{
 		config:   config,
-		sessions: make(map[string]*session),
+		sessions: make(map[string]*Session),
 	}, nil
 }
 

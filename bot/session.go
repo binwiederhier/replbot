@@ -44,26 +44,30 @@ var (
 )
 
 const (
-	welcomeMessage = "REPLbot welcomes you!\n\nYou may start a new session by choosing any one of the " +
-		"available REPLs: %s. Type `!h` for help and `!q` to exit this session."
-	sessionStartedMessage = "Started a new REPL session"
-	sessionExitedMessage  = "REPL session ended.\n\nYou may start a new session by choosing any one of the " +
-		"available REPLs: %s. Type `!h` for help and `!q` to exit this session."
-	byeMessage               = "REPLbot says bye bye!"
-	timeoutWarningMessage    = "Are you still there? Your session will time out in one minute."
-	timeoutReachedMessage    = "Timeout reached. REPLbot says bye bye!"
-	forceCloseMessage        = "REPLbot has to go. Urgent REPL-related business. Bye!"
+	welcomeMessage = "👋 REPLbot says hello!\n\nYou may start a new session by choosing any one of the " +
+		"available REPLs: %s. Type `!q` to exit this session."
+	helpMessage = "You may start a new session by choosing any one of the " +
+		"available REPLs: %s. Type `!q` to exit this session."
+	sessionStartedMessage = "🚀 REPL started. Type `!h` to see a list of available commands, or `!q` to forcefully " +
+		"exit the REPL. Lines prefixed with `##` are treated as comments."
+	sessionExitedMessage  = "👋 REPL exited.\n\nYou may start a new session by choosing any one of the " +
+		"available REPLs: %s. Type `!q` to exit this session."
+	byeMessage               = "👋 REPLbot says bye bye!"
+	timeoutWarningMessage    = "⏱️ Are you still there? Your session will time out in one minute."
+	timeoutReachedMessage    = "👋️ Timeout reached. REPLbot says bye bye!"
+	forceCloseMessage        = "🏃 REPLbot has to go. Urgent REPL-related business. Bye!"
 	invalidCommandMessage    = "I don't understand. Type `!h` for help."
 	helpCommand              = "!h"
 	exitCommand              = "!q"
 	commentPrefix            = "## "
 	availableCommandsMessage = "Available commands:\n" +
 		"  `!r` - Send empty return\n" +
-		"  `!c`, `!d` - Send Ctrl-C/Ctrl-D command sequence\n" +
-		"  `!q` - Exit this session"
+		"  `!c`, `!d`, `!esc` - Send Ctrl-C/Ctrl-D/ESC\n" +
+		"  `!ku`, `!kd`, `!kl`, `!kr` - Send cursor up, down, left or right\n" +
+		"  `!q` - Exit REPL"
 )
 
-type session struct {
+type Session struct {
 	ID            string
 	config        *config.Config
 	sender        Sender
@@ -77,10 +81,10 @@ type session struct {
 	mu            sync.RWMutex
 }
 
-func NewSession(config *config.Config, id string, sender Sender) *session {
+func NewSession(config *config.Config, id string, sender Sender) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	closeGroup, ctx := errgroup.WithContext(ctx)
-	s := &session{
+	s := &Session{
 		ID:            id,
 		config:        config,
 		sender:        sender,
@@ -104,7 +108,7 @@ func NewSession(config *config.Config, id string, sender Sender) *session {
 }
 
 // HandleUserInput handles user input by forwarding to the underlying shell
-func (s *session) HandleUserInput(message string) error {
+func (s *Session) HandleUserInput(message string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.active {
@@ -116,13 +120,13 @@ func (s *session) HandleUserInput(message string) error {
 	return nil
 }
 
-func (s *session) Active() bool {
+func (s *Session) Active() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.active
 }
 
-func (s *session) CloseWithMessageAndWait() {
+func (s *Session) CloseWithMessageAndWait() {
 	_ = s.sender.Send(forceCloseMessage, Text)
 	s.closeNoWait()
 	if err := s.closeGroup.Wait(); err != nil && err != errExit {
@@ -130,7 +134,7 @@ func (s *session) CloseWithMessageAndWait() {
 	}
 }
 
-func (s *session) closeNoWait() {
+func (s *Session) closeNoWait() {
 	log.Printf("[session %s] Closing session", s.ID)
 	defer log.Printf("[session %s] Session closed", s.ID)
 	s.mu.Lock()
@@ -144,7 +148,7 @@ func (s *session) closeNoWait() {
 	s.mu.Unlock()
 }
 
-func (s *session) userInputLoop() error {
+func (s *Session) userInputLoop() error {
 	defer s.closeNoWait()
 	if err := s.sayHello(); err != nil {
 		return err
@@ -155,7 +159,7 @@ func (s *session) userInputLoop() error {
 			_ = s.sender.Send(byeMessage, Text)
 			return nil
 		case helpCommand:
-			if err := s.sender.Send(availableCommandsMessage, Markdown); err != nil {
+			if err := s.sender.Send(fmt.Sprintf(helpMessage, s.replList()), Markdown); err != nil {
 				return err
 			}
 		default:
@@ -178,11 +182,11 @@ func (s *session) userInputLoop() error {
 	return nil
 }
 
-func (s *session) sayHello() error {
+func (s *Session) sayHello() error {
 	return s.sender.Send(fmt.Sprintf(welcomeMessage, s.replList()), Markdown)
 }
 
-func (s *session) maybeSayExited() error {
+func (s *Session) maybeSayExited() error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if !s.active {
@@ -191,15 +195,15 @@ func (s *session) maybeSayExited() error {
 	return s.sender.Send(fmt.Sprintf(sessionExitedMessage, s.replList()), Markdown)
 }
 
-func (s *session) replList() string {
+func (s *Session) replList() string {
 	return fmt.Sprintf("`%s`", strings.Join(s.config.Scripts(), "`, `"))
 }
 
-func (s *session) execREPL(script string) error {
+func (s *Session) execREPL(script string) error {
 	return runREPL(s.ctx, s.ID, s.sender, s.userInputChan, script)
 }
 
-func (s *session) activityMonitor() error {
+func (s *Session) activityMonitor() error {
 	defer s.warnTimer.Stop()
 	defer s.closeTimer.Stop()
 	for {
