@@ -61,36 +61,47 @@ func (b *Bot) handleIncomingEvents() error {
 		select {
 		case <-b.ctx.Done():
 			return errExit
-		case msg := <-b.rtm.IncomingEvents:
-			switch ev := msg.Data.(type) {
-			case *slack.ConnectedEvent:
-				if ev.Info == nil || ev.Info.User == nil || ev.Info.User.ID == "" {
-					return errors.New("missing user info in connected event")
-				}
-				b.mu.Lock()
-				b.userID = ev.Info.User.ID
-				b.mu.Unlock()
-				log.Printf("Slack connected as user %s/%s", ev.Info.User.Name, ev.Info.User.ID)
-			case *slack.LatencyReport:
-				log.Printf("Current latency: %v\n", ev.Value)
-			case *slack.RTMError:
-				log.Printf("Error: %s\n", ev.Error())
-			case *slack.ConnectionErrorEvent:
-				log.Printf("Error: %s\n", ev.Error())
-			case *slack.InvalidAuthEvent:
-				return errors.New("invalid credentials")
-			case *slack.MessageEvent:
-				b.dispatchMessage(ev)
-			default:
-				// Ignore other events
+		case event := <-b.rtm.IncomingEvents:
+			if err := b.handleIncomingEvent(event); err != nil {
+				return err
 			}
 		}
 	}
 }
 
-func (b *Bot) dispatchMessage(ev *slack.MessageEvent) {
+func (b *Bot) handleIncomingEvent(event slack.RTMEvent) error {
+	switch ev := event.Data.(type) {
+	case *slack.ConnectedEvent:
+		return b.handleConnectedEvent(ev)
+	case *slack.MessageEvent:
+		return b.handleMessageEvent(ev)
+	case *slack.LatencyReport:
+		return b.handleLatencyReportEvent(ev)
+	case *slack.RTMError:
+		return b.handleErrorEvent(ev)
+	case *slack.ConnectionErrorEvent:
+		return b.handleErrorEvent(ev)
+	case *slack.InvalidAuthEvent:
+		return errors.New("invalid credentials")
+	default:
+		return nil // Ignore other events
+	}
+}
+
+func (b *Bot) handleConnectedEvent(ev *slack.ConnectedEvent) error {
+	if ev.Info == nil || ev.Info.User == nil || ev.Info.User.ID == "" {
+		return errors.New("missing user info in connected event")
+	}
+	b.mu.Lock()
+	b.userID = ev.Info.User.ID
+	b.mu.Unlock()
+	log.Printf("Slack connected as user %s/%s", ev.Info.User.Name, ev.Info.User.ID)
+	return nil
+}
+
+func (b *Bot) handleMessageEvent(ev *slack.MessageEvent) error {
 	if ev.User == "" {
-		return // Ignore my own messages
+		return nil // Ignore my own messages
 	}
 	if strings.HasPrefix(ev.Channel, "D") {
 		sessionID := ev.Channel
@@ -108,6 +119,7 @@ func (b *Bot) dispatchMessage(ev *slack.MessageEvent) {
 			}
 		}
 	}
+	return nil
 }
 
 func (b *Bot) startSession(sessionID string, channel string, threadTS string) {
@@ -150,4 +162,14 @@ func (b *Bot) mentioned(message string) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return strings.Contains(message, fmt.Sprintf("<@%s>", b.userID))
+}
+
+func (b *Bot) handleErrorEvent(err error) error {
+	log.Printf("Error: %s\n", err.Error())
+	return nil
+}
+
+func (b *Bot) handleLatencyReportEvent(ev *slack.LatencyReport) error {
+	log.Printf("Current latency: %v\n", ev.Value)
+	return nil
 }

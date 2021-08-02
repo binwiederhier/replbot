@@ -140,4 +140,3 @@ func (r *repl) commandOutputLoop() error {
 		}
 	}
 }
-
