@@ -16,6 +16,7 @@ import (
 
 // TODO xterm.js URL
 // TODO make "thread" mode split into 3-4 messages
+// TODO implement "split" mode (input in thread, output in main channel)
 
 // New creates a new CLI application
 func New() *cli.App {

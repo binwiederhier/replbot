@@ -11,6 +11,7 @@ const (
 	DefaultMode        = ModeChannel
 	ModeThread         = "thread"
 	ModeChannel        = "channel"
+	ModeSplit          = "split"
 )
 
 type Config struct {

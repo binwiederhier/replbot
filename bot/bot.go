@@ -17,6 +17,8 @@ const (
 		"To start a new session, simply tag me and name one of the available REPLs, like so: %s %s\n\n" +
 		"Available REPLs: %s. You can also use the words `thread` or `channel` to control where the session " +
 		"is started, or DM me for a private REPL."
+	useAsInputThreadMessage = "Split mode is a bit special. Use this thread to enter your commands. Your output will " +
+		"appear in the main channel."
 )
 
 type Bot struct {
@@ -131,9 +133,31 @@ func (b *Bot) handleChannelMessageEvent(ev *slack.MessageEvent) error {
 		return b.handleHelp(ev)
 	}
 	var threadTS string
-	if mode == config.ModeThread {
-		threadTS = ev.Timestamp
-		sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp) // Override!
+	switch mode {
+	case config.ModeThread:
+		if ev.ThreadTimestamp == "" { // REPLbot was tagged in the main channel
+			threadTS = ev.Timestamp
+			sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp)
+		} else { // REPLbot was tagged in a thread
+			threadTS = ev.ThreadTimestamp
+			sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp)
+		}
+	case config.ModeSplit:
+		var inputThreadSender Sender
+		threadTS = ""                 // Output in main channel!
+		if ev.ThreadTimestamp == "" { // REPLbot was tagged in the main channel
+			sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp)
+			inputThreadSender = NewSlackSender(b.rtm, ev.Channel, ev.Timestamp)
+		} else { // REPLbot was tagged in a thread
+			sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp)
+			inputThreadSender = NewSlackSender(b.rtm, ev.Channel, ev.ThreadTimestamp)
+		}
+		if err := inputThreadSender.Send(useAsInputThreadMessage, Text); err != nil {
+			return err
+		}
+	default:
+		threadTS = ""                                                    // Output in main channel!
+		sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp) // ThreadTimestamp may be empty, that's ok
 	}
 	return b.startSession(sessionID, ev.Channel, threadTS, script, mode)
 }
@@ -190,6 +214,8 @@ func (b *Bot) parseMessage(message string) (mentioned bool, script string, mode 
 		mode = config.ModeThread
 	} else if util.StringContains(fields, config.ModeChannel) {
 		mode = config.ModeChannel
+	} else if util.StringContains(fields, config.ModeSplit) {
+		mode = config.ModeSplit
 	} else {
 		mode = b.config.DefaultMode
 	}
