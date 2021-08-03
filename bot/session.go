@@ -50,7 +50,6 @@ const (
 		"exit the REPL. Lines prefixed with `##` are treated as comments."
 	sessionExitedMessage     = "👋 REPL exited. See you later!"
 	timeoutWarningMessage    = "⏱️ Are you still there? Your session will time out in one minute."
-	timeoutReachedMessage    = "👋️ Timeout reached. REPLbot says bye bye!"
 	forceCloseMessage        = "🏃 REPLbot has to go. Urgent REPL-related business. Bye!"
 	helpCommand              = "!h"
 	exitCommand              = "!q"
@@ -84,12 +83,12 @@ func NewSession(config *config.Config, id string, sender Sender, script string, 
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 	return &Session{
-		id:             id,
 		config:         config,
+		id:             id,
 		sender:         sender,
 		script:         script,
-		screen:         util.NewScreen(),
 		mode:           mode,
+		screen:         util.NewScreen(),
 		userInputChan:  make(chan string, 10), // buffered!
 		userInputCount: 0,
 		g:              g,
@@ -179,7 +178,6 @@ func (s *Session) activityMonitor() error {
 			_ = s.sender.Send(timeoutWarningMessage, Text)
 			log.Printf("[session %s] Session has been idle for a long time. Warning sent to user.", s.id)
 		case <-s.closeTimer.C:
-			_ = s.sender.Send(timeoutReachedMessage, Text)
 			log.Printf("[session %s] Idle timeout reached. Closing session.", s.id)
 			return errExit
 		}
