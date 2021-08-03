@@ -11,10 +11,10 @@ type Screen struct {
 	log *os.File
 }
 
-func NewScreen() (*Screen, error) {
+func NewScreen() *Screen {
 	return &Screen{
 		id: fmt.Sprintf("replbot.%s", RandomID(10)),
-	}, nil
+	}
 }
 
 func (s *Screen) Start(args ...string) error {

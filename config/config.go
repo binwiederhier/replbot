@@ -8,12 +8,23 @@ import (
 
 const (
 	DefaultIdleTimeout = 10 * time.Minute
+	DefaultMode        = ModeChannel
+	ModeThread         = "thread"
+	ModeChannel        = "channel"
 )
 
 type Config struct {
 	Token       string
 	ScriptDir   string
 	IdleTimeout time.Duration
+	DefaultMode string
+}
+
+func New() *Config {
+	return &Config{
+		IdleTimeout: DefaultIdleTimeout,
+		DefaultMode: ModeThread,
+	}
 }
 
 func (c *Config) Scripts() []string {

@@ -28,3 +28,12 @@ func RandomStringWithCharset(length int, charset string) string {
 func RemoveSlackLinks(text string) string {
 	return slackLinkRegex.ReplaceAllString(text, "$1")
 }
+
+func StringContains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
+}
