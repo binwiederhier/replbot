@@ -85,10 +85,7 @@ func (s *SlackSender) formatMarkdown(markdown string) slack.MsgOption {
 }
 
 func (s *SlackSender) send(msg slack.MsgOption) (string, error) {
-	options := []slack.MsgOption{msg}
-	if s.threadTS != "" {
-		options = append(options, slack.MsgOptionTS(s.threadTS))
-	}
+	options := s.postOptions(msg)
 	for {
 		_, responseTS, err := s.rtm.PostMessage(s.channel, options...)
 		if err == nil {
@@ -104,10 +101,7 @@ func (s *SlackSender) send(msg slack.MsgOption) (string, error) {
 }
 
 func (s *SlackSender) update(timestamp string, msg slack.MsgOption) error {
-	options := []slack.MsgOption{msg}
-	if s.threadTS != "" {
-		options = append(options, slack.MsgOptionTS(s.threadTS))
-	}
+	options := s.postOptions(msg)
 	for {
 		_, _, _, err := s.rtm.UpdateMessage(s.channel, timestamp, options...)
 		if err == nil {
@@ -120,4 +114,12 @@ func (s *SlackSender) update(timestamp string, msg slack.MsgOption) error {
 		}
 		return err
 	}
+}
+
+func (s *SlackSender) postOptions(msg slack.MsgOption) []slack.MsgOption {
+	options := []slack.MsgOption{msg, slack.MsgOptionDisableLinkUnfurl(), slack.MsgOptionDisableMediaUnfurl()}
+	if s.threadTS != "" {
+		options = append(options, slack.MsgOptionTS(s.threadTS))
+	}
+	return options
 }

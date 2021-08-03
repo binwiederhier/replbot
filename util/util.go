@@ -2,14 +2,12 @@ package util
 
 import (
 	"math/rand"
-	"regexp"
 	"time"
 )
 
 var (
 	random          = rand.New(rand.NewSource(time.Now().UnixNano()))
 	charsetRandomID = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	slackLinkRegex  = regexp.MustCompile(`<https?://[^|\s]+\|([^>]+)>`)
 )
 
 func RandomID(length int) string {
@@ -23,10 +21,6 @@ func RandomStringWithCharset(length int, charset string) string {
 		b[i] = charset[random.Intn(len(charset))]
 	}
 	return string(b)
-}
-
-func RemoveSlackLinks(text string) string {
-	return slackLinkRegex.ReplaceAllString(text, "$1")
 }
 
 func StringContains(haystack []string, needle string) bool {

@@ -46,7 +46,7 @@ const (
 		"exit the REPL. Lines prefixed with `!!` are treated as comments."
 	sessionExitedMessage     = "👋 REPL exited. See you later!"
 	timeoutWarningMessage    = "⏱️ Are you still there? Your session will time out in one minute."
-	forceCloseMessage        = "🏃 REPLbot has to go. Urgent REPL-related business. Bye!"
+	forceCloseMessage        = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
 	helpCommand              = "!h"
 	exitCommand              = "!q"
 	commentPrefix            = "!! "
@@ -124,16 +124,19 @@ func (s *Session) Run() error {
 }
 
 // HandleUserInput handles user input by forwarding to the underlying shell
-func (s *Session) HandleUserInput(message string) error {
+func (s *Session) HandleUserInput(message string) {
+	if !s.Active() {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.active {
-		return errSessionClosed
-	}
+
+	// Reset timeout timers
 	s.warnTimer.Reset(s.config.IdleTimeout - time.Minute)
 	s.closeTimer.Reset(s.config.IdleTimeout)
-	s.userInputChan <- message
-	return nil
+
+	// Convert message to raw text and forward to input channel
+	s.userInputChan <- util.RemoveSlackMarkup(message)
 }
 
 func (s *Session) Active() bool {
@@ -240,6 +243,9 @@ func (s *Session) commandOutputLoop() error {
 				continue
 			}
 			sanitized := consoleCodeRegex.ReplaceAllString(current, "")
+			if strings.TrimSpace(sanitized) == "" {
+				sanitized = fmt.Sprintf("(screen is empty) %s", sanitized)
+			}
 			updateMessage := id != "" && atomic.LoadInt32(&s.userInputCount) < updateMessageUserInputCountLimit && time.Since(lastTime) < messageUpdateTimeLimit
 			if updateMessage {
 				if err := s.sender.Update(lastID, sanitized, Code); err != nil {

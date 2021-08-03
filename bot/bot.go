@@ -162,7 +162,7 @@ func (b *Bot) maybeForwardMessage(sessionID string, message string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if session, ok := b.sessions[sessionID]; ok && session.Active() {
-		_ = session.HandleUserInput(util.RemoveSlackLinks(message))
+		session.HandleUserInput(message)
 		return true
 	}
 	return false
