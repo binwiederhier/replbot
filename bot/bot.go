@@ -127,7 +127,8 @@ func (b *Bot) startSession(sessionID string, channel string, threadTS string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	sender := NewSlackSender(b.rtm, channel, threadTS)
-	b.sessions[sessionID] = NewSession(b.config, sessionID, sender)
+	session :=  NewSession(b.config, sessionID, sender)
+	b.sessions[sessionID] = session
 	log.Printf("[session %s] Starting new session\n", sessionID)
 }
 
@@ -135,7 +136,7 @@ func (b *Bot) maybeForwardMessage(sessionID string, message string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if session, ok := b.sessions[sessionID]; ok && session.Active() {
-		_ = session.HandleUserInput(util.RemoveSlackLinks(message)) // TODO deal with URLs
+		_ = session.HandleUserInput(util.RemoveSlackLinks(message))
 		return true
 	}
 	return false
@@ -147,15 +148,19 @@ func (b *Bot) manageSessions() error {
 		case <-b.ctx.Done():
 			return errExit
 		case <-time.After(15 * time.Second):
+			b.removeStaleSessions()
 		}
-		b.mu.Lock()
-		for id, session := range b.sessions {
-			if !session.Active() {
-				log.Printf("[session %s] Removing stale session", session.ID)
-				delete(b.sessions, id)
-			}
+	}
+}
+
+func (b *Bot) removeStaleSessions() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for id, session := range b.sessions {
+		if !session.Active() {
+			log.Printf("[session %s] Removing stale session", session.ID)
+			delete(b.sessions, id)
 		}
-		b.mu.Unlock()
 	}
 }
 
