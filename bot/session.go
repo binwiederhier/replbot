@@ -37,28 +37,32 @@ var (
 		"left":  "\\033OD", // Cursor left
 	}
 
-	// updateMessageUserInputCountLimit is a value that defines when to post a new message as opposed to updating
-	// the existing message
-	updateMessageUserInputCountLimit = int32(5)
-	messageUpdateTimeLimit           = 270 * time.Second // 5 minutes in Slack, minus a little bit of a buffer
-	errExit                          = errors.New("exited REPL")
-	errSessionClosed                 = errors.New("session closed")
+	errExit          = errors.New("exited REPL")
+	errSessionClosed = errors.New("session closed")
 )
 
 const (
 	sessionStartedMessage = "🚀 REPL started. Type `!h` to see a list of available commands, or `!q` to forcefully " +
-		"exit the REPL. Lines prefixed with `##` are treated as comments."
+		"exit the REPL. Lines prefixed with `!!` are treated as comments."
 	sessionExitedMessage     = "👋 REPL exited. See you later!"
 	timeoutWarningMessage    = "⏱️ Are you still there? Your session will time out in one minute."
 	forceCloseMessage        = "🏃 REPLbot has to go. Urgent REPL-related business. Bye!"
 	helpCommand              = "!h"
 	exitCommand              = "!q"
-	commentPrefix            = "## "
+	commentPrefix            = "!! "
 	availableCommandsMessage = "Available commands:\n" +
 		"  `!r` - Send empty return\n" +
 		"  `!c`, `!d`, `!esc` - Send Ctrl-C/Ctrl-D/ESC\n" +
 		"  `!up`, `!down`, `!left`, `!right` - Send cursor up, down, left or right\n" +
 		"  `!q` - Exit REPL"
+
+	// updateMessageUserInputCountLimit is the max number of input messages before re-sending a new screen
+	updateMessageUserInputCountLimit = 5
+
+	// messageUpdateTimeLimit is the max time a message can be updated in Slack (5 minutes in Slack, minus a little bit of a buffer)
+	messageUpdateTimeLimit = 270 * time.Second
+
+	updateScreenInterval = 200 * time.Millisecond
 )
 
 type Session struct {
@@ -228,7 +232,7 @@ func (s *Session) commandOutputLoop() error {
 		select {
 		case <-s.ctx.Done():
 			return errExit
-		case <-time.After(200 * time.Millisecond):
+		case <-time.After(updateScreenInterval):
 			current, err := s.screen.Hardcopy()
 			if err != nil {
 				return errExit // Treat this as a failure

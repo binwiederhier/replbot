@@ -14,6 +14,9 @@ import (
 	"time"
 )
 
+// TODO xterm.js URL
+// TODO make "thread" mode split into 3-4 messages
+
 // New creates a new CLI application
 func New() *cli.App {
 	return &cli.App{

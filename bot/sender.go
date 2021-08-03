@@ -16,7 +16,9 @@ const (
 	Code
 )
 
-// TODO deal with rate limiting
+const (
+	additionalRateLimitDuration = 500 * time.Millisecond
+)
 
 type Sender interface {
 	Send(message string, format Format) error
@@ -113,7 +115,7 @@ func (s *SlackSender) update(timestamp string, msg slack.MsgOption) error {
 		}
 		if e, ok := err.(*slack.RateLimitedError); ok {
 			log.Printf("error: %s; sleeping before re-sending", err.Error())
-			time.Sleep(e.RetryAfter + 500*time.Millisecond)
+			time.Sleep(e.RetryAfter + additionalRateLimitDuration)
 			continue
 		}
 		return err

@@ -14,8 +14,8 @@ import (
 
 const (
 	welcomeMessage = "Hi there 👋! I'm a robot that you can use to control a REPL from Slack. " +
-		"To start a new session, simply tag me and name one of the available REPLs, like so:\n\n> %s %s\n\n" +
-		"Available REPLs: %s. You can also use the words `thread` or `channel` to control where the session, " +
+		"To start a new session, simply tag me and name one of the available REPLs, like so: %s %s\n\n" +
+		"Available REPLs: %s. You can also use the words `thread` or `channel` to control where the session " +
 		"is started, or DM me for a private REPL."
 )
 
@@ -99,41 +99,43 @@ func (b *Bot) handleMessageEvent(ev *slack.MessageEvent) error {
 	if ev.User == "" {
 		return nil // Ignore my own messages
 	}
-	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp) // ThreadTimestamp may be empty, that's ok
-	mentioned, script, mode := b.parseMessage(ev.Text)
-
-	// Direct message with REPLbot
 	if strings.HasPrefix(ev.Channel, "D") {
-		if !b.maybeForwardMessage(sessionID, ev.Text) {
-			if script == "" {
-				return b.handleHelpCommand(ev)
-			}
-			return b.startSession(sessionID, ev.Channel, ev.ThreadTimestamp, script, config.ModeChannel)
-		}
+		return b.handleDirectMessageEvent(ev)
+	} else if strings.HasPrefix(ev.Channel, "C") {
+		return b.handleChannelMessageEvent(ev)
 	}
-
-	// Message in a channel
-	if strings.HasPrefix(ev.Channel, "C") {
-		// First try to find a matching session based on the channel (and potentially thread),
-		// and forward the message to the existing session.
-		if !b.maybeForwardMessage(sessionID, ev.Text) {
-			if mentioned && script != "" {
-				var threadTS string
-				if mode == config.ModeThread {
-					threadTS = ev.Timestamp
-					sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp) // Override!
-				}
-				return b.startSession(sessionID, ev.Channel, threadTS, script, mode)
-			}
-		}
-	}
-
-	// Fall back to help if mentioned
-	if mentioned {
-		return b.handleHelpCommand(ev)
-	}
-
 	return nil
+}
+
+func (b *Bot) handleDirectMessageEvent(ev *slack.MessageEvent) error {
+	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp) // ThreadTimestamp may be empty, that's ok
+	if b.maybeForwardMessage(sessionID, ev.Text) {
+		return nil
+	}
+	_, script, _ := b.parseMessage(ev.Text)
+	if script == "" {
+		return b.handleHelp(ev)
+	}
+	return b.startSession(sessionID, ev.Channel, ev.ThreadTimestamp, script, config.ModeChannel)
+}
+
+func (b *Bot) handleChannelMessageEvent(ev *slack.MessageEvent) error {
+	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp) // ThreadTimestamp may be empty, that's ok
+	if b.maybeForwardMessage(sessionID, ev.Text) {
+		return nil
+	}
+	mentioned, script, mode := b.parseMessage(ev.Text)
+	if !mentioned {
+		return nil
+	} else if script == "" {
+		return b.handleHelp(ev)
+	}
+	var threadTS string
+	if mode == config.ModeThread {
+		threadTS = ev.Timestamp
+		sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp) // Override!
+	}
+	return b.startSession(sessionID, ev.Channel, threadTS, script, mode)
 }
 
 func (b *Bot) startSession(sessionID string, channel string, threadTS string, script string, mode string) error {
@@ -194,7 +196,7 @@ func (b *Bot) parseMessage(message string) (mentioned bool, script string, mode 
 	return
 }
 
-func (b *Bot) handleHelpCommand(ev *slack.MessageEvent) error {
+func (b *Bot) handleHelp(ev *slack.MessageEvent) error {
 	sender := NewSlackSender(b.rtm, ev.Channel, ev.ThreadTimestamp)
 	scripts := b.config.Scripts()
 	return sender.Send(fmt.Sprintf(welcomeMessage, b.me(), scripts[1], b.replList()), Markdown)
