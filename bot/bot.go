@@ -14,6 +14,10 @@ import (
 	"time"
 )
 
+var (
+	manageSessionInterval = 15 * time.Second
+)
+
 type Bot struct {
 	config   *config.Config
 	userID   string
@@ -90,12 +94,12 @@ func (b *Bot) handleIncomingEvent(event slack.RTMEvent) error {
 }
 
 func (b *Bot) handleConnectedEvent(ev *slack.ConnectedEvent) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	if ev.Info == nil || ev.Info.User == nil || ev.Info.User.ID == "" {
 		return errors.New("missing user info in connected event")
 	}
-	b.mu.Lock()
 	b.userID = ev.Info.User.ID
-	b.mu.Unlock()
 	log.Printf("Slack connected as user %s/%s", ev.Info.User.Name, ev.Info.User.ID)
 	return nil
 }
@@ -147,7 +151,7 @@ func (b *Bot) manageSessions() error {
 		select {
 		case <-b.ctx.Done():
 			return errExit
-		case <-time.After(15 * time.Second):
+		case <-time.After(manageSessionInterval):
 			b.removeStaleSessions()
 		}
 	}
