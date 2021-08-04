@@ -29,6 +29,7 @@ var (
 	controlCharTable = map[string]string{
 		"c":     "^C",
 		"d":     "^D",
+		"ret":   "^M",
 		"r":     "^M",
 		"esc":   "\\033",   // ESC
 		"up":    "\\033OA", // Cursor up
@@ -37,24 +38,25 @@ var (
 		"left":  "\\033OD", // Cursor left
 	}
 
-	errExit          = errors.New("exited REPL")
-	errSessionClosed = errors.New("session closed")
+	errExit = errors.New("exited REPL")
 )
 
 const (
-	sessionStartedMessage = "🚀 REPL started. Type `!h` to see a list of available commands, or `!q` to forcefully " +
+	sessionStartedMessage = "🚀 REPL started. Type `!help` to see a list of available commands, or `!exit` to forcefully " +
 		"exit the REPL. Lines prefixed with `!!` are treated as comments."
 	sessionExitedMessage     = "👋 REPL exited. See you later!"
 	timeoutWarningMessage    = "⏱️ Are you still there? Your session will time out in one minute."
 	forceCloseMessage        = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
-	helpCommand              = "!h"
-	exitCommand              = "!q"
+	helpCommand              = "!help"
+	helpShortCommand         = "!h"
+	exitCommand              = "!exit"
+	exitShortCommand         = "!q"
 	commentPrefix            = "!! "
 	availableCommandsMessage = "Available commands:\n" +
-		"  `!r` - Send empty return\n" +
+		"  `!ret`, `!r` - Send empty return\n" +
 		"  `!c`, `!d`, `!esc` - Send Ctrl-C/Ctrl-D/ESC\n" +
 		"  `!up`, `!down`, `!left`, `!right` - Send cursor up, down, left or right\n" +
-		"  `!q` - Exit REPL"
+		"  `!exit`, `!q` - Exit REPL"
 
 	// updateMessageUserInputCountLimit is the max number of input messages before re-sending a new screen
 	updateMessageUserInputCountLimit = 5
@@ -208,10 +210,10 @@ func (s *Session) userInputLoop() error {
 
 func (s *Session) handleUserInput(input string) error {
 	switch input {
-	case helpCommand:
+	case helpCommand, helpShortCommand:
 		atomic.AddInt32(&s.userInputCount, updateMessageUserInputCountLimit)
 		return s.sender.Send(availableCommandsMessage, Markdown)
-	case exitCommand:
+	case exitCommand, exitShortCommand:
 		return errExit
 	default:
 		atomic.AddInt32(&s.userInputCount, 1)

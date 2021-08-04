@@ -15,8 +15,8 @@ import (
 const (
 	welcomeMessage = "Hi there 👋! I'm a robot that you can use to control a REPL from Slack. " +
 		"To start a new session, simply tag me and name one of the available REPLs, like so: %s %s\n\n" +
-		"Available REPLs: %s. You can also use the words `thread` or `channel` to control where the session " +
-		"is started, or DM me for a private REPL."
+		"Available REPLs: %s.\n\nTo run the session in a `thread`, the main `channel`, " +
+		"or in `split` mode, use the respective key words. To start a private REPL session, just DM me."
 	splitModeThreadMessage = "Use this thread to enter your commands. Your output will appear in the main channel."
 )
 
@@ -100,32 +100,36 @@ func (b *Bot) handleMessageEvent(ev *slack.MessageEvent) error {
 	if ev.User == "" {
 		return nil // Ignore my own messages
 	}
+	if b.maybeForwardMessage(ev) {
+		return nil // We forwarded the message
+	}
 	if strings.HasPrefix(ev.Channel, "D") {
-		return b.handleDirectMessageEvent(ev)
+		return b.handleNewDirectSessionEvent(ev)
 	} else if strings.HasPrefix(ev.Channel, "C") {
-		return b.handleChannelMessageEvent(ev)
+		return b.handleNewChannelSessionEvent(ev)
 	}
 	return nil
 }
 
-func (b *Bot) handleDirectMessageEvent(ev *slack.MessageEvent) error {
-	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp) // ThreadTimestamp may be empty, that's ok
-	if b.maybeForwardMessage(sessionID, ev.Text) {
-		return nil
-	}
-	_, script, _ := b.parseMessage(ev)
+func (b *Bot) handleNewDirectSessionEvent(ev *slack.MessageEvent) error {
+	_, script, mode := b.parseMessage(ev, b.config.DefaultDirectMode)
 	if script == "" {
 		return b.handleHelp(ev)
 	}
-	return b.startSession(sessionID, ev.Channel, ev.ThreadTimestamp, script, config.ModeChannel)
+	switch mode {
+	case config.ModeChannel:
+		return b.startSessionChannel(ev, script)
+	case config.ModeThread:
+		return b.startSessionThread(ev, script)
+	case config.ModeSplit:
+		return b.startSessionSplit(ev, script)
+	default:
+		return fmt.Errorf("unexpected mode: %s", mode)
+	}
 }
 
-func (b *Bot) handleChannelMessageEvent(ev *slack.MessageEvent) error {
-	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp) // ThreadTimestamp may be empty, that's ok
-	if b.maybeForwardMessage(sessionID, ev.Text) {
-		return nil
-	}
-	mentioned, script, mode := b.parseMessage(ev)
+func (b *Bot) handleNewChannelSessionEvent(ev *slack.MessageEvent) error {
+	mentioned, script, mode := b.parseMessage(ev, b.config.DefaultChannelMode)
 	if !mentioned {
 		return nil
 	} else if script == "" {
@@ -195,11 +199,12 @@ func (b *Bot) startSession(sessionID string, channel string, threadTS string, sc
 	return nil
 }
 
-func (b *Bot) maybeForwardMessage(sessionID string, message string) bool {
+func (b *Bot) maybeForwardMessage(ev *slack.MessageEvent) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp) // ThreadTimestamp may be empty, that's ok
 	if session, ok := b.sessions[sessionID]; ok && session.Active() {
-		session.HandleUserInput(message)
+		session.HandleUserInput(ev.Text)
 		return true
 	}
 	return false
@@ -215,7 +220,7 @@ func (b *Bot) handleLatencyReportEvent(ev *slack.LatencyReport) error {
 	return nil
 }
 
-func (b *Bot) parseMessage(ev *slack.MessageEvent) (mentioned bool, script string, mode string) {
+func (b *Bot) parseMessage(ev *slack.MessageEvent, defaultMode string) (mentioned bool, script string, mode string) {
 	fields := strings.Fields(ev.Text)
 	mentioned = util.StringContains(fields, b.me())
 	for _, f := range fields {
@@ -232,7 +237,7 @@ func (b *Bot) parseMessage(ev *slack.MessageEvent) (mentioned bool, script strin
 	} else if ev.ThreadTimestamp != "" {
 		mode = config.ModeThread
 	} else {
-		mode = b.config.DefaultMode
+		mode = defaultMode
 	}
 	return
 }
