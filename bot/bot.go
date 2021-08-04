@@ -17,7 +17,6 @@ const (
 		"To start a new session, simply tag me and name one of the available REPLs, like so: %s %s\n\n" +
 		"Available REPLs: %s.\n\nTo run the session in a `thread`, the main `channel`, " +
 		"or in `split` mode, use the respective key words. To start a private REPL session, just DM me."
-	splitModeThreadMessage = "Use this thread to enter your commands. Your output will appear in the main channel."
 )
 
 type Bot struct {
@@ -149,41 +148,36 @@ func (b *Bot) handleNewChannelSessionEvent(ev *slack.MessageEvent) error {
 
 func (b *Bot) startSessionChannel(ev *slack.MessageEvent, script string) error {
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, "")
-	return b.startSession(sessionID, ev.Channel, "", script, config.ModeChannel)
+	return b.startSession(sessionID, ev.Channel, "", "", script, config.ModeChannel)
 }
 
 func (b *Bot) startSessionThread(ev *slack.MessageEvent, script string) error {
-	// REPLbot was tagged in the main channel
 	if ev.ThreadTimestamp == "" {
 		sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp)
-		return b.startSession(sessionID, ev.Channel, ev.Timestamp, script, config.ModeThread)
+		return b.startSession(sessionID, ev.Channel, ev.Timestamp, ev.Timestamp, script, config.ModeThread)
 	}
-	// REPLbot was tagged in a thread
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp)
-	return b.startSession(sessionID, ev.Channel, ev.ThreadTimestamp, script, config.ModeThread)
+	return b.startSession(sessionID, ev.Channel, ev.ThreadTimestamp, ev.ThreadTimestamp, script, config.ModeThread)
 }
 
 func (b *Bot) startSessionSplit(ev *slack.MessageEvent, script string) error {
-	var threadSender Sender
-	var sessionID string
-	if ev.ThreadTimestamp == "" { // REPLbot was tagged in the main channel
-		sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp)
-		threadSender = NewSlackSender(b.rtm, ev.Channel, ev.Timestamp)
-	} else { // REPLbot was tagged in a thread
-		sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp)
-		threadSender = NewSlackSender(b.rtm, ev.Channel, ev.ThreadTimestamp)
+	if ev.ThreadTimestamp == "" {
+		sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp)
+		return b.startSession(sessionID, ev.Channel, ev.Timestamp, "", script, config.ModeSplit)
 	}
-	if err := threadSender.Send(splitModeThreadMessage, Markdown); err != nil {
-		return err
-	}
-	return b.startSession(sessionID, ev.Channel, "", script, config.ModeSplit)
+	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp)
+	return b.startSession(sessionID, ev.Channel, ev.ThreadTimestamp, "", script, config.ModeSplit)
 }
 
-func (b *Bot) startSession(sessionID string, channel string, threadTS string, script string, mode string) error {
+func (b *Bot) startSession(sessionID string, channel string, controlTS string, terminalTS string, script string, mode string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	sender := NewSlackSender(b.rtm, channel, threadTS)
-	session := NewSession(b.config, sessionID, sender, script, mode)
+	control := NewSlackSender(b.rtm, channel, controlTS)
+	terminal := control
+	if terminalTS != controlTS {
+		terminal = NewSlackSender(b.rtm, channel, terminalTS)
+	}
+	session := NewSession(b.config, sessionID, control, terminal, script, mode)
 	b.sessions[sessionID] = session
 	log.Printf("[session %s] Starting session", sessionID)
 	go func() {

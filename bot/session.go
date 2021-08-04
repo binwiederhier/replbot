@@ -43,7 +43,8 @@ var (
 
 const (
 	sessionStartedMessage = "🚀 REPL started. Type `!help` to see a list of available commands, or `!exit` to forcefully " +
-		"exit the REPL. Lines prefixed with `!!` are treated as comments."
+		"exit the REPL. Lines prefixed with `!!` are treated as comments.%s"
+	splitModeThreadMessage   = "Use this thread to enter your commands. Your output will appear in the main channel."
 	sessionExitedMessage     = "👋 REPL exited. See you later!"
 	timeoutWarningMessage    = "⏱️ Are you still there? Your session will time out in one minute."
 	forceCloseMessage        = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
@@ -70,7 +71,8 @@ const (
 type Session struct {
 	id             string
 	config         *config.Config
-	sender         Sender
+	control        Sender
+	terminal       Sender
 	userInputChan  chan string
 	userInputCount int32
 	g              *errgroup.Group
@@ -85,13 +87,14 @@ type Session struct {
 	mu             sync.RWMutex
 }
 
-func NewSession(config *config.Config, id string, sender Sender, script string, mode string) *Session {
+func NewSession(config *config.Config, id string, control Sender, terminal Sender, script string, mode string) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 	return &Session{
 		config:         config,
 		id:             id,
-		sender:         sender,
+		control:        control,
+		terminal:       terminal,
 		script:         script,
 		mode:           mode,
 		screen:         util.NewScreen(),
@@ -112,7 +115,7 @@ func (s *Session) Run() error {
 	if err := s.screen.Start(s.script); err != nil {
 		return err
 	}
-	if err := s.sender.Send(sessionStartedMessage, Markdown); err != nil {
+	if err := s.control.Send(s.sessionStartedMessage(), Markdown); err != nil {
 		return err
 	}
 	s.g.Go(s.userInputLoop)
@@ -148,7 +151,7 @@ func (s *Session) Active() bool {
 }
 
 func (s *Session) ForceClose() error {
-	_ = s.sender.Send(forceCloseMessage, Markdown)
+	_ = s.control.Send(forceCloseMessage, Markdown)
 	s.cancelFn()
 	if err := s.g.Wait(); err != nil && err != errExit {
 		return err
@@ -163,7 +166,7 @@ func (s *Session) shutdownHandler() error {
 	if err := s.screen.Stop(); err != nil {
 		log.Printf("warning: unable to stop screen: %s", err.Error())
 	}
-	if err := s.sender.Send(sessionExitedMessage, Markdown); err != nil {
+	if err := s.control.Send(sessionExitedMessage, Markdown); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -184,7 +187,7 @@ func (s *Session) activityMonitor() error {
 		case <-s.ctx.Done():
 			return errExit
 		case <-s.warnTimer.C:
-			_ = s.sender.Send(timeoutWarningMessage, Markdown)
+			_ = s.control.Send(timeoutWarningMessage, Markdown)
 			log.Printf("[session %s] Session has been idle for a long time. Warning sent to user.", s.id)
 		case <-s.closeTimer.C:
 			log.Printf("[session %s] Idle timeout reached. Closing session.", s.id)
@@ -212,7 +215,7 @@ func (s *Session) handleUserInput(input string) error {
 	switch input {
 	case helpCommand, helpShortCommand:
 		atomic.AddInt32(&s.userInputCount, updateMessageUserInputCountLimit)
-		return s.sender.Send(availableCommandsMessage, Markdown)
+		return s.control.Send(availableCommandsMessage, Markdown)
 	case exitCommand, exitShortCommand:
 		return errExit
 	default:
@@ -250,14 +253,14 @@ func (s *Session) commandOutputLoop() error {
 			}
 			updateMessage := id != "" && atomic.LoadInt32(&s.userInputCount) < updateMessageUserInputCountLimit && time.Since(lastTime) < messageUpdateTimeLimit
 			if updateMessage {
-				if err := s.sender.Update(lastID, sanitized, Code); err != nil {
-					if id, err = s.sender.SendWithID(sanitized, Code); err != nil {
+				if err := s.terminal.Update(lastID, sanitized, Code); err != nil {
+					if id, err = s.terminal.SendWithID(sanitized, Code); err != nil {
 						return err
 					}
 					atomic.StoreInt32(&s.userInputCount, 0)
 				}
 			} else {
-				if id, err = s.sender.SendWithID(sanitized, Code); err != nil {
+				if id, err = s.terminal.SendWithID(sanitized, Code); err != nil {
 					return err
 				}
 				atomic.StoreInt32(&s.userInputCount, 0)
@@ -267,4 +270,11 @@ func (s *Session) commandOutputLoop() error {
 			lastTime = time.Now()
 		}
 	}
+}
+
+func (s *Session) sessionStartedMessage() string {
+	if s.mode == config.ModeSplit {
+		return fmt.Sprintf(sessionStartedMessage, " "+splitModeThreadMessage)
+	}
+	return fmt.Sprintf(sessionStartedMessage, "")
 }
