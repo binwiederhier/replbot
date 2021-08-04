@@ -1,2 +1,2 @@
 #!/bin/sh
-docker run --rm -it ubuntu
+docker run --rm -it binwiederhier/ubuntu

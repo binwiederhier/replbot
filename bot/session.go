@@ -33,6 +33,8 @@ var (
 		"down":  "\\033OB", // Cursor down
 		"right": "\\033OC", // Cursor right
 		"left":  "\\033OD", // Cursor left
+		"pgup": "\\033[5~", // Page up
+		"pgdown": "\\033[6~", // Page down
 	}
 
 	errExit = errors.New("exited REPL")
@@ -54,6 +56,7 @@ const (
 		"  `!ret`, `!r` - Send empty return\n" +
 		"  `!c`, `!d`, `!esc` - Send Ctrl-C/Ctrl-D/ESC\n" +
 		"  `!up`, `!down`, `!left`, `!right` - Send cursor up, down, left or right\n" +
+		"  `!pgup`, `!pgdown` - Send page up / page down\n" +
 		"  `!! ...` - Lines prefixed like this are ignored\n" +
 		"  `!help`, `!h` - Show this help screen\n" +
 		"  `!exit`, `!q` - Exit REPL"
