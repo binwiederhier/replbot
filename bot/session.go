@@ -17,12 +17,9 @@ import (
 
 var (
 	// consoleCodeRegex is a regex describing console escape sequences that we're stripping out.
-	// This regex matches
-	// - ECMA-48 CSI sequences: ESC [ ... <char>
-	// - DEC Private Mode (DECSET/DECRST) sequences: ESC [ ? ... <char>
-	// - Other escape sequences: ESC [N O P X P X ^ ...]
+	// This regex only matches ECMA-48 CSI sequences (ESC [ ... <char>), which is enough since, we're using screen.
 	// See https://man7.org/linux/man-pages/man4/console_codes.4.html
-	consoleCodeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\[\?[0-9;]*[a-zA-Z]|\x1b[clmnoDEFHMNOPXZ78^\\*+<=|}~]`)
+	consoleCodeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 	// controlCharTable is a translation table that translates Slack input commands "!<command>" to
 	// screen key bindings, see https://www.gnu.org/software/screen/manual/html_node/Input-Translation.html#Input-Translation
@@ -61,9 +58,6 @@ const (
 
 	// updateMessageUserInputCountLimit is the max number of input messages before re-sending a new screen
 	updateMessageUserInputCountLimit = 5
-
-	// messageUpdateTimeLimit is the max time a message can be updated in Slack (5 minutes in Slack, minus a little bit of a buffer)
-	messageUpdateTimeLimit = 270 * time.Second
 
 	updateScreenInterval = 200 * time.Millisecond
 )
@@ -235,7 +229,6 @@ func (s *Session) commandOutputLoop() error {
 	log.Printf("[session %s] Started command output loop", s.id)
 	defer log.Printf("[session %s] Exiting command output loop", s.id)
 	var id, last, lastID string
-	var lastTime time.Time
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -243,7 +236,7 @@ func (s *Session) commandOutputLoop() error {
 		case <-time.After(updateScreenInterval):
 			current, err := s.screen.Hardcopy()
 			if err != nil {
-				return errExit // Treat this as a failure
+				return errExit // The command may have ended, gracefully exit
 			} else if current == last || current == "" {
 				continue
 			}
@@ -251,8 +244,7 @@ func (s *Session) commandOutputLoop() error {
 			if strings.TrimSpace(sanitized) == "" {
 				sanitized = fmt.Sprintf("(screen is empty) %s", sanitized)
 			}
-			updateMessage := id != "" && atomic.LoadInt32(&s.userInputCount) < updateMessageUserInputCountLimit && time.Since(lastTime) < messageUpdateTimeLimit
-			if updateMessage {
+			if s.shouldUpdateWindow(id) {
 				if err := s.terminal.Update(lastID, sanitized, Code); err != nil {
 					if id, err = s.terminal.SendWithID(sanitized, Code); err != nil {
 						return err
@@ -267,9 +259,15 @@ func (s *Session) commandOutputLoop() error {
 			}
 			last = current
 			lastID = id
-			lastTime = time.Now()
 		}
 	}
+}
+
+func (s *Session) shouldUpdateWindow(id string) bool {
+	if s.mode == config.ModeSplit {
+		return id != ""
+	}
+	return id != "" && atomic.LoadInt32(&s.userInputCount) < updateMessageUserInputCountLimit
 }
 
 func (s *Session) sessionStartedMessage() string {

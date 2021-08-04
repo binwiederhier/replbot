@@ -9,7 +9,7 @@ import (
 const (
 	DefaultIdleTimeout = 10 * time.Minute
 	DefaultDirectMode  = ModeSplit
-	DefaultChannelMode = ModeChannel
+	DefaultChannelMode = ModeSplit
 	ModeThread         = "thread"
 	ModeChannel        = "channel"
 	ModeSplit          = "split"

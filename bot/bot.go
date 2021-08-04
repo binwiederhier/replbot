@@ -228,8 +228,8 @@ func (b *Bot) parseMessage(ev *slack.MessageEvent, defaultMode string) (mentione
 		mode = config.ModeChannel
 	} else if util.StringContains(fields, config.ModeSplit) {
 		mode = config.ModeSplit
-	} else if ev.ThreadTimestamp != "" {
-		mode = config.ModeThread
+	} else if ev.ThreadTimestamp != "" && defaultMode == config.ModeChannel {
+		mode = config.ModeThread // special handling, cause it'd be weird otherwise
 	} else {
 		mode = defaultMode
 	}
