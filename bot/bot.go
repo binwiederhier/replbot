@@ -17,8 +17,7 @@ const (
 		"To start a new session, simply tag me and name one of the available REPLs, like so: %s %s\n\n" +
 		"Available REPLs: %s. You can also use the words `thread` or `channel` to control where the session " +
 		"is started, or DM me for a private REPL."
-	useAsInputThreadMessage = "Split mode is a bit special. Use this thread to enter your commands. Your output will " +
-		"appear in the main channel."
+	splitModeThreadMessage = "Use this thread to enter your commands. Your output will appear in the main channel."
 )
 
 type Bot struct {
@@ -114,7 +113,7 @@ func (b *Bot) handleDirectMessageEvent(ev *slack.MessageEvent) error {
 	if b.maybeForwardMessage(sessionID, ev.Text) {
 		return nil
 	}
-	_, script, _ := b.parseMessage(ev.Text)
+	_, script, _ := b.parseMessage(ev)
 	if script == "" {
 		return b.handleHelp(ev)
 	}
@@ -126,40 +125,54 @@ func (b *Bot) handleChannelMessageEvent(ev *slack.MessageEvent) error {
 	if b.maybeForwardMessage(sessionID, ev.Text) {
 		return nil
 	}
-	mentioned, script, mode := b.parseMessage(ev.Text)
+	mentioned, script, mode := b.parseMessage(ev)
 	if !mentioned {
 		return nil
 	} else if script == "" {
 		return b.handleHelp(ev)
 	}
-	var threadTS string
 	switch mode {
+	case config.ModeChannel:
+		return b.startSessionChannel(ev, script)
 	case config.ModeThread:
-		if ev.ThreadTimestamp == "" { // REPLbot was tagged in the main channel
-			threadTS = ev.Timestamp
-			sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp)
-		} else { // REPLbot was tagged in a thread
-			threadTS = ev.ThreadTimestamp
-			sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp)
-		}
+		return b.startSessionThread(ev, script)
 	case config.ModeSplit:
-		var inputThreadSender Sender
-		threadTS = ""                 // Output in main channel!
-		if ev.ThreadTimestamp == "" { // REPLbot was tagged in the main channel
-			sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp)
-			inputThreadSender = NewSlackSender(b.rtm, ev.Channel, ev.Timestamp)
-		} else { // REPLbot was tagged in a thread
-			sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp)
-			inputThreadSender = NewSlackSender(b.rtm, ev.Channel, ev.ThreadTimestamp)
-		}
-		if err := inputThreadSender.Send(useAsInputThreadMessage, Text); err != nil {
-			return err
-		}
+		return b.startSessionSplit(ev, script)
 	default:
-		threadTS = ""                                                    // Output in main channel!
-		sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp) // ThreadTimestamp may be empty, that's ok
+		return fmt.Errorf("unexpected mode: %s", mode)
 	}
-	return b.startSession(sessionID, ev.Channel, threadTS, script, mode)
+}
+
+func (b *Bot) startSessionChannel(ev *slack.MessageEvent, script string) error {
+	sessionID := fmt.Sprintf("%s:%s", ev.Channel, "")
+	return b.startSession(sessionID, ev.Channel, "", script, config.ModeChannel)
+}
+
+func (b *Bot) startSessionThread(ev *slack.MessageEvent, script string) error {
+	// REPLbot was tagged in the main channel
+	if ev.ThreadTimestamp == "" {
+		sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp)
+		return b.startSession(sessionID, ev.Channel, ev.Timestamp, script, config.ModeThread)
+	}
+	// REPLbot was tagged in a thread
+	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp)
+	return b.startSession(sessionID, ev.Channel, ev.ThreadTimestamp, script, config.ModeThread)
+}
+
+func (b *Bot) startSessionSplit(ev *slack.MessageEvent, script string) error {
+	var threadSender Sender
+	var sessionID string
+	if ev.ThreadTimestamp == "" { // REPLbot was tagged in the main channel
+		sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp)
+		threadSender = NewSlackSender(b.rtm, ev.Channel, ev.Timestamp)
+	} else { // REPLbot was tagged in a thread
+		sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp)
+		threadSender = NewSlackSender(b.rtm, ev.Channel, ev.ThreadTimestamp)
+	}
+	if err := threadSender.Send(splitModeThreadMessage, Text); err != nil {
+		return err
+	}
+	return b.startSession(sessionID, ev.Channel, "", script, config.ModeSplit)
 }
 
 func (b *Bot) startSession(sessionID string, channel string, threadTS string, script string, mode string) error {
@@ -202,8 +215,8 @@ func (b *Bot) handleLatencyReportEvent(ev *slack.LatencyReport) error {
 	return nil
 }
 
-func (b *Bot) parseMessage(message string) (mentioned bool, script string, mode string) {
-	fields := strings.Fields(message)
+func (b *Bot) parseMessage(ev *slack.MessageEvent) (mentioned bool, script string, mode string) {
+	fields := strings.Fields(ev.Text)
 	mentioned = util.StringContains(fields, b.me())
 	for _, f := range fields {
 		if script = b.config.Script(f); script != "" {
@@ -216,6 +229,8 @@ func (b *Bot) parseMessage(message string) (mentioned bool, script string, mode 
 		mode = config.ModeChannel
 	} else if util.StringContains(fields, config.ModeSplit) {
 		mode = config.ModeSplit
+	} else if ev.ThreadTimestamp != "" {
+		mode = config.ModeThread
 	} else {
 		mode = b.config.DefaultMode
 	}
