@@ -112,7 +112,7 @@ func (s *Session) Run() error {
 	if err := s.screen.Start(s.script); err != nil {
 		return err
 	}
-	if err := s.sender.Send(sessionStartedMessage, Text); err != nil {
+	if err := s.sender.Send(sessionStartedMessage, Markdown); err != nil {
 		return err
 	}
 	s.g.Go(s.userInputLoop)
@@ -148,7 +148,7 @@ func (s *Session) Active() bool {
 }
 
 func (s *Session) ForceClose() error {
-	_ = s.sender.Send(forceCloseMessage, Text)
+	_ = s.sender.Send(forceCloseMessage, Markdown)
 	s.cancelFn()
 	if err := s.g.Wait(); err != nil && err != errExit {
 		return err
@@ -184,7 +184,7 @@ func (s *Session) activityMonitor() error {
 		case <-s.ctx.Done():
 			return errExit
 		case <-s.warnTimer.C:
-			_ = s.sender.Send(timeoutWarningMessage, Text)
+			_ = s.sender.Send(timeoutWarningMessage, Markdown)
 			log.Printf("[session %s] Session has been idle for a long time. Warning sent to user.", s.id)
 		case <-s.closeTimer.C:
 			log.Printf("[session %s] Idle timeout reached. Closing session.", s.id)

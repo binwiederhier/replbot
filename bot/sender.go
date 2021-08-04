@@ -11,8 +11,7 @@ import (
 type Format int
 
 const (
-	Text = iota
-	Markdown
+	Markdown = iota
 	Code
 )
 
@@ -47,8 +46,6 @@ func (s *SlackSender) Send(message string, format Format) error {
 
 func (s *SlackSender) SendWithID(message string, format Format) (string, error) {
 	switch format {
-	case Text:
-		return s.send(s.formatText(message))
 	case Markdown:
 		return s.send(s.formatMarkdown(message))
 	case Code:
@@ -60,8 +57,6 @@ func (s *SlackSender) SendWithID(message string, format Format) (string, error) 
 
 func (s *SlackSender) Update(id string, message string, format Format) error {
 	switch format {
-	case Text:
-		return s.update(id, s.formatText(message))
 	case Markdown:
 		return s.update(id, s.formatMarkdown(message))
 	case Code:
@@ -69,10 +64,6 @@ func (s *SlackSender) Update(id string, message string, format Format) error {
 	default:
 		return fmt.Errorf("invalid format: %d", format)
 	}
-}
-
-func (s *SlackSender) formatText(message string) slack.MsgOption {
-	return slack.MsgOptionText(message, false)
 }
 
 func (s *SlackSender) formatCode(message string) slack.MsgOption {

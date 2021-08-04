@@ -173,7 +173,7 @@ func (b *Bot) startSessionSplit(ev *slack.MessageEvent, script string) error {
 		sessionID = fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp)
 		threadSender = NewSlackSender(b.rtm, ev.Channel, ev.ThreadTimestamp)
 	}
-	if err := threadSender.Send(splitModeThreadMessage, Text); err != nil {
+	if err := threadSender.Send(splitModeThreadMessage, Markdown); err != nil {
 		return err
 	}
 	return b.startSession(sessionID, ev.Channel, "", script, config.ModeSplit)
