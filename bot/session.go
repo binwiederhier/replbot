@@ -21,19 +21,21 @@ var (
 	// See https://man7.org/linux/man-pages/man4/console_codes.4.html
 	consoleCodeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
-	// controlCharTable is a translation table that translates Slack input commands "!<command>" to
-	// screen key bindings, see https://www.gnu.org/software/screen/manual/html_node/Input-Translation.html#Input-Translation
-	controlCharTable = map[string]string{
-		"c":     "^C",
-		"d":     "^D",
-		"ret":   "^M",
-		"r":     "^M",
-		"esc":   "\\033",   // ESC
-		"up":    "\\033OA", // Cursor up
-		"down":  "\\033OB", // Cursor down
-		"right": "\\033OC", // Cursor right
-		"left":  "\\033OD", // Cursor left
-		"pgup": "\\033[5~", // Page up
+	// stuffTable is a translation table that translates Slack input commands "!<command>" to something that can be
+	// send via screen's "-X stuff" command, see https://www.gnu.org/software/screen/manual/html_node/Input-Translation.html#Input-Translation
+	stuffTable = map[string]string{
+		"c":      "^C",
+		"d":      "^D",
+		"ret":    "^M",
+		"r":      "^M",
+		"t":      "\t",
+		"tt":     "\t\t",
+		"esc":    "\\033",    // ESC
+		"up":     "\\033OA",  // Cursor up
+		"down":   "\\033OB",  // Cursor down
+		"right":  "\\033OC",  // Cursor right
+		"left":   "\\033OD",  // Cursor left
+		"pgup":   "\\033[5~", // Page up
 		"pgdown": "\\033[6~", // Page down
 	}
 
@@ -52,12 +54,15 @@ const (
 	exitCommand              = "!exit"
 	exitShortCommand         = "!q"
 	commentPrefix            = "!! "
+	rawPrefix                = "!n "
 	availableCommandsMessage = "Available commands:\n" +
 		"  `!ret`, `!r` - Send empty return\n" +
+		"  `!n ...` - Send text without a new line\n" +
 		"  `!c`, `!d`, `!esc` - Send Ctrl-C/Ctrl-D/ESC\n" +
+		"  `!t`, `!tt` - Send TAB / double-TAB\n" +
 		"  `!up`, `!down`, `!left`, `!right` - Send cursor up, down, left or right\n" +
 		"  `!pgup`, `!pgdown` - Send page up / page down\n" +
-		"  `!! ...` - Lines prefixed like this are ignored\n" +
+		"  `!! ...` - Lines prefixed like this are comments and are ignored\n" +
 		"  `!help`, `!h` - Show this help screen\n" +
 		"  `!exit`, `!q` - Exit REPL"
 
@@ -158,43 +163,6 @@ func (s *Session) ForceClose() error {
 	return nil
 }
 
-func (s *Session) shutdownHandler() error {
-	log.Printf("[session %s] Starting shutdown handler", s.id)
-	defer log.Printf("[session %s] Exiting shutdown handler", s.id)
-	<-s.ctx.Done()
-	if err := s.screen.Stop(); err != nil {
-		log.Printf("warning: unable to stop screen: %s", err.Error())
-	}
-	if err := s.control.Send(sessionExitedMessage, Markdown); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	s.active = false
-	s.mu.Unlock()
-	return nil
-}
-
-func (s *Session) activityMonitor() error {
-	log.Printf("[session %s] Started activity monitor", s.id)
-	defer func() {
-		s.warnTimer.Stop()
-		s.closeTimer.Stop()
-		log.Printf("[session %s] Exiting activity monitor", s.id)
-	}()
-	for {
-		select {
-		case <-s.ctx.Done():
-			return errExit
-		case <-s.warnTimer.C:
-			_ = s.control.Send(timeoutWarningMessage, Markdown)
-			log.Printf("[session %s] Session has been idle for a long time. Warning sent to user.", s.id)
-		case <-s.closeTimer.C:
-			log.Printf("[session %s] Idle timeout reached. Closing session.", s.id)
-			return errExit
-		}
-	}
-}
-
 func (s *Session) userInputLoop() error {
 	log.Printf("[session %s] Started user input loop", s.id)
 	defer log.Printf("[session %s] Exiting user input loop", s.id)
@@ -221,8 +189,10 @@ func (s *Session) handleUserInput(input string) error {
 		atomic.AddInt32(&s.userInputCount, 1)
 		if strings.HasPrefix(input, commentPrefix) {
 			return nil // Ignore comments
+		} else if strings.HasPrefix(input, rawPrefix) {
+			return s.screen.Paste(strings.TrimPrefix(input, rawPrefix))
 		} else if len(input) > 1 {
-			if controlChar, ok := controlCharTable[input[1:]]; ok {
+			if controlChar, ok := stuffTable[input[1:]]; ok {
 				return s.screen.Stuff(controlChar)
 			}
 		}
@@ -277,6 +247,43 @@ func (s *Session) shouldUpdateTerminal(id string) bool {
 		return id != ""
 	}
 	return id != "" && atomic.LoadInt32(&s.userInputCount) < updateMessageUserInputCountLimit
+}
+
+func (s *Session) shutdownHandler() error {
+	log.Printf("[session %s] Starting shutdown handler", s.id)
+	defer log.Printf("[session %s] Exiting shutdown handler", s.id)
+	<-s.ctx.Done()
+	if err := s.screen.Stop(); err != nil {
+		log.Printf("warning: unable to stop screen: %s", err.Error())
+	}
+	if err := s.control.Send(sessionExitedMessage, Markdown); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.active = false
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *Session) activityMonitor() error {
+	log.Printf("[session %s] Started activity monitor", s.id)
+	defer func() {
+		s.warnTimer.Stop()
+		s.closeTimer.Stop()
+		log.Printf("[session %s] Exiting activity monitor", s.id)
+	}()
+	for {
+		select {
+		case <-s.ctx.Done():
+			return errExit
+		case <-s.warnTimer.C:
+			_ = s.control.Send(timeoutWarningMessage, Markdown)
+			log.Printf("[session %s] Session has been idle for a long time. Warning sent to user.", s.id)
+		case <-s.closeTimer.C:
+			log.Printf("[session %s] Idle timeout reached. Closing session.", s.id)
+			return errExit
+		}
+	}
 }
 
 func (s *Session) sessionStartedMessage() string {
