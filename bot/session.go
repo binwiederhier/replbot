@@ -54,6 +54,8 @@ const (
 		"  `!ret`, `!r` - Send empty return\n" +
 		"  `!c`, `!d`, `!esc` - Send Ctrl-C/Ctrl-D/ESC\n" +
 		"  `!up`, `!down`, `!left`, `!right` - Send cursor up, down, left or right\n" +
+		"  `!! ...` - Lines prefixed like this are ignored\n" +
+		"  `!help`, `!h` - Show this help screen\n" +
 		"  `!exit`, `!q` - Exit REPL"
 
 	// updateMessageUserInputCountLimit is the max number of input messages before re-sending a new screen
@@ -244,18 +246,8 @@ func (s *Session) commandOutputLoop() error {
 			if strings.TrimSpace(sanitized) == "" {
 				sanitized = fmt.Sprintf("(screen is empty) %s", sanitized)
 			}
-			if s.shouldUpdateWindow(id) {
-				if err := s.terminal.Update(lastID, sanitized, Code); err != nil {
-					if id, err = s.terminal.SendWithID(sanitized, Code); err != nil {
-						return err
-					}
-					atomic.StoreInt32(&s.userInputCount, 0)
-				}
-			} else {
-				if id, err = s.terminal.SendWithID(sanitized, Code); err != nil {
-					return err
-				}
-				atomic.StoreInt32(&s.userInputCount, 0)
+			if id, err = s.sendOrUpdateTerminal(id, lastID, sanitized); err != nil {
+				return err
 			}
 			last = current
 			lastID = id
@@ -263,7 +255,21 @@ func (s *Session) commandOutputLoop() error {
 	}
 }
 
-func (s *Session) shouldUpdateWindow(id string) bool {
+func (s *Session) sendOrUpdateTerminal(id, lastID, sanitized string) (string, error) {
+	if s.shouldUpdateTerminal(id) {
+		if err := s.terminal.Update(lastID, sanitized, Code); err == nil {
+			return lastID, nil
+		}
+	}
+	var err error
+	if id, err = s.terminal.SendWithID(sanitized, Code); err != nil {
+		return "", err
+	}
+	atomic.StoreInt32(&s.userInputCount, 0)
+	return id, nil
+}
+
+func (s *Session) shouldUpdateTerminal(id string) bool {
 	if s.mode == config.ModeSplit {
 		return id != ""
 	}
