@@ -1,0 +1,12 @@
+[Unit]
+Description=replbot server
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/replbot
+Restart=on-failure
+User=replbot
+Group=replbot
+
+[Install]
+WantedBy=multi-user.target

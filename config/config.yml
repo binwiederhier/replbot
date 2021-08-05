@@ -1,0 +1,51 @@
+# REPLbot config file
+
+# Slack bot token used to authorize the bot activity.
+#
+# REPLbot requires a Slack "Classic App (bot)", because of its use of the real time messaging (RTM)
+# API. To create a classic app and acquire a Slack bot token, follow these steps:
+#
+#   1. Create a classic app: https://api.slack.com/apps?new_classic_app=1
+#   2. In the "App Home" section, add a "Legacy bot user"
+#   3. In the "OAuth & Permissions" section, click "Install to Workspace"
+#   4. Copy the "Bot User OAuth Token" starting with "xoxb-..."
+#
+# Format:    xoxb-...
+# Default:   None
+# Required:  Yes
+#
+slack-bot-token: MUST_BE_SET
+
+# Directory containing your REPL scripts. REPLbot ships with a bunch of default scripts. Be sure
+# to check them out and add/remove scripts as you like.
+#
+# Security note:
+#   Scripts are run in and controlled by a screen(1) and can be executed from Slack by users, so it is
+#   vital that you make sure you cannot do anything nasty from these scripts. Either properly restrict
+#   them (limited shell), and/or put them in a Docker container.
+#
+# Format:    Existing directory
+# Default:   /etc/replbot/script.d
+# Required:  No
+#
+# script-dir: /etc/replbot/script.d
+
+# Default control/terminal mode. This mode defines how new sessions are started and controlled by the user.
+#
+# - channel: Both terminal window and user control appear in the main channel
+# - thread:  Both terminal window and user control appear in a thread
+# - split:   The terminal window is displayed in the main channel, the user input from a thread
+#
+# Format:    channel|thread|split
+# Default:   split
+# Required:  No
+#
+# default-mode: split
+
+# Timeout after which REPL sessions are terminated if there is no user input.
+#
+# Format:    <number>(hms), must be >1m
+# Default:   10m
+# Required:  No
+#
+# idle-timeout: 10m

@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v2/altsrc"
 	"heckel.io/replbot/bot"
 	"heckel.io/replbot/config"
+	"heckel.io/replbot/util"
 	"log"
 	"os"
 	"os/signal"
@@ -16,14 +18,20 @@ import (
 
 // TODO xterm.js URL
 // TODO make "thread" mode split into 3-4 messages
-// TODO implement "split" mode (input in thread, output in main channel)
 
 // New creates a new CLI application
 func New() *cli.App {
+	flags := []cli.Flag{
+		&cli.StringFlag{Name: "config", Aliases: []string{"c"}, EnvVars: []string{"REPLBOT_CONFIG_FILE"}, Value: "/etc/replbot/config.yml", DefaultText: "/etc/replbot/config.yml", Usage: "config file"},
+		altsrc.NewStringFlag(&cli.StringFlag{Name: "slack-bot-token", Aliases: []string{"t"}, EnvVars: []string{"REPLBOT_SLACK_BOT_TOKEN"}, DefaultText: "none", Usage: "Slack bot token"}),
+		altsrc.NewStringFlag(&cli.StringFlag{Name: "script-dir", Aliases: []string{"d"}, EnvVars: []string{"REPLBOT_SCRIPT_DIR"}, Value: "/etc/replbot/script.d", DefaultText: "/etc/replbot/script.d", Usage: "script directory"}),
+		altsrc.NewDurationFlag(&cli.DurationFlag{Name: "idle-timeout", Aliases: []string{"T"}, EnvVars: []string{"REPLBOT_IDLE_TIMEOUT"}, Value: config.DefaultIdleTimeout, Usage: "timeout after which sessions are ended"}),
+		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-mode", Aliases: []string{"m"}, EnvVars: []string{"REPLBOT_DEFAULT_MODE"}, Value: config.DefaultMode, DefaultText: config.DefaultMode, Usage: "default mode [channel, thread or split]"}),
+	}
 	return &cli.App{
 		Name:                   "replbot",
 		Usage:                  "Slack bot that provides interactive REPLs",
-		UsageText:              "replbot [OPTION..] [ARG..]",
+		UsageText:              "replbot [OPTION..]",
 		HideHelp:               true,
 		HideVersion:            true,
 		EnableBashCompletion:   true,
@@ -32,34 +40,26 @@ func New() *cli.App {
 		Writer:                 os.Stdout,
 		ErrWriter:              os.Stderr,
 		Action:                 execRun,
-		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "slack-token", Aliases: []string{"t"}, EnvVars: []string{"REPLBOT_SLACK_BOT_TOKEN"}, DefaultText: "none", Usage: "bot token for the Slack app"},
-			&cli.StringFlag{Name: "script-dir", Aliases: []string{"d"}, EnvVars: []string{"REPLBOT_SCRIPT_DIR"}, Value: "script.d", DefaultText: "script.d", Usage: "script directory"},
-			&cli.DurationFlag{Name: "idle-timeout", Aliases: []string{"T"}, EnvVars: []string{"REPLBOT_IDLE_TIMEOUT"}, Value: config.DefaultIdleTimeout, Usage: "timeout after which sessions are ended"},
-			&cli.StringFlag{Name: "default-channel-mode", Aliases: []string{"m"}, EnvVars: []string{"REPLBOT_DEFAULT_CHANNEL_MODE"}, Value: config.DefaultChannelMode, DefaultText: config.DefaultChannelMode, Usage: "default channel mode (channel, thread or split)"},
-			&cli.StringFlag{Name: "default-direct-mode", Aliases: []string{"M"}, EnvVars: []string{"REPLBOT_DEFAULT_DIRECT_MODE"}, Value: config.DefaultDirectMode, DefaultText: config.DefaultDirectMode, Usage: "default direct message mode (channel, thread or split)"},
-		},
+		Before:                 initConfigFileInputSource("config", flags),
+		Flags:                  flags,
 	}
 }
 
 func execRun(c *cli.Context) error {
-	token := c.String("slack-token")
+	token := c.String("slack-bot-token")
 	scriptDir := c.String("script-dir")
 	timeout := c.Duration("idle-timeout")
-	defaultChannelMode := c.String("default-channel-mode")
-	defaultDirectMode := c.String("default-direct-mode")
-	if token == "" {
-		return errors.New("missing Slack bot token, pass --slack-token or set REPLBOT_SLACK_BOT_TOKEN")
+	defaultMode := c.String("default-mode")
+	if token == "" || token == "MUST_BE_SET" {
+		return errors.New("missing bot token, pass --slack-bot-token, set REPLBOT_SLACK_BOT_TOKEN env variable or slack-bot-token config option")
 	} else if _, err := os.Stat(scriptDir); err != nil {
-		return fmt.Errorf("cannot find REPL directory %s, set --repl-dir or set REPLBOT_REPL_DIR")
+		return fmt.Errorf("cannot find REPL directory %s, set --script-dir, set REPLBOT_SCRIPT_DIR env variable, or script-dir config option", scriptDir)
 	} else if timeout < time.Minute {
 		return fmt.Errorf("idle timeout has to be at least one minute")
-	} else if _, err := os.ReadDir(scriptDir); err != nil {
-		return fmt.Errorf("cannot read script directory: %s", err.Error())
-	} else if defaultChannelMode != config.ModeChannel && defaultChannelMode != config.ModeThread && defaultChannelMode != config.ModeSplit {
-		return errors.New("default channel mode must be 'channel', 'thread' or 'split'")
-	} else if defaultDirectMode != config.ModeChannel && defaultDirectMode != config.ModeThread && defaultDirectMode != config.ModeSplit {
-		return errors.New("default direct message mode must be 'channel', 'thread' or 'split'")
+	} else if entries, err := os.ReadDir(scriptDir); err != nil || len(entries) == 0 {
+		return errors.New("cannot read script directory, or directory empty")
+	} else if defaultMode != config.ModeChannel && defaultMode != config.ModeThread && defaultMode != config.ModeSplit {
+		return errors.New("default mode must be 'channel', 'thread' or 'split'")
 	}
 
 	// Create main bot
@@ -67,8 +67,7 @@ func execRun(c *cli.Context) error {
 	conf.Token = token
 	conf.ScriptDir = scriptDir
 	conf.IdleTimeout = timeout
-	conf.DefaultChannelMode = defaultChannelMode
-	conf.DefaultDirectMode = defaultDirectMode
+	conf.DefaultMode = defaultMode
 	robot, err := bot.New(conf)
 	if err != nil {
 		return err
@@ -87,6 +86,25 @@ func execRun(c *cli.Context) error {
 	if err := robot.Start(); err != nil {
 		return err
 	}
+
 	log.Printf("Exiting.")
 	return nil
+}
+
+// initConfigFileInputSource is like altsrc.InitInputSourceWithContext and altsrc.NewYamlSourceFromFlagFunc, but checks
+// if the config flag is exists and only loads it if it does. If the flag is set and the file exists, it fails.
+func initConfigFileInputSource(configFlag string, flags []cli.Flag) cli.BeforeFunc {
+	return func(context *cli.Context) error {
+		configFile := context.String(configFlag)
+		if context.IsSet(configFlag) && !util.FileExists(configFile) {
+			return fmt.Errorf("config file %s does not exist", configFile)
+		} else if !context.IsSet(configFlag) && !util.FileExists(configFile) {
+			return nil
+		}
+		inputSource, err := altsrc.NewYamlSourceFromFile(configFile)
+		if err != nil {
+			return err
+		}
+		return altsrc.ApplyInputSourceValues(context, inputSource, flags)
+	}
 }

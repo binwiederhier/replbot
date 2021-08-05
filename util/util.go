@@ -2,6 +2,7 @@ package util
 
 import (
 	"math/rand"
+	"os"
 	"time"
 )
 
@@ -30,4 +31,9 @@ func StringContains(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+func FileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
 }

@@ -8,32 +8,29 @@ import (
 
 const (
 	DefaultIdleTimeout = 10 * time.Minute
-	DefaultDirectMode  = ModeSplit
-	DefaultChannelMode = ModeSplit
+	DefaultMode        = ModeSplit
 	ModeThread         = "thread"
 	ModeChannel        = "channel"
 	ModeSplit          = "split"
 )
 
 type Config struct {
-	Token              string
-	ScriptDir          string
-	IdleTimeout        time.Duration
-	DefaultChannelMode string
-	DefaultDirectMode  string
+	Token       string
+	ScriptDir   string
+	IdleTimeout time.Duration
+	DefaultMode string
 }
 
 func New() *Config {
 	return &Config{
-		IdleTimeout:        DefaultIdleTimeout,
-		DefaultChannelMode: DefaultChannelMode,
-		DefaultDirectMode:  DefaultDirectMode,
+		IdleTimeout: DefaultIdleTimeout,
+		DefaultMode: DefaultMode,
 	}
 }
 
 func (c *Config) Scripts() []string {
 	scripts := make([]string, 0)
-	for script, _ := range c.scripts() {
+	for script := range c.scripts() {
 		scripts = append(scripts, script)
 	}
 	return scripts
@@ -47,7 +44,7 @@ func (c *Config) Script(name string) string {
 }
 
 func (c *Config) scripts() map[string]string {
-	scripts := make(map[string]string, 0)
+	scripts := make(map[string]string)
 	entries, err := os.ReadDir(c.ScriptDir)
 	if err != nil {
 		return scripts

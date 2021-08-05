@@ -30,6 +30,9 @@ type Bot struct {
 }
 
 func New(config *config.Config) (*Bot, error) {
+	if len(config.Scripts()) == 0 {
+		return nil, errors.New("no REPL scripts found in script dir")
+	}
 	return &Bot{
 		config:   config,
 		sessions: make(map[string]*Session),
@@ -111,7 +114,7 @@ func (b *Bot) handleMessageEvent(ev *slack.MessageEvent) error {
 }
 
 func (b *Bot) handleNewDirectSessionEvent(ev *slack.MessageEvent) error {
-	_, script, mode := b.parseMessage(ev, b.config.DefaultDirectMode)
+	_, script, mode := b.parseMessage(ev)
 	if script == "" {
 		return b.handleHelp(ev)
 	}
@@ -128,7 +131,7 @@ func (b *Bot) handleNewDirectSessionEvent(ev *slack.MessageEvent) error {
 }
 
 func (b *Bot) handleNewChannelSessionEvent(ev *slack.MessageEvent) error {
-	mentioned, script, mode := b.parseMessage(ev, b.config.DefaultChannelMode)
+	mentioned, script, mode := b.parseMessage(ev)
 	if !mentioned {
 		return nil
 	} else if script == "" {
@@ -214,7 +217,7 @@ func (b *Bot) handleLatencyReportEvent(ev *slack.LatencyReport) error {
 	return nil
 }
 
-func (b *Bot) parseMessage(ev *slack.MessageEvent, defaultMode string) (mentioned bool, script string, mode string) {
+func (b *Bot) parseMessage(ev *slack.MessageEvent) (mentioned bool, script string, mode string) {
 	fields := strings.Fields(ev.Text)
 	mentioned = util.StringContains(fields, b.me())
 	for _, f := range fields {
@@ -228,10 +231,10 @@ func (b *Bot) parseMessage(ev *slack.MessageEvent, defaultMode string) (mentione
 		mode = config.ModeChannel
 	} else if util.StringContains(fields, config.ModeSplit) {
 		mode = config.ModeSplit
-	} else if ev.ThreadTimestamp != "" && defaultMode == config.ModeChannel {
+	} else if ev.ThreadTimestamp != "" && b.config.DefaultMode == config.ModeChannel {
 		mode = config.ModeThread // special handling, cause it'd be weird otherwise
 	} else {
-		mode = defaultMode
+		mode = b.config.DefaultMode
 	}
 	return
 }

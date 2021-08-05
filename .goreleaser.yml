@@ -23,9 +23,11 @@ nfpms:
     suggests:
       - bash-completion
     bindir: /usr/bin
-    empty_folders:
-      - /etc/replbot
     contents:
+      - src: config/config.yml
+        dst: /etc/replbot/config.yml
+      - src: script.d
+        dst: /etc/replbot/script.d
       - src: config/replbot.service
         dst: /lib/systemd/system/replbot.service
     scripts:
