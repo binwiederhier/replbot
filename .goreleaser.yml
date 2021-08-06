@@ -20,8 +20,11 @@ nfpms:
     formats:
       - deb
       - rpm
+    dependencies:
+      - screen
     suggests:
       - bash-completion
+      - docker-ce
     bindir: /usr/bin
     contents:
       - src: config/config.yml
