@@ -32,18 +32,18 @@ sudo apt install replbot
 **Debian/Ubuntu** (*manual install*)**:**
 ```bash
 sudo apt install screen
-wget https://github.com/binwiederhier/pcopy/releases/download/v0.1.0/replbot_0.1.0_amd64.deb
+wget https://github.com/binwiederhier/replbot/releases/download/v0.1.0/replbot_0.1.0_amd64.deb
 dpkg -i replbot_0.1.0_amd64.deb
 ```
 
 **Fedora/RHEL/CentOS:**
 ```bash
+# Make sure that "screen" is installed
 rpm -ivh https://github.com/binwiederhier/replbot/releases/download/v0.1.0/replbot_0.1.0_amd64.rpm
 ```
 
 **Docker:**
 ```bash
-# Be sure "screen" is installed
 docker run --rm -it binwiederhier/replbot
 ```
 
@@ -55,6 +55,7 @@ go get -u heckel.io/replbot
 
 **Manual install** (*any x86_64-based Linux*)**:**
 ```bash
+# Make sure that "screen" is installed
 wget https://github.com/binwiederhier/replbot/releases/download/v0.1.0/replbot_0.1.0_linux_x86_64.tar.gz
 sudo tar -C /usr/bin -zxf replbot_0.1.0_linux_x86_64.tar.gz replbot
 ```
