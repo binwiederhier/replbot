@@ -1,5 +1,5 @@
 # 🤖 REPLbot
-REPLbot is a Slack bot that allows you to control a REPL from within Slack. It comes with a few REPLs (Go 🥳, Java, 
+REPLbot is a Slack bot that allows you to control a [REPL](https://en.m.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop) from within Slack. It comes with a few REPLs (Go 🥳, Java, 
 NodeJS, PHP, Python, Ruby, Scala, Kotlin and Ubuntu/Bash), but you can easily make/bring your own.
 
 ![replbot demo](assets/demo.png)
@@ -14,7 +14,7 @@ iteration I tried using a pseudo terminal (pty) directly, but with all the escap
 kinda tiresome and I was spending time with stuff that I didn't want to spend time with (though I learned a lot!). 
 And `screen` does its job so well. 
 
-The actual REPLs just simple scripts (see [script.d folder](config/script.d)), so they could be anything you like. 
+The actual REPLs are just simple scripts (see [script.d folder](config/script.d)), so they could be anything you like. 
 I highly recommend using Docker to provide somewhat of an isolation, though you'll probably still need to trust the
 people using the bot if you give them an entire REPL.
 
