@@ -53,6 +53,8 @@ const (
 	helpShortCommand         = "!h"
 	exitCommand              = "!exit"
 	exitShortCommand         = "!q"
+	screenCommand            = "!screen"
+	screenShortCommand       = "!s"
 	commentPrefix            = "!! "
 	rawPrefix                = "!n "
 	availableCommandsMessage = "Available commands:\n" +
@@ -62,6 +64,7 @@ const (
 		"  `!t`, `!tt` - Send TAB / double-TAB\n" +
 		"  `!up`, `!down`, `!left`, `!right` - Send cursor up, down, left or right\n" +
 		"  `!pgup`, `!pgdown` - Send page up / page down\n" +
+		"  `!screen`, `!s` - Re-send a new screen window\n" +
 		"  `!! ...` - Lines prefixed like this are comments and are ignored\n" +
 		"  `!help`, `!h` - Show this help screen\n" +
 		"  `!exit`, `!q` - Exit REPL"
@@ -79,6 +82,7 @@ type Session struct {
 	terminal       Sender
 	userInputChan  chan string
 	userInputCount int32
+	forceResend    chan bool
 	g              *errgroup.Group
 	ctx            context.Context
 	cancelFn       context.CancelFunc
@@ -104,6 +108,7 @@ func NewSession(config *config.Config, id string, control Sender, terminal Sende
 		screen:         util.NewScreen(),
 		userInputChan:  make(chan string, 10), // buffered!
 		userInputCount: 0,
+		forceResend:    make(chan bool),
 		g:              g,
 		ctx:            ctx,
 		cancelFn:       cancel,
@@ -179,19 +184,23 @@ func (s *Session) userInputLoop() error {
 }
 
 func (s *Session) handleUserInput(input string) error {
+	log.Printf("[session %s] User> %s", s.id, input)
 	switch input {
 	case helpCommand, helpShortCommand:
 		atomic.AddInt32(&s.userInputCount, updateMessageUserInputCountLimit)
 		return s.control.Send(availableCommandsMessage, Markdown)
 	case exitCommand, exitShortCommand:
 		return errExit
+	case screenCommand, screenShortCommand:
+		s.forceResend <- true
+		return nil
 	default:
 		atomic.AddInt32(&s.userInputCount, 1)
 		if strings.HasPrefix(input, commentPrefix) {
 			return nil // Ignore comments
 		} else if strings.HasPrefix(input, rawPrefix) {
 			return s.screen.Paste(strings.TrimPrefix(input, rawPrefix))
-		} else if len(input) > 1 {
+		} else if len(input) > 1 && input[0] == '!' {
 			if controlChar, ok := stuffTable[input[1:]]; ok {
 				return s.screen.Stuff(controlChar)
 			}
@@ -203,50 +212,58 @@ func (s *Session) handleUserInput(input string) error {
 func (s *Session) commandOutputLoop() error {
 	log.Printf("[session %s] Started command output loop", s.id)
 	defer log.Printf("[session %s] Exiting command output loop", s.id)
-	var id, last, lastID string
+	var last, lastID string
+	var err error
 	for {
 		select {
 		case <-s.ctx.Done():
 			return errExit
-		case <-time.After(updateScreenInterval):
-			current, err := s.screen.Hardcopy()
+		case <-s.forceResend:
+			last, lastID, err = s.maybeRefreshTerminal("", "") // Force re-send!
 			if err != nil {
-				return errExit // The command may have ended, gracefully exit
-			} else if current == last || current == "" {
-				continue
-			}
-			sanitized := consoleCodeRegex.ReplaceAllString(current, "")
-			if strings.TrimSpace(sanitized) == "" {
-				sanitized = fmt.Sprintf("(screen is empty) %s", sanitized)
-			}
-			if id, err = s.sendOrUpdateTerminal(id, lastID, sanitized); err != nil {
 				return err
 			}
-			last = current
-			lastID = id
+		case <-time.After(updateScreenInterval):
+			last, lastID, err = s.maybeRefreshTerminal(last, lastID)
+			if err != nil {
+				return err
+			}
 		}
 	}
 }
 
-func (s *Session) sendOrUpdateTerminal(id, lastID, sanitized string) (string, error) {
-	if s.shouldUpdateTerminal(id) {
+func (s *Session) maybeRefreshTerminal(last, lastID string) (string, string, error) {
+	current, err := s.screen.Hardcopy()
+	if err != nil {
+		return "", "", errExit // The command may have ended, gracefully exit
+	} else if current == last {
+		return last, lastID, nil
+	}
+
+	// Remove control characters, mark empty screen
+	sanitized := consoleCodeRegex.ReplaceAllString(current, "")
+	if strings.TrimSpace(sanitized) == "" {
+		sanitized = fmt.Sprintf("(screen is empty) %s", sanitized)
+	}
+
+	// Update message (or send new)
+	if s.shouldUpdateTerminal(lastID) {
 		if err := s.terminal.Update(lastID, sanitized, Code); err == nil {
-			return lastID, nil
+			return last, lastID, nil
 		}
 	}
-	var err error
-	if id, err = s.terminal.SendWithID(sanitized, Code); err != nil {
-		return "", err
+	if lastID, err = s.terminal.SendWithID(sanitized, Code); err != nil {
+		return "", "", err
 	}
 	atomic.StoreInt32(&s.userInputCount, 0)
-	return id, nil
+	return last, lastID, nil
 }
 
-func (s *Session) shouldUpdateTerminal(id string) bool {
+func (s *Session) shouldUpdateTerminal(lastID string) bool {
 	if s.mode == config.ModeSplit {
-		return id != ""
+		return lastID != ""
 	}
-	return id != "" && atomic.LoadInt32(&s.userInputCount) < updateMessageUserInputCountLimit
+	return lastID != "" && atomic.LoadInt32(&s.userInputCount) < updateMessageUserInputCountLimit
 }
 
 func (s *Session) shutdownHandler() error {
