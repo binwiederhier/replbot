@@ -29,15 +29,25 @@ nfpms:
     contents:
       - src: config/config.yml
         dst: /etc/replbot/config.yml
-      - src: script.d
+        type: config
+      - src: config/script.d
         dst: /etc/replbot/script.d
+        type: config
       - src: config/replbot.service
         dst: /lib/systemd/system/replbot.service
     scripts:
       postinstall: "scripts/postinst.sh"
       postremove: "scripts/postrm.sh"
 archives:
-  - replacements:
+  -
+    wrap_in_directory: true
+    files:
+      - LICENSE
+      - README.md
+      - config/config.yml
+      - config/replbot.service
+      - config/script.d
+    replacements:
       386: i386
       amd64: x86_64
 checksum:
