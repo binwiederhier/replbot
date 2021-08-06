@@ -42,7 +42,7 @@ dpkg -i replbot_0.1.1_amd64.deb
 rpm -ivh https://github.com/binwiederhier/replbot/releases/download/v0.1.1/replbot_0.1.1_amd64.rpm
 ```
 
-**Docker:**
+**Docker:**   
 You can configure the Docker image by mounting a config directory (containing [config.yml](config/config.yml)) to 
 `/etc/replbot`. To be able to use any most of the pre-packaged [script.d](script.d) REPLs, you'll need to give the
 REPLbot image access to the Docker socket file. This allows the container to spin up other containers on the host.
