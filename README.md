@@ -44,9 +44,9 @@ rpm -ivh https://github.com/binwiederhier/replbot/releases/download/v0.1.1/replb
 
 **Docker:**   
 You can configure the Docker image by mounting a config directory (containing [config.yml](config/config.yml)) to 
-`/etc/replbot`. To be able to use any most of the pre-packaged [script.d](script.d) REPLs, you'll need to give the
-REPLbot image access to the Docker socket file. This allows the container to spin up other containers on the host.
-This is a security risk and considered bad practice, but it's the only way.
+`/etc/replbot`. To be able to use most of the pre-packaged [script.d](script.d) REPLs (to be mounted to `/etc/replbot/script.d`), 
+you'll need to give the REPLbot image access to the Docker socket file. This allows the container to spin up other containers 
+on the host. This is a security risk and considered bad practice, but it's the only way.
 
 ```bash
 docker run --rm -it \
