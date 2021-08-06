@@ -249,14 +249,14 @@ func (s *Session) maybeRefreshTerminal(last, lastID string) (string, string, err
 	// Update message (or send new)
 	if s.shouldUpdateTerminal(lastID) {
 		if err := s.terminal.Update(lastID, sanitized, Code); err == nil {
-			return last, lastID, nil
+			return current, lastID, nil
 		}
 	}
 	if lastID, err = s.terminal.SendWithID(sanitized, Code); err != nil {
 		return "", "", err
 	}
 	atomic.StoreInt32(&s.userInputCount, 0)
-	return last, lastID, nil
+	return current, lastID, nil
 }
 
 func (s *Session) shouldUpdateTerminal(lastID string) bool {
