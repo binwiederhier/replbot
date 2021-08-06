@@ -9,7 +9,7 @@ I thought it might be a fun way to collaboratively dabble with a REPL in a team.
 ## How it works
 I use `screen` and the `screen -X hardcopy` command to run most of the show. It's simple, but effective. In the first iteration I tried using a pseudo terminal (pty) directly, but with all the escape sequences and commands, it was getting kinda tiresome and I was spending time with stuff that I didn't want to spend time with (though I learned a lot!). And `screen` does its job so well. 
 
-The actual REPLs just simple scripts (see [script.d folder](script.d)), so they could be anything you like. I highly recommend using Docker to provide somewhat of an isolation, though you'll probably still need to trust the people using the bot if you give them an entire REPL.
+The actual REPLs are just simple scripts (see [script.d folder](script.d)), so they could be anything you like. I highly recommend using Docker to provide somewhat of an isolation, though you'll probably still need to trust the people using the bot if you give them an entire REPL.
 
 ## Installation
 Install steps:
