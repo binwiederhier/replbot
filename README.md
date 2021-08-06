@@ -32,19 +32,27 @@ sudo apt install replbot
 **Debian/Ubuntu** (*manual install*)**:**
 ```bash
 sudo apt install screen
-wget https://github.com/binwiederhier/replbot/releases/download/v0.1.0/replbot_0.1.0_amd64.deb
-dpkg -i replbot_0.1.0_amd64.deb
+wget https://github.com/binwiederhier/replbot/releases/download/v0.1.1/replbot_0.1.1_amd64.deb
+dpkg -i replbot_0.1.1_amd64.deb
 ```
 
 **Fedora/RHEL/CentOS:**
 ```bash
 # Make sure that "screen" is installed
-rpm -ivh https://github.com/binwiederhier/replbot/releases/download/v0.1.0/replbot_0.1.0_amd64.rpm
+rpm -ivh https://github.com/binwiederhier/replbot/releases/download/v0.1.1/replbot_0.1.1_amd64.rpm
 ```
 
 **Docker:**
+You can configure the Docker image by mounting a config directory (containing [config.yml](config/config.yml)) to 
+`/etc/replbot`. To be able to use any most of the pre-packaged [script.d](script.d) REPLs, you'll need to give the
+REPLbot image access to the Docker socket file. This allows the container to spin up other containers on the host.
+This is a security risk and considered bad practice, but it's the only way.
+
 ```bash
-docker run --rm -it binwiederhier/replbot
+docker run --rm -it \
+  -v /etc/replbot:/etc/replbot \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  binwiederhier/replbot
 ```
 
 **Go:**
@@ -56,8 +64,8 @@ go get -u heckel.io/replbot
 **Manual install** (*any x86_64-based Linux*)**:**
 ```bash
 # Make sure that "screen" is installed
-wget https://github.com/binwiederhier/replbot/releases/download/v0.1.0/replbot_0.1.0_linux_x86_64.tar.gz
-sudo tar -C /usr/bin -zxf replbot_0.1.0_linux_x86_64.tar.gz replbot
+wget https://github.com/binwiederhier/replbot/releases/download/v0.1.1/replbot_0.1.1_linux_x86_64.tar.gz
+sudo tar -C /usr/bin -zxf replbot_0.1.1_linux_x86_64.tar.gz replbot
 ```
 
 ## Contributing
