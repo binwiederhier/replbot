@@ -1,5 +1,5 @@
 #!/bin/sh
-echo 'The Java REPL uses commands prefixed with slash, e.g. /help.'
+echo 'The Java REPL uses commands prefixed with a slash, e.g. /help.'
 echo 'To type these in Slack, prefix them with space, e.g. " /help".'
 echo
 docker run --rm -it openjdk

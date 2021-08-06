@@ -1,6 +1,6 @@
 #!/bin/sh
-echo 'The Scala REPL uses commands prefixed with a colon, e.g. :help. To'
+echo 'The Kotlin REPL uses commands prefixed with a colon, e.g. :help. To'
 echo 'type these in Slack, add a space after the command to avoid the emoji'
 echo 'auto-complete, e.g. ":help ".'
 echo
-docker run --rm -it bigtruedata/scala
+docker run --rm -it zenika/kotlin
