@@ -17,6 +17,7 @@ const (
 		"To start a new session, simply tag me and name one of the available REPLs, like so: %s %s\n\n" +
 		"Available REPLs: %s.\n\nTo run the session in a `thread`, the main `channel`, " +
 		"or in `split` mode, use the respective key words. To start a private REPL session, just DM me."
+	misconfiguredMessage = "Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
 )
 
 type Bot struct {
@@ -242,11 +243,11 @@ func (b *Bot) parseMessage(ev *slack.MessageEvent) (mentioned bool, script strin
 func (b *Bot) handleHelp(ev *slack.MessageEvent) error {
 	sender := NewSlackSender(b.rtm, ev.Channel, ev.ThreadTimestamp)
 	scripts := b.config.Scripts()
-	return sender.Send(fmt.Sprintf(welcomeMessage, b.me(), scripts[1], b.replList()), Markdown)
-}
-
-func (b *Bot) replList() string {
-	return fmt.Sprintf("`%s`", strings.Join(b.config.Scripts(), "`, `"))
+	if len(scripts) == 0 {
+		return sender.Send(misconfiguredMessage, Markdown)
+	}
+	replList := fmt.Sprintf("`%s`", strings.Join(b.config.Scripts(), "`, `"))
+	return sender.Send(fmt.Sprintf(welcomeMessage, b.me(), scripts[0], replList), Markdown)
 }
 
 func (b *Bot) me() string {

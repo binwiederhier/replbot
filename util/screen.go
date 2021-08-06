@@ -6,17 +6,20 @@ import (
 	"os/exec"
 )
 
+// Screen represents a screen(1) process
 type Screen struct {
 	id  string
 	log *os.File
 }
 
+// NewScreen creates a new Screen instance, but does not start the screen
 func NewScreen() *Screen {
 	return &Screen{
 		id: fmt.Sprintf("replbot.%s", RandomID(10)),
 	}
 }
 
+// Start starts the screen using the given command and arguments
 func (s *Screen) Start(args ...string) error {
 	var err error
 	if err = os.WriteFile(s.logFile(), []byte{}, 0600); err != nil {
@@ -38,12 +41,14 @@ func (s *Screen) Start(args ...string) error {
 	return nil
 }
 
+// Active checks if the screen is still active
 func (s *Screen) Active() bool {
 	cmd := exec.Command("screen", "-S", s.id, "-Q", "select", ".")
 	err := cmd.Run()
 	return err == nil
 }
 
+// Paste pastes the input into the screen, as if the user entered it
 func (s *Screen) Paste(input string) error {
 	if err := os.WriteFile(s.regFile(), []byte(input), 0600); err != nil {
 		return err
@@ -59,11 +64,13 @@ func (s *Screen) Paste(input string) error {
 	return nil
 }
 
+// Stuff invokes the screen 'stuff' command, which is useful for sending control sequences
 func (s *Screen) Stuff(stuff string) error {
 	cmd := exec.Command("screen", "-S", s.id, "-X", "stuff", stuff)
 	return cmd.Run()
 }
 
+// Hardcopy returns a string representation of the current terminal
 func (s *Screen) Hardcopy() (string, error) {
 	cmd := exec.Command("screen", "-S", s.id, "-X", "hardcopy", s.hardcopyFile())
 	if err := cmd.Run(); err != nil {
@@ -76,6 +83,7 @@ func (s *Screen) Hardcopy() (string, error) {
 	return string(b), nil
 }
 
+// Stop kills the screen and its command using the 'quit' command
 func (s *Screen) Stop() error {
 	defer func() {
 		os.Remove(s.rcFile())

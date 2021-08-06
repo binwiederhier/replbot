@@ -7,13 +7,23 @@ import (
 )
 
 const (
+	// DefaultIdleTimeout defines the default time after which a session is terminated
 	DefaultIdleTimeout = 10 * time.Minute
-	DefaultMode        = ModeSplit
-	ModeThread         = "thread"
-	ModeChannel        = "channel"
-	ModeSplit          = "split"
+
+	// DefaultMode defines the default window mode in which sessions are controlled
+	DefaultMode = ModeSplit
+
+	// ModeThread is the mode constant to define that both terminal window and user control appear in a thread
+	ModeThread = "thread"
+
+	// ModeChannel is the mode constant to define that both terminal window and user control appear in a channel
+	ModeChannel = "channel"
+
+	// ModeSplit is the mode constant to define that the terminal window is displayed in the main channel, and the user input from a thread
+	ModeSplit = "split"
 )
 
+// Config is the main config struct for the application. Use New to instantiate a default config struct.
 type Config struct {
 	Token       string
 	ScriptDir   string
@@ -21,6 +31,7 @@ type Config struct {
 	DefaultMode string
 }
 
+// New instantiates a default new config
 func New() *Config {
 	return &Config{
 		IdleTimeout: DefaultIdleTimeout,
@@ -28,6 +39,7 @@ func New() *Config {
 	}
 }
 
+// Scripts returns the names of all available scripts
 func (c *Config) Scripts() []string {
 	scripts := make([]string, 0)
 	for script := range c.scripts() {
