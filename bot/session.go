@@ -223,6 +223,9 @@ func (s *Session) commandOutputLoop() error {
 	for {
 		select {
 		case <-s.ctx.Done():
+			if lastID != "" {
+				_ = s.terminal.Update(lastID, s.composeExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
+			}
 			return errExit
 		case <-s.forceResend:
 			last, lastID, err = s.maybeRefreshTerminal("", "") // Force re-send!
@@ -241,6 +244,9 @@ func (s *Session) commandOutputLoop() error {
 func (s *Session) maybeRefreshTerminal(last, lastID string) (string, string, error) {
 	current, err := s.tmux.CapturePane()
 	if err != nil {
+		if lastID != "" {
+			_ = s.terminal.Update(lastID, s.composeExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
+		}
 		return "", "", errExit // The command may have ended, gracefully exit
 	} else if current == last {
 		return last, lastID, nil
@@ -318,4 +324,18 @@ func (s *Session) sessionStartedMessage() string {
 		return fmt.Sprintf(sessionStartedMessage, " "+splitModeThreadMessage)
 	}
 	return fmt.Sprintf(sessionStartedMessage, "")
+}
+
+func (s *Session) composeExitedMessage(last string) string {
+	sanitized := consoleCodeRegex.ReplaceAllString(last, "")
+	lines := strings.Split(sanitized, "\n")
+	if len(lines) <= 2 {
+		return sanitized
+	}
+	if strings.TrimSpace(lines[len(lines)-1]) == "" && strings.TrimSpace(lines[len(lines)-2]) == "" {
+		lines[len(lines)-2] = "(REPL exited.)"
+		return strings.Join(lines, "\n")
+	}
+	log.Println("|" + strings.TrimSpace(lines[len(lines)-1]) + "|")
+	return sanitized + "\n(REPL exited.)"
 }
