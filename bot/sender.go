@@ -71,8 +71,7 @@ func (s *SlackSender) formatCode(message string) slack.MsgOption {
 }
 
 func (s *SlackSender) formatMarkdown(markdown string) slack.MsgOption {
-	section := slack.NewSectionBlock(slack.NewTextBlockObject("mrkdwn", markdown, false, true), nil, nil)
-	return slack.MsgOptionBlocks(section)
+	return slack.MsgOptionText(markdown, false)
 }
 
 func (s *SlackSender) send(msg slack.MsgOption) (string, error) {

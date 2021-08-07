@@ -13,6 +13,8 @@ const (
 	// DefaultMode defines the default window mode in which sessions are controlled
 	DefaultMode = ModeSplit
 
+	DefaultSize = SizeMedium
+
 	// ModeThread is the mode constant to define that both terminal window and user control appear in a thread
 	ModeThread = "thread"
 
@@ -24,10 +26,19 @@ const (
 )
 
 const (
-	SizeLarge  = "large"
-	SizeMedium = "medium"
-	SizeSmall  = "small"
 	SizeTiny   = "tiny"
+	SizeSmall  = "small"
+	SizeMedium = "medium"
+	SizeLarge  = "large"
+)
+
+var (
+	Sizes = map[string][2]int{
+		SizeTiny:   {60, 15},
+		SizeSmall:  {80, 24},
+		SizeMedium: {100, 30},
+		SizeLarge:  {120, 38},
+	}
 )
 
 // Config is the main config struct for the application. Use New to instantiate a default config struct.
@@ -36,6 +47,7 @@ type Config struct {
 	ScriptDir   string
 	IdleTimeout time.Duration
 	DefaultMode string
+	DefaultSize string
 	Debug       bool
 }
 
@@ -44,6 +56,7 @@ func New() *Config {
 	return &Config{
 		IdleTimeout: DefaultIdleTimeout,
 		DefaultMode: DefaultMode,
+		DefaultSize: DefaultSize,
 	}
 }
 

@@ -14,15 +14,20 @@ import (
 )
 
 const (
-	welcomeMessage = "Hi there 👋! I'm a robot that you can use to control a REPL from Slack. " +
-		"To start a new session, simply tag me and name one of the available REPLs, like so: %s %s\n\n" +
-		"Available REPLs: %s.\n\nTo run the session in a `thread`, the main `channel`, " +
-		"or in `split` mode, use the respective key words. To start a private REPL session, just DM me."
-	misconfiguredMessage = "Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
+	welcomeMessage = "Hi there 👋! "
+	helpMessage    = "I'm a robot that you can use to control a REPL from Slack. To start a new session, simply tag me " +
+		"and name one of the available REPLs, like so: %s %s\n\nAvailable REPLs: %s. To run the session in a `thread`, " +
+		"the main `channel`, or in `split` mode, use the respective key words. Use the keywords `tiny`, `small`, " +
+		"`medium`, `large` or `WxH` to define the terminal size. To start a private REPL session, just DM me."
+	misconfiguredMessage       = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
+	invalidTerminalSizeMessage = "🙁 Oh my, you requested a terminal size that is quite unusual. I can't let you do that. " +
+		"The minimal supported size is %dx%d, the maximal size is %dx%d.\n\n"
+	unknownCommandMessage = "I am not quite sure what you mean by \"_%s_\" ⁉️\n\n"
 )
 
 var (
-	sizeRegex = regexp.MustCompile(`(\d+)x(\d+)`)
+	sizeRegex   = regexp.MustCompile(`(\d+)x(\d+)`)
+	errNoScript = errors.New("no script defined")
 )
 
 type Bot struct {
@@ -111,37 +116,12 @@ func (b *Bot) handleMessageEvent(ev *slack.MessageEvent) error {
 	if b.maybeForwardMessage(ev) {
 		return nil // We forwarded the message
 	}
-	if strings.HasPrefix(ev.Channel, "D") {
-		return b.handleNewDirectSessionEvent(ev)
-	} else if strings.HasPrefix(ev.Channel, "C") {
-		return b.handleNewChannelSessionEvent(ev)
-	}
-	return nil
-}
-
-func (b *Bot) handleNewDirectSessionEvent(ev *slack.MessageEvent) error {
-	_, script, mode, width, height := b.parseMessage(ev)
-	if script == "" {
-		return b.handleHelp(ev)
-	}
-	switch mode {
-	case config.ModeChannel:
-		return b.startSessionChannel(ev, script, width, height)
-	case config.ModeThread:
-		return b.startSessionThread(ev, script, width, height)
-	case config.ModeSplit:
-		return b.startSessionSplit(ev, script, width, height)
-	default:
-		return fmt.Errorf("unexpected mode: %s", mode)
-	}
-}
-
-func (b *Bot) handleNewChannelSessionEvent(ev *slack.MessageEvent) error {
-	mentioned, script, mode, width, height := b.parseMessage(ev)
-	if !mentioned {
+	if strings.HasPrefix(ev.Channel, "C") && !strings.Contains(ev.Text, b.me()) {
 		return nil
-	} else if script == "" {
-		return b.handleHelp(ev)
+	}
+	script, mode, width, height, err := b.parseMessage(ev)
+	if err != nil {
+		return b.handleHelp(ev, err)
 	}
 	switch mode {
 	case config.ModeChannel:
@@ -223,36 +203,32 @@ func (b *Bot) handleLatencyReportEvent(ev *slack.LatencyReport) error {
 	return nil
 }
 
-func (b *Bot) parseMessage(ev *slack.MessageEvent) (mentioned bool, script string, mode string, width int, height int) {
+func (b *Bot) parseMessage(ev *slack.MessageEvent) (script string, mode string, width int, height int, err error) {
 	fields := strings.Fields(ev.Text)
-	me := b.me()
 	for _, field := range fields {
 		switch field {
-		case me:
-			mentioned = true
+		case b.me():
+			// Ignore
 		case config.ModeThread, config.ModeChannel, config.ModeSplit:
 			mode = field
-		case config.SizeTiny:
-			width, height = 60, 15
-		case config.SizeSmall:
-			width, height = 80, 24
-		case config.SizeMedium:
-			width, height = 100, 30
-		case config.SizeLarge:
-			width, height = 120, 40
+		case config.SizeTiny, config.SizeSmall, config.SizeMedium, config.SizeLarge:
+			width, height = config.Sizes[field][0], config.Sizes[field][1]
 		default:
-			if s := b.config.Script(field); s != "" && script == "" {
+			if s := b.config.Script(field); s != "" {
 				script = s
+			} else if s := sizeRegex.FindStringSubmatch(field); len(s) > 0 {
+				width, _ = strconv.Atoi(s[1])
+				height, _ = strconv.Atoi(s[2])
+				if width < 40 || height < 10 || width > 150 || height > 50 {
+					return "", "", 0, 0, fmt.Errorf(invalidTerminalSizeMessage, 40, 10, 150, 50)
+				}
+			} else {
+				return "", "", 0, 0, fmt.Errorf(unknownCommandMessage, field)
 			}
-			if s := sizeRegex.FindStringSubmatch(field); len(s) > 0 {
-				width, _ = strconv.Atoi(s[0])
-				height, _ = strconv.Atoi(s[1])
-			}
-			// FIXME This should fail!
 		}
 	}
-	if width == 0 || height == 0 {
-		width, height = 100, 30 // medium
+	if script == "" {
+		return "", "", 0, 0, errNoScript
 	}
 	if mode == "" {
 		if ev.ThreadTimestamp != "" && b.config.DefaultMode == config.ModeChannel {
@@ -261,17 +237,30 @@ func (b *Bot) parseMessage(ev *slack.MessageEvent) (mentioned bool, script strin
 			mode = b.config.DefaultMode
 		}
 	}
+	if width == 0 || height == 0 {
+		if mode == config.ModeThread {
+			width, height = config.Sizes[config.SizeTiny][0], config.Sizes[config.SizeTiny][1] // special case: make it tiny in a thread
+		} else {
+			width, height = config.Sizes[b.config.DefaultSize][0], config.Sizes[b.config.DefaultSize][1]
+		}
+	}
 	return
 }
 
-func (b *Bot) handleHelp(ev *slack.MessageEvent) error {
+func (b *Bot) handleHelp(ev *slack.MessageEvent, err error) error {
 	sender := NewSlackSender(b.rtm, ev.Channel, ev.ThreadTimestamp)
 	scripts := b.config.Scripts()
 	if len(scripts) == 0 {
 		return sender.Send(misconfiguredMessage, Markdown)
 	}
+	var messageTemplate string
+	if err == nil || err == errNoScript {
+		messageTemplate = welcomeMessage + helpMessage
+	} else {
+		messageTemplate = err.Error() + helpMessage
+	}
 	replList := fmt.Sprintf("`%s`", strings.Join(b.config.Scripts(), "`, `"))
-	return sender.Send(fmt.Sprintf(welcomeMessage, b.me(), scripts[0], replList), Markdown)
+	return sender.Send(fmt.Sprintf(messageTemplate, b.me(), scripts[0], replList), Markdown)
 }
 
 func (b *Bot) me() string {
