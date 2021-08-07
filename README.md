@@ -39,14 +39,14 @@ sudo apt install replbot
 **Debian/Ubuntu** (*manual install*)**:**
 ```bash
 sudo apt install tmux
-wget https://github.com/binwiederhier/replbot/releases/download/v0.1.1/replbot_0.1.1_amd64.deb
-dpkg -i replbot_0.1.1_amd64.deb
+wget https://github.com/binwiederhier/replbot/releases/download/v0.1.2/replbot_0.1.2_amd64.deb
+dpkg -i replbot_0.1.2_amd64.deb
 ```
 
 **Fedora/RHEL/CentOS:**
 ```bash
 # Make sure that "tmux" is installed
-rpm -ivh https://github.com/binwiederhier/replbot/releases/download/v0.1.1/replbot_0.1.1_amd64.rpm
+rpm -ivh https://github.com/binwiederhier/replbot/releases/download/v0.1.2/replbot_0.1.2_amd64.rpm
 ```
 
 **Docker:**   
@@ -71,8 +71,8 @@ go get -u heckel.io/replbot
 **Manual install** (*any x86_64-based Linux*)**:**
 ```bash
 # Make sure that "tmux" is installed
-wget https://github.com/binwiederhier/replbot/releases/download/v0.1.1/replbot_0.1.1_linux_x86_64.tar.gz
-sudo tar -C /usr/bin -zxf replbot_0.1.1_linux_x86_64.tar.gz replbot
+wget https://github.com/binwiederhier/replbot/releases/download/v0.1.2/replbot_0.1.2_linux_x86_64.tar.gz
+sudo tar -C /usr/bin -zxf replbot_0.1.2_linux_x86_64.tar.gz replbot
 ```
 
 ## Contributing
