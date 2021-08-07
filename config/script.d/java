@@ -1,5 +1,16 @@
 #!/bin/sh
-echo 'The Java REPL uses commands prefixed with a slash, e.g. /help.'
-echo 'To type these in Slack, prefix them with space, e.g. " /help".'
-echo
-docker run --rm -it openjdk
+# REPLbot script to run a Java REPL.
+#
+# Scripts are executed as "./script run <id>" to start the REPL,
+# and as "./script kill <id>" to stop it.
+
+case "$1" in
+  run)
+    echo 'The Java REPL uses commands prefixed with a slash, e.g. /help.'
+    echo 'To type these in Slack, prefix them with space, e.g. " /help".'
+    echo
+    docker run --rm --name "$2" -it openjdk
+    ;;
+  kill) if [ -n "$(docker ps -q -f "name=$2")" ]; then docker kill "$2"; fi ;;
+  *) echo "Syntax: $0 (run|kill) ID"; exit 1 ;;
+esac

@@ -67,7 +67,7 @@ func (s *SlackSender) Update(id string, message string, format Format) error {
 }
 
 func (s *SlackSender) formatCode(message string) slack.MsgOption {
-	return s.formatMarkdown(fmt.Sprintf("```%s```", strings.ReplaceAll(message, "```", "` ` `"))) // Hack ...
+	return slack.MsgOptionText(fmt.Sprintf("```%s```", strings.ReplaceAll(message, "```", "` ` `")), true) // Hack ...
 }
 
 func (s *SlackSender) formatMarkdown(markdown string) slack.MsgOption {

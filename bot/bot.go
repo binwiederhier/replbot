@@ -41,7 +41,7 @@ func New(config *config.Config) (*Bot, error) {
 }
 
 func (b *Bot) Start() error {
-	b.rtm = slack.New(b.config.Token).NewRTM()
+	b.rtm = slack.New(b.config.Token, slack.OptionDebug(b.config.Debug)).NewRTM()
 	go b.rtm.ManageConnection()
 	b.ctx, b.cancelFn = context.WithCancel(context.Background())
 	for {

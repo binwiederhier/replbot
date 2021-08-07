@@ -21,7 +21,7 @@ nfpms:
       - deb
       - rpm
     dependencies:
-      - screen
+      - tmux
     suggests:
       - bash-completion
       - docker-ce

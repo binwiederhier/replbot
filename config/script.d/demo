@@ -1,18 +1,32 @@
-#!/bin/bash
+#!/bin/sh
 # REPLbot demo script to show how to build a simple custom REPL.
+#
+# Scripts are executed as "./script run <id>" to start the REPL,
+# and as "./script kill <id>" to stop it.
+#
+# This script does not need an explicit "kill" behavior, since it's
+# a simple bash script. If you spawn other processes you may want to
+# clean up after yourself though, particularly for Docker containers.
 
-echo "Welcome to the demo REPL!"
-while true; do
-  echo "Available commands:"
-  echo "[t] Print date & time"
-  echo "[q] Quit"
-  read command
-  if [ "$command" == "t" ]; then
-    echo "The current time is: $(date)"
-  elif [ "$command" = "q" ]; then
-    echo "Bye!"
-    exit
-  else
-    echo "Unknown command"
-  fi
-done
+case "$1" in
+  run)
+    echo "Welcome to the demo REPL!"
+    while true; do
+      echo "Available commands:"
+      echo "[t] Print date & time"
+      echo "[q] Quit"
+      read command
+      if [ "$command" = "t" ]; then
+        echo "The current time is: $(date)"
+      elif [ "$command" = "q" ]; then
+        echo "Bye!"
+        exit
+      else
+        echo "Unknown command"
+      fi
+    done
+    ;;
+  kill)
+    ;;
+  *) echo "Syntax: $0 (run|kill) ID"; exit 1 ;;
+esac

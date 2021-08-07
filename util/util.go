@@ -1,15 +1,23 @@
 package util
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
+	"regexp"
 	"time"
 )
 
 var (
-	random          = rand.New(rand.NewSource(time.Now().UnixNano()))
-	charsetRandomID = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	random                  = rand.New(rand.NewSource(time.Now().UnixNano()))
+	charsetRandomID         = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	invalidTmuxIDCharsRegex = regexp.MustCompile(`[^A-Za-z0-9]`)
 )
+
+func SanitizeID(id string) string {
+	id = fmt.Sprintf("replbot_%s", id)
+	return invalidTmuxIDCharsRegex.ReplaceAllString(id, "_")
+}
 
 // RandomID generates a random string ID
 func RandomID(length int) string {

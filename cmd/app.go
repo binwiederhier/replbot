@@ -23,6 +23,7 @@ import (
 func New() *cli.App {
 	flags := []cli.Flag{
 		&cli.StringFlag{Name: "config", Aliases: []string{"c"}, EnvVars: []string{"REPLBOT_CONFIG_FILE"}, Value: "/etc/replbot/config.yml", DefaultText: "/etc/replbot/config.yml", Usage: "config file"},
+		&cli.BoolFlag{Name: "debug", EnvVars: []string{"REPLBOT_DEBUG"}, Value: false, Usage: "enable debugging output"},
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "slack-bot-token", Aliases: []string{"t"}, EnvVars: []string{"REPLBOT_SLACK_BOT_TOKEN"}, DefaultText: "none", Usage: "Slack bot token"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "script-dir", Aliases: []string{"d"}, EnvVars: []string{"REPLBOT_SCRIPT_DIR"}, Value: "/etc/replbot/script.d", DefaultText: "/etc/replbot/script.d", Usage: "script directory"}),
 		altsrc.NewDurationFlag(&cli.DurationFlag{Name: "idle-timeout", Aliases: []string{"T"}, EnvVars: []string{"REPLBOT_IDLE_TIMEOUT"}, Value: config.DefaultIdleTimeout, Usage: "timeout after which sessions are ended"}),
@@ -50,6 +51,7 @@ func execRun(c *cli.Context) error {
 	scriptDir := c.String("script-dir")
 	timeout := c.Duration("idle-timeout")
 	defaultMode := c.String("default-mode")
+	debug := c.Bool("debug")
 	if token == "" || token == "MUST_BE_SET" {
 		return errors.New("missing bot token, pass --slack-bot-token, set REPLBOT_SLACK_BOT_TOKEN env variable or slack-bot-token config option")
 	} else if _, err := os.Stat(scriptDir); err != nil {
@@ -68,6 +70,7 @@ func execRun(c *cli.Context) error {
 	conf.ScriptDir = scriptDir
 	conf.IdleTimeout = timeout
 	conf.DefaultMode = defaultMode
+	conf.Debug = debug
 	robot, err := bot.New(conf)
 	if err != nil {
 		return err

@@ -1,2 +1,11 @@
 #!/bin/sh
-docker run --rm -it sehrig/cling cling
+# REPLbot script to run a C++ REPL.
+#
+# Scripts are executed as "./script run <id>" to start the REPL,
+# and as "./script kill <id>" to stop it.
+
+case "$1" in
+  run) docker run --rm --name "$2" -it sehrig/cling cling ;;
+  kill) if [ -n "$(docker ps -q -f "name=$2")" ]; then docker kill "$2"; fi ;;
+  *) echo "Syntax: $0 (run|kill) ID"; exit 1 ;;
+esac

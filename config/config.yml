@@ -20,7 +20,7 @@ slack-bot-token: MUST_BE_SET
 # to check them out and add/remove scripts as you like.
 #
 # Security note:
-#   Scripts are run in and controlled by a screen(1) and can be executed from Slack by users, so it is
+#   Scripts are run in and controlled by a tmux(1) and can be executed from Slack by users, so it is
 #   vital that you make sure you cannot do anything nasty from these scripts. Either properly restrict
 #   them (limited shell), and/or put them in a Docker container.
 #

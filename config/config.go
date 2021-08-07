@@ -29,6 +29,7 @@ type Config struct {
 	ScriptDir   string
 	IdleTimeout time.Duration
 	DefaultMode string
+	Debug       bool
 }
 
 // New instantiates a default new config

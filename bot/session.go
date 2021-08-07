@@ -8,6 +8,7 @@ import (
 	"heckel.io/replbot/config"
 	"heckel.io/replbot/util"
 	"log"
+	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
@@ -16,27 +17,27 @@ import (
 )
 
 var (
-	// consoleCodeRegex is a regex describing console escape sequences that we're stripping out.
-	// This regex only matches ECMA-48 CSI sequences (ESC [ ... <char>), which is enough since, we're using screen.
+	// consoleCodeRegex is a regex describing console escape sequences that we're stripping out. This regex
+	// only matches ECMA-48 CSI sequences (ESC [ ... <char>), which is enough since, we're using tmux's capture-pane.
 	// See https://man7.org/linux/man-pages/man4/console_codes.4.html
 	consoleCodeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
-	// stuffTable is a translation table that translates Slack input commands "!<command>" to something that can be
-	// send via screen's "-X stuff" command, see https://www.gnu.org/software/screen/manual/html_node/Input-Translation.html#Input-Translation
-	stuffTable = map[string]string{
-		"c":      "^C",
-		"d":      "^D",
-		"ret":    "^M",
-		"r":      "^M",
-		"t":      "\t",
-		"tt":     "\t\t",
-		"esc":    "\\033",    // ESC
-		"up":     "\\033OA",  // Cursor up
-		"down":   "\\033OB",  // Cursor down
-		"right":  "\\033OC",  // Cursor right
-		"left":   "\\033OD",  // Cursor left
-		"pgup":   "\\033[5~", // Page up
-		"pgdown": "\\033[6~", // Page down
+	// sendKeysTable is a translation table that translates Slack input commands "!<command>" to something that can be
+	// send via tmux's send-keys command, see https://man7.org/linux/man-pages/man1/tmux.1.html#KEY_BINDINGS
+	sendKeysTable = map[string]string{
+		"c":     "^C",
+		"d":     "^D",
+		"ret":   "^M",
+		"r":     "^M",
+		"t":     "\t",
+		"tt":    "\t\t",
+		"esc":   "escape", // ESC
+		"up":    "up",     // Cursor up
+		"down":  "down",   // Cursor down
+		"right": "right",  // Cursor right
+		"left":  "left",   // Cursor left
+		"pd":    "ppage",  // Page up
+		"pu":    "npage",  // Page down
 	}
 
 	errExit = errors.New("exited REPL")
@@ -63,7 +64,7 @@ const (
 		"  `!c`, `!d`, `!esc` - Send Ctrl-C/Ctrl-D/ESC\n" +
 		"  `!t`, `!tt` - Send TAB / double-TAB\n" +
 		"  `!up`, `!down`, `!left`, `!right` - Send cursor up, down, left or right\n" +
-		"  `!pgup`, `!pgdown` - Send page up / page down\n" +
+		"  `!pu`, `!pd` - Send page up / page down\n" +
 		"  `!screen`, `!s` - Re-send a new screen window\n" +
 		"  `!! ...` - Lines prefixed like this are comments and are ignored\n" +
 		"  `!help`, `!h` - Show this help screen\n" +
@@ -73,6 +74,9 @@ const (
 	updateMessageUserInputCountLimit = 5
 
 	updateScreenInterval = 200 * time.Millisecond
+
+	scriptRunCommand  = "run"
+	scriptKillCommand = "kill"
 )
 
 type Session struct {
@@ -90,8 +94,9 @@ type Session struct {
 	warnTimer      *time.Timer
 	closeTimer     *time.Timer
 	script         string
+	scriptID       string
 	mode           string
-	screen         *util.Screen
+	tmux           *util.Tmux
 	mu             sync.RWMutex
 }
 
@@ -104,8 +109,9 @@ func NewSession(config *config.Config, id string, control Sender, terminal Sende
 		control:        control,
 		terminal:       terminal,
 		script:         script,
+		scriptID:       util.SanitizeID(id),
 		mode:           mode,
-		screen:         util.NewScreen(),
+		tmux:           util.NewTmux(id, 100, 30),
 		userInputChan:  make(chan string, 10), // buffered!
 		userInputCount: 0,
 		forceResend:    make(chan bool),
@@ -121,7 +127,7 @@ func NewSession(config *config.Config, id string, control Sender, terminal Sende
 func (s *Session) Run() error {
 	log.Printf("[session %s] Started REPL session", s.id)
 	defer log.Printf("[session %s] Closed REPL session", s.id)
-	if err := s.screen.Start(s.script); err != nil {
+	if err := s.tmux.Start(s.script, scriptRunCommand, s.scriptID); err != nil {
 		return err
 	}
 	if err := s.control.Send(s.sessionStartedMessage(), Markdown); err != nil {
@@ -199,13 +205,13 @@ func (s *Session) handleUserInput(input string) error {
 		if strings.HasPrefix(input, commentPrefix) {
 			return nil // Ignore comments
 		} else if strings.HasPrefix(input, rawPrefix) {
-			return s.screen.Paste(strings.TrimPrefix(input, rawPrefix))
+			return s.tmux.Paste(strings.TrimPrefix(input, rawPrefix))
 		} else if len(input) > 1 && input[0] == '!' {
-			if controlChar, ok := stuffTable[input[1:]]; ok {
-				return s.screen.Stuff(controlChar)
+			if controlChar, ok := sendKeysTable[input[1:]]; ok {
+				return s.tmux.SendKeys(controlChar)
 			}
 		}
-		return s.screen.Paste(fmt.Sprintf("%s\n", input))
+		return s.tmux.Paste(fmt.Sprintf("%s\n", input))
 	}
 }
 
@@ -233,7 +239,7 @@ func (s *Session) commandOutputLoop() error {
 }
 
 func (s *Session) maybeRefreshTerminal(last, lastID string) (string, string, error) {
-	current, err := s.screen.Hardcopy()
+	current, err := s.tmux.CapturePane()
 	if err != nil {
 		return "", "", errExit // The command may have ended, gracefully exit
 	} else if current == last {
@@ -270,11 +276,15 @@ func (s *Session) shutdownHandler() error {
 	log.Printf("[session %s] Starting shutdown handler", s.id)
 	defer log.Printf("[session %s] Exiting shutdown handler", s.id)
 	<-s.ctx.Done()
-	if err := s.screen.Stop(); err != nil {
-		log.Printf("warning: unable to stop screen: %s", err.Error())
+	if err := s.tmux.Stop(); err != nil {
+		log.Printf("[session %s] Warning: unable to stop tmux: %s", s.id, err.Error())
+	}
+	cmd := exec.Command(s.script, scriptKillCommand, s.scriptID)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("[session %s] Warning: unable to kill command: %s; command output: %s", s.id, err.Error(), string(output))
 	}
 	if err := s.control.Send(sessionExitedMessage, Markdown); err != nil {
-		return err
+		log.Printf("[session %s] Warning: unable to send exited message: %s", s.id, err.Error())
 	}
 	s.mu.Lock()
 	s.active = false
