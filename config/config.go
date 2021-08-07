@@ -23,6 +23,13 @@ const (
 	ModeSplit = "split"
 )
 
+const (
+	SizeLarge  = "large"
+	SizeMedium = "medium"
+	SizeSmall  = "small"
+	SizeTiny   = "tiny"
+)
+
 // Config is the main config struct for the application. Use New to instantiate a default config struct.
 type Config struct {
 	Token       string

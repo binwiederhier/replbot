@@ -100,7 +100,7 @@ type Session struct {
 	mu             sync.RWMutex
 }
 
-func NewSession(config *config.Config, id string, control Sender, terminal Sender, script string, mode string) *Session {
+func NewSession(config *config.Config, id string, control Sender, terminal Sender, script string, mode string, width, height int) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 	return &Session{
@@ -111,7 +111,7 @@ func NewSession(config *config.Config, id string, control Sender, terminal Sende
 		script:         script,
 		scriptID:       util.SanitizeID(id),
 		mode:           mode,
-		tmux:           util.NewTmux(id, 100, 30),
+		tmux:           util.NewTmux(id, width, height),
 		userInputChan:  make(chan string, 10), // buffered!
 		userInputCount: 0,
 		forceResend:    make(chan bool),

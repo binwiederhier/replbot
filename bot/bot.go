@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"github.com/slack-go/slack"
 	"heckel.io/replbot/config"
-	"heckel.io/replbot/util"
 	"log"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -18,6 +19,10 @@ const (
 		"Available REPLs: %s.\n\nTo run the session in a `thread`, the main `channel`, " +
 		"or in `split` mode, use the respective key words. To start a private REPL session, just DM me."
 	misconfiguredMessage = "Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
+)
+
+var (
+	sizeRegex = regexp.MustCompile(`(\d+)x(\d+)`)
 )
 
 type Bot struct {
@@ -115,24 +120,24 @@ func (b *Bot) handleMessageEvent(ev *slack.MessageEvent) error {
 }
 
 func (b *Bot) handleNewDirectSessionEvent(ev *slack.MessageEvent) error {
-	_, script, mode := b.parseMessage(ev)
+	_, script, mode, width, height := b.parseMessage(ev)
 	if script == "" {
 		return b.handleHelp(ev)
 	}
 	switch mode {
 	case config.ModeChannel:
-		return b.startSessionChannel(ev, script)
+		return b.startSessionChannel(ev, script, width, height)
 	case config.ModeThread:
-		return b.startSessionThread(ev, script)
+		return b.startSessionThread(ev, script, width, height)
 	case config.ModeSplit:
-		return b.startSessionSplit(ev, script)
+		return b.startSessionSplit(ev, script, width, height)
 	default:
 		return fmt.Errorf("unexpected mode: %s", mode)
 	}
 }
 
 func (b *Bot) handleNewChannelSessionEvent(ev *slack.MessageEvent) error {
-	mentioned, script, mode := b.parseMessage(ev)
+	mentioned, script, mode, width, height := b.parseMessage(ev)
 	if !mentioned {
 		return nil
 	} else if script == "" {
@@ -140,40 +145,40 @@ func (b *Bot) handleNewChannelSessionEvent(ev *slack.MessageEvent) error {
 	}
 	switch mode {
 	case config.ModeChannel:
-		return b.startSessionChannel(ev, script)
+		return b.startSessionChannel(ev, script, width, height)
 	case config.ModeThread:
-		return b.startSessionThread(ev, script)
+		return b.startSessionThread(ev, script, width, height)
 	case config.ModeSplit:
-		return b.startSessionSplit(ev, script)
+		return b.startSessionSplit(ev, script, width, height)
 	default:
 		return fmt.Errorf("unexpected mode: %s", mode)
 	}
 }
 
-func (b *Bot) startSessionChannel(ev *slack.MessageEvent, script string) error {
+func (b *Bot) startSessionChannel(ev *slack.MessageEvent, script string, width, height int) error {
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, "")
-	return b.startSession(sessionID, ev.Channel, "", "", script, config.ModeChannel)
+	return b.startSession(sessionID, ev.Channel, "", "", script, config.ModeChannel, width, height)
 }
 
-func (b *Bot) startSessionThread(ev *slack.MessageEvent, script string) error {
+func (b *Bot) startSessionThread(ev *slack.MessageEvent, script string, width, height int) error {
 	if ev.ThreadTimestamp == "" {
 		sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp)
-		return b.startSession(sessionID, ev.Channel, ev.Timestamp, ev.Timestamp, script, config.ModeThread)
+		return b.startSession(sessionID, ev.Channel, ev.Timestamp, ev.Timestamp, script, config.ModeThread, width, height)
 	}
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp)
-	return b.startSession(sessionID, ev.Channel, ev.ThreadTimestamp, ev.ThreadTimestamp, script, config.ModeThread)
+	return b.startSession(sessionID, ev.Channel, ev.ThreadTimestamp, ev.ThreadTimestamp, script, config.ModeThread, width, height)
 }
 
-func (b *Bot) startSessionSplit(ev *slack.MessageEvent, script string) error {
+func (b *Bot) startSessionSplit(ev *slack.MessageEvent, script string, width, height int) error {
 	if ev.ThreadTimestamp == "" {
 		sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Timestamp)
-		return b.startSession(sessionID, ev.Channel, ev.Timestamp, "", script, config.ModeSplit)
+		return b.startSession(sessionID, ev.Channel, ev.Timestamp, "", script, config.ModeSplit, width, height)
 	}
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimestamp)
-	return b.startSession(sessionID, ev.Channel, ev.ThreadTimestamp, "", script, config.ModeSplit)
+	return b.startSession(sessionID, ev.Channel, ev.ThreadTimestamp, "", script, config.ModeSplit, width, height)
 }
 
-func (b *Bot) startSession(sessionID string, channel string, controlTS string, terminalTS string, script string, mode string) error {
+func (b *Bot) startSession(sessionID string, channel string, controlTS string, terminalTS string, script string, mode string, width, height int) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	control := NewSlackSender(b.rtm, channel, controlTS)
@@ -181,7 +186,7 @@ func (b *Bot) startSession(sessionID string, channel string, controlTS string, t
 	if terminalTS != controlTS {
 		terminal = NewSlackSender(b.rtm, channel, terminalTS)
 	}
-	session := NewSession(b.config, sessionID, control, terminal, script, mode)
+	session := NewSession(b.config, sessionID, control, terminal, script, mode, width, height)
 	b.sessions[sessionID] = session
 	log.Printf("[session %s] Starting session", sessionID)
 	go func() {
@@ -218,24 +223,43 @@ func (b *Bot) handleLatencyReportEvent(ev *slack.LatencyReport) error {
 	return nil
 }
 
-func (b *Bot) parseMessage(ev *slack.MessageEvent) (mentioned bool, script string, mode string) {
+func (b *Bot) parseMessage(ev *slack.MessageEvent) (mentioned bool, script string, mode string, width int, height int) {
 	fields := strings.Fields(ev.Text)
-	mentioned = util.StringContains(fields, b.me())
-	for _, f := range fields {
-		if script = b.config.Script(f); script != "" {
-			break
+	me := b.me()
+	for _, field := range fields {
+		switch field {
+		case me:
+			mentioned = true
+		case config.ModeThread, config.ModeChannel, config.ModeSplit:
+			mode = field
+		case config.SizeTiny:
+			width, height = 60, 15
+		case config.SizeSmall:
+			width, height = 80, 24
+		case config.SizeMedium:
+			width, height = 100, 30
+		case config.SizeLarge:
+			width, height = 120, 40
+		default:
+			if s := b.config.Script(field); s != "" && script == "" {
+				script = s
+			}
+			if s := sizeRegex.FindStringSubmatch(field); len(s) > 0 {
+				width, _ = strconv.Atoi(s[0])
+				height, _ = strconv.Atoi(s[1])
+			}
+			// FIXME This should fail!
 		}
 	}
-	if util.StringContains(fields, config.ModeThread) {
-		mode = config.ModeThread
-	} else if util.StringContains(fields, config.ModeChannel) {
-		mode = config.ModeChannel
-	} else if util.StringContains(fields, config.ModeSplit) {
-		mode = config.ModeSplit
-	} else if ev.ThreadTimestamp != "" && b.config.DefaultMode == config.ModeChannel {
-		mode = config.ModeThread // special handling, cause it'd be weird otherwise
-	} else {
-		mode = b.config.DefaultMode
+	if width == 0 || height == 0 {
+		width, height = 100, 30 // medium
+	}
+	if mode == "" {
+		if ev.ThreadTimestamp != "" && b.config.DefaultMode == config.ModeChannel {
+			mode = config.ModeThread // special handling, cause it'd be weird otherwise
+		} else {
+			mode = b.config.DefaultMode
+		}
 	}
 	return
 }
