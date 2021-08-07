@@ -17,8 +17,8 @@ const (
 	welcomeMessage = "Hi there 👋! "
 	helpMessage    = "I'm a robot that you can use to control a REPL from Slack. To start a new session, simply tag me " +
 		"and name one of the available REPLs, like so: %s %s\n\nAvailable REPLs: %s. To run the session in a `thread`, " +
-		"the main `channel`, or in `split` mode, use the respective key words. Use the keywords `tiny`, `small`, " +
-		"`medium`, `large` or `WxH` to define the terminal size. To start a private REPL session, just DM me."
+		"the main `channel`, or in `split` mode, use the respective keywords. To define the terminal size, use the words " +
+		"`tiny`, `small`, `medium`, `large` or `WxH`. To start a private REPL session, just DM me."
 	misconfiguredMessage       = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
 	invalidTerminalSizeMessage = "🙁 Oh my, you requested a terminal size that is quite unusual. I can't let you do that. " +
 		"The minimal supported size is %dx%d, the maximal size is %dx%d.\n\n"
