@@ -25,6 +25,7 @@ type Tmux struct {
 	width, height int
 }
 
+// Must be more than config.MaxSize to give tmux a little room for the other two panes
 const (
 	terminalWidth  = 200
 	terminalHeight = 80
