@@ -47,11 +47,13 @@ var (
 const (
 	sessionStartedMessage = "🚀 REPL started. Type `!help` to see a list of available commands, or `!exit` to forcefully " +
 		"exit the REPL. Lines prefixed with `!!` are treated as comments.%s"
-	splitModeThreadMessage   = "Use this thread to enter your commands. Your output will appear in the main channel."
-	sessionExitedMessage     = "👋 REPL exited. See you later!"
-	timeoutWarningMessage    = "⏱️ Are you still there? Your session will time out in one minute."
-	forceCloseMessage        = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
-	malformatedSizeMessage   = "🙁 You entered an invalid size. Use `tiny`, `small`, `medium`, `large` or `WxH` instead."
+	splitModeThreadMessage         = "Use this thread to enter your commands. Your output will appear in the main channel."
+	sessionExitedMessage           = "👋 REPL exited. See you later!"
+	timeoutWarningMessage          = "⏱️ Are you still there? Your session will time out in one minute."
+	forceCloseMessage              = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
+	malformatedTerminalSizeMessage = "🙁 You entered an invalid size. Use `tiny`, `small`, `medium`, `large` or `WxH` instead."
+	invalidTerminalSizeMessage     = "🙁 Oh my, you requested a terminal size that is quite unusual. I can't let you do that. " +
+		"The minimal supported size is %dx%d, the maximal size is %dx%d.\n\n"
 	helpCommand              = "!help"
 	helpShortCommand         = "!h"
 	exitCommand              = "!exit"
@@ -358,7 +360,7 @@ func convertSize(size string) (width int, height int, err error) {
 	default:
 		matches := sizeRegex.FindStringSubmatch(size)
 		if len(matches) == 0 {
-			return 0, 0, fmt.Errorf(malformatedSizeMessage)
+			return 0, 0, fmt.Errorf(malformatedTerminalSizeMessage)
 		}
 		width, _ = strconv.Atoi(matches[1])
 		height, _ = strconv.Atoi(matches[2])

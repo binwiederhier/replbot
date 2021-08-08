@@ -8,7 +8,6 @@ import (
 	"heckel.io/replbot/config"
 	"log"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -19,9 +18,7 @@ const (
 		"and name one of the available REPLs, like so: %s %s\n\nAvailable REPLs: %s. To run the session in a `thread`, " +
 		"the main `channel`, or in `split` mode, use the respective keywords. To define the terminal size, use the words " +
 		"`tiny`, `small`, `medium`, `large` or `WxH`. To start a private REPL session, just DM me."
-	misconfiguredMessage       = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
-	invalidTerminalSizeMessage = "🙁 Oh my, you requested a terminal size that is quite unusual. I can't let you do that. " +
-		"The minimal supported size is %dx%d, the maximal size is %dx%d.\n\n"
+	misconfiguredMessage  = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
 	unknownCommandMessage = "I am not quite sure what you mean by \"_%s_\" ⁉️\n\n"
 )
 
@@ -216,11 +213,10 @@ func (b *Bot) parseMessage(ev *slack.MessageEvent) (script string, mode string, 
 		default:
 			if s := b.config.Script(field); s != "" {
 				script = s
-			} else if s := sizeRegex.FindStringSubmatch(field); len(s) > 0 {
-				width, _ = strconv.Atoi(s[1])
-				height, _ = strconv.Atoi(s[2])
-				if width < 40 || height < 10 || width > 150 || height > 50 {
-					return "", "", 0, 0, fmt.Errorf(invalidTerminalSizeMessage, 40, 10, 150, 50)
+			} else if sizeRegex.MatchString(field) {
+				width, height, err = convertSize(field)
+				if err != nil {
+					return
 				}
 			} else {
 				return "", "", 0, 0, fmt.Errorf(unknownCommandMessage, field)
