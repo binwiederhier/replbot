@@ -71,7 +71,7 @@ const (
 		"  `!up`, `!down`, `!left`, `!right` - Send cursor up, down, left or right\n" +
 		"  `!pu`, `!pd` - Send page up / page down\n" +
 		"  `!! ...` - Lines prefixed like this are comments and are ignored\n" +
-		"  `!resize ... - Resize terminal window\n" +
+		"  `!resize ...` - Resize terminal window\n" +
 		"  `!screen`, `!s` - Re-send a new terminal window\n" +
 		"  `!help`, `!h` - Show this help screen\n" +
 		"  `!exit`, `!q` - Exit REPL"
