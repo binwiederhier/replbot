@@ -30,6 +30,7 @@ const (
 	SizeSmall  = "small"
 	SizeMedium = "medium"
 	SizeLarge  = "large"
+	SizeMax    = "max"
 )
 
 var (
@@ -38,7 +39,10 @@ var (
 		SizeSmall:  {80, 24},
 		SizeMedium: {100, 30},
 		SizeLarge:  {120, 38},
+		SizeMax:    {150, 50},
 	}
+	MinSize = Sizes[SizeTiny]
+	MaxSize = Sizes[SizeMax]
 )
 
 // Config is the main config struct for the application. Use New to instantiate a default config struct.

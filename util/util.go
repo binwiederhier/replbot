@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"os/exec"
 	"regexp"
 	"time"
 )
@@ -33,18 +34,22 @@ func RandomStringWithCharset(length int, charset string) string {
 	return string(b)
 }
 
-// StringContains returns true if the needle is contained in the haystack
-func StringContains(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
-}
-
 // FileExists returns true if a file with the given filename exists
 func FileExists(filename string) bool {
 	_, err := os.Stat(filename)
 	return err == nil
+}
+
+func Run(command ...string) error {
+	cmd := exec.Command(command[0], command[1:]...)
+	return cmd.Run()
+}
+
+func RunAll(commands ...[]string) error {
+	for _, command := range commands {
+		if err := Run(command...); err != nil {
+			return err
+		}
+	}
+	return nil
 }

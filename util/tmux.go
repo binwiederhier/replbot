@@ -5,65 +5,82 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 )
 
-// Tmux represents a tmux(1) process
+// Tmux represents a tmux(1) process with one window and three panes, to allow us to resize the terminal of the
+// main pane (.2). The main pane is .2, so that if it exits there is no other pane to take its place.
+//
+// Example: Assuming "htop" is our target process, we're essentially doing this:
+//   tmux new-session -s abc -d -x 200 -y 60
+//   tmux split-window -t abc.0 -v
+//   tmux split-window -t abc.1 -h htop
+//   tmux resize-pane -t abc.2 -x 80 -y 24
+//   tmux select-pane -t abc.2
+//   sleep 1
+//   tmux capture-pane -t abc.2 -p
+//
 type Tmux struct {
-	ID            string
-	Width, Height int
+	id            string
+	width, height int
 }
+
+const (
+	terminalWidth  = 200
+	terminalHeight = 80
+)
 
 // NewTmux creates a new Tmux instance, but does not start the tmux
 func NewTmux(id string, width, height int) *Tmux {
 	return &Tmux{
-		ID:     SanitizeID(id),
-		Width:  width,
-		Height: height,
+		id:     SanitizeID(id),
+		width:  width,
+		height: height,
 	}
 }
 
 // Start starts the tmux using the given command and arguments
-func (s *Tmux) Start(args ...string) error {
-	args = append([]string{"new-session", "-d", "-s", s.ID, "-x", fmt.Sprintf("%d", s.Width), "-y", fmt.Sprintf("%d", s.Height)}, args...)
-	cmd := exec.Command("tmux", args...)
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-	return nil
+func (s *Tmux) Start(command ...string) error {
+	return RunAll(
+		[]string{"tmux", "new-session", "-s", s.id, "-d", "-x", strconv.Itoa(terminalWidth), "-y", strconv.Itoa(terminalHeight)},
+		[]string{"tmux", "split-window", "-t", fmt.Sprintf("%s.0", s.id), "-v"},
+		append([]string{"tmux", "split-window", "-t", fmt.Sprintf("%s.1", s.id), "-h"}, command...),
+		[]string{"tmux", "resize-pane", "-t", fmt.Sprintf("%s.2", s.id), "-x", strconv.Itoa(s.width), "-y", strconv.Itoa(s.height)},
+		[]string{"tmux", "select-pane", "-t", fmt.Sprintf("%s.2", s.id)},
+	)
 }
 
 // Active checks if the tmux is still active
 func (s *Tmux) Active() bool {
-	cmd := exec.Command("tmux", "has-session", "-t", s.ID)
-	return cmd.Run() == nil
+	return Run("tmux", "has-session", "-t", s.id) == nil
 }
 
 // Paste pastes the input into the tmux, as if the user entered it
 func (s *Tmux) Paste(input string) error {
+	defer os.Remove(s.bufferFile())
 	if err := os.WriteFile(s.bufferFile(), []byte(input), 0600); err != nil {
 		return err
 	}
-	cmd := exec.Command("tmux", "load-buffer", "-b", s.ID, s.bufferFile())
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-	cmd = exec.Command("tmux", "paste-buffer", "-b", s.ID, "-t", s.ID, "-d")
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-	return nil
+	return RunAll(
+		[]string{"tmux", "load-buffer", "-b", s.id, s.bufferFile()},
+		[]string{"tmux", "paste-buffer", "-b", s.id, "-t", fmt.Sprintf("%s.2", s.id), "-d"},
+	)
 }
 
 // SendKeys invokes the tmux send-keys command, which is useful for sending control sequences
 func (s *Tmux) SendKeys(keys string) error {
-	cmd := exec.Command("tmux", "send-keys", "-t", s.ID, keys)
-	return cmd.Run()
+	return Run("tmux", "send-keys", "-t", fmt.Sprintf("%s.2", s.id), keys)
 }
 
-// CapturePane returns a string representation of the current terminal
-func (s *Tmux) CapturePane() (string, error) {
+// Resize resizes the active pane (.2) to the given size up to the max size
+func (s *Tmux) Resize(width, height int) error {
+	return Run("tmux", "resize-pane", "-t", fmt.Sprintf("%s.2", s.id), "-x", strconv.Itoa(width), "-y", strconv.Itoa(height))
+}
+
+// Capture returns a string representation of the current terminal
+func (s *Tmux) Capture() (string, error) {
 	var buf bytes.Buffer
-	cmd := exec.Command("tmux", "capture-pane", "-t", s.ID, "-p")
+	cmd := exec.Command("tmux", "capture-pane", "-t", fmt.Sprintf("%s.2", s.id), "-p")
 	cmd.Stdout = &buf
 	if err := cmd.Run(); err != nil {
 		return "", err
@@ -73,10 +90,8 @@ func (s *Tmux) CapturePane() (string, error) {
 
 // Stop kills the tmux and its command using the 'quit' command
 func (s *Tmux) Stop() error {
-	defer os.Remove(s.bufferFile())
 	if s.Active() {
-		cmd := exec.Command("tmux", "kill-session", "-t", s.ID)
-		if err := cmd.Run(); err != nil {
+		if err := Run("tmux", "kill-session", "-t", s.id); err != nil {
 			return err
 		}
 	}
@@ -84,5 +99,5 @@ func (s *Tmux) Stop() error {
 }
 
 func (s *Tmux) bufferFile() string {
-	return fmt.Sprintf("/dev/shm/%s.buffer", s.ID)
+	return fmt.Sprintf("/dev/shm/%s.buffer", s.id)
 }

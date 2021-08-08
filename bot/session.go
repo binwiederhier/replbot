@@ -10,6 +10,7 @@ import (
 	"log"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -50,12 +51,14 @@ const (
 	sessionExitedMessage     = "👋 REPL exited. See you later!"
 	timeoutWarningMessage    = "⏱️ Are you still there? Your session will time out in one minute."
 	forceCloseMessage        = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
+	malformatedSizeMessage   = "🙁 You entered an invalid size. Use `tiny`, `small`, `medium`, `large` or `WxH` instead."
 	helpCommand              = "!help"
 	helpShortCommand         = "!h"
 	exitCommand              = "!exit"
 	exitShortCommand         = "!q"
 	screenCommand            = "!screen"
 	screenShortCommand       = "!s"
+	resizePrefix             = "!resize "
 	commentPrefix            = "!! "
 	rawPrefix                = "!n "
 	availableCommandsMessage = "Available commands:\n" +
@@ -65,8 +68,9 @@ const (
 		"  `!t`, `!tt` - Send TAB / double-TAB\n" +
 		"  `!up`, `!down`, `!left`, `!right` - Send cursor up, down, left or right\n" +
 		"  `!pu`, `!pd` - Send page up / page down\n" +
-		"  `!screen`, `!s` - Re-send a new screen window\n" +
 		"  `!! ...` - Lines prefixed like this are comments and are ignored\n" +
+		"  `!resize ... - Resize terminal window\n" +
+		"  `!screen`, `!s` - Re-send a new terminal window\n" +
 		"  `!help`, `!h` - Show this help screen\n" +
 		"  `!exit`, `!q` - Exit REPL"
 
@@ -128,6 +132,7 @@ func (s *Session) Run() error {
 	log.Printf("[session %s] Started REPL session", s.id)
 	defer log.Printf("[session %s] Closed REPL session", s.id)
 	if err := s.tmux.Start(s.script, scriptRunCommand, s.scriptID); err != nil {
+		log.Printf(err.Error())
 		return err
 	}
 	if err := s.control.Send(s.sessionStartedMessage(), Markdown); err != nil {
@@ -206,6 +211,12 @@ func (s *Session) handleUserInput(input string) error {
 			return nil // Ignore comments
 		} else if strings.HasPrefix(input, rawPrefix) {
 			return s.tmux.Paste(strings.TrimPrefix(input, rawPrefix))
+		} else if strings.HasPrefix(input, resizePrefix) {
+			width, height, err := convertSize(strings.TrimPrefix(input, resizePrefix))
+			if err != nil {
+				return s.control.Send(err.Error(), Markdown)
+			}
+			return s.tmux.Resize(width, height)
 		} else if len(input) > 1 && input[0] == '!' {
 			if controlChar, ok := sendKeysTable[input[1:]]; ok {
 				return s.tmux.SendKeys(controlChar)
@@ -242,7 +253,7 @@ func (s *Session) commandOutputLoop() error {
 }
 
 func (s *Session) maybeRefreshTerminal(last, lastID string) (string, string, error) {
-	current, err := s.tmux.CapturePane()
+	current, err := s.tmux.Capture()
 	if err != nil {
 		if lastID != "" {
 			_ = s.terminal.Update(lastID, s.composeExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
@@ -338,4 +349,22 @@ func (s *Session) composeExitedMessage(last string) string {
 	}
 	log.Println("|" + strings.TrimSpace(lines[len(lines)-1]) + "|")
 	return sanitized + "\n(REPL exited.)"
+}
+
+func convertSize(size string) (width int, height int, err error) {
+	switch size {
+	case config.SizeTiny, config.SizeSmall, config.SizeMedium, config.SizeLarge:
+		width, height = config.Sizes[size][0], config.Sizes[size][1]
+	default:
+		matches := sizeRegex.FindStringSubmatch(size)
+		if len(matches) == 0 {
+			return 0, 0, fmt.Errorf(malformatedSizeMessage)
+		}
+		width, _ = strconv.Atoi(matches[1])
+		height, _ = strconv.Atoi(matches[2])
+		if width < config.MinSize[0] || height < config.MinSize[1] || width > config.MaxSize[0] || height > config.MaxSize[1] {
+			return 0, 0, fmt.Errorf(invalidTerminalSizeMessage, config.MinSize[0], config.MinSize[1], config.MaxSize[0], config.MaxSize[1])
+		}
+	}
+	return
 }
