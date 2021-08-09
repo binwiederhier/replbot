@@ -11,6 +11,7 @@ var (
 	slackCodeBlockRegex    = regexp.MustCompile("```([^`]+)```")
 	slackCodeRegex         = regexp.MustCompile("`([^`]+)`")
 	slackUserLinkRegex     = regexp.MustCompile(`<@U[^>]+>`)
+	slackMacQuotesRegex    = regexp.MustCompile(`[“”]`)
 	slackReplacer          = strings.NewReplacer("&amp;", "&", "&lt;", "<", "&gt;", ">") // see slackutilsx.go, EscapeMessage
 )
 
@@ -21,7 +22,8 @@ func RemoveSlackMarkup(text string) string {
 	text = slackRawLinkRegex.ReplaceAllString(text, "$1")
 	text = slackCodeBlockRegex.ReplaceAllString(text, "$1")
 	text = slackCodeRegex.ReplaceAllString(text, "$1")
-	text = slackUserLinkRegex.ReplaceAllString(text, "") // Remove entirely!
-	text = slackReplacer.Replace(text)                   // Must happen last!
+	text = slackUserLinkRegex.ReplaceAllString(text, "")   // Remove entirely!
+	text = slackMacQuotesRegex.ReplaceAllString(text, `"`) // See issue #14, Mac client sends wrong quotes
+	text = slackReplacer.Replace(text)                     // Must happen last!
 	return text
 }
