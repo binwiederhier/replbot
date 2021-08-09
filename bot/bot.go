@@ -227,7 +227,7 @@ func (b *Bot) parseMessage(ev *slack.MessageEvent) (script string, mode string, 
 		return "", "", 0, 0, errNoScript
 	}
 	if mode == "" {
-		if ev.ThreadTimestamp != "" && b.config.DefaultMode == config.ModeChannel {
+		if ev.ThreadTimestamp != "" {
 			mode = config.ModeThread // special handling, cause it'd be weird otherwise
 		} else {
 			mode = b.config.DefaultMode
