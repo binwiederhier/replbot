@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/slack-go/slack"
 	"heckel.io/replbot/config"
+	"heckel.io/replbot/util"
 	"log"
 	"regexp"
 	"strings"
@@ -40,6 +41,9 @@ type Bot struct {
 func New(config *config.Config) (*Bot, error) {
 	if len(config.Scripts()) == 0 {
 		return nil, errors.New("no REPL scripts found in script dir")
+	}
+	if err := util.TmuxInstalled(); err != nil {
+		return nil, fmt.Errorf("tmux check failed: %s", err.Error())
 	}
 	return &Bot{
 		config:   config,
