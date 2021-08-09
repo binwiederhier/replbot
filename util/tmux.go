@@ -2,10 +2,12 @@ package util
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 )
 
 // Tmux represents a tmux(1) process with one window and three panes, to allow us to resize the terminal of the
@@ -87,6 +89,28 @@ func (s *Tmux) Capture() (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// Cursor returns the X and Y position of the cursor
+func (s *Tmux) Cursor() (show bool, x int, y int, err error) {
+	var buf bytes.Buffer
+	cmd := exec.Command("tmux", "display-message", "-t", fmt.Sprintf("%s.2", s.id), "-p", "-F", "#{cursor_flag},#{cursor_x},#{cursor_y}")
+	cmd.Stdout = &buf
+	if err = cmd.Run(); err != nil {
+		return
+	}
+	cursor := strings.Split(strings.TrimSpace(buf.String()), ",")
+	if len(cursor) != 3 {
+		return false, 0, 0, errors.New("unexpected response from display-message")
+	}
+	show = cursor[0] == "1"
+	if x, err = strconv.Atoi(cursor[1]); err != nil {
+		return
+	}
+	if y, err = strconv.Atoi(cursor[2]); err != nil {
+		return
+	}
+	return
 }
 
 // Stop kills the tmux and its command using the 'quit' command

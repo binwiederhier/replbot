@@ -15,6 +15,8 @@ const (
 
 	DefaultSize = SizeMedium
 
+	DefaultCursorRate = 2 * time.Second
+
 	// ModeThread is the mode constant to define that both terminal window and user control appear in a thread
 	ModeThread = "thread"
 
@@ -25,6 +27,7 @@ const (
 	ModeSplit = "split"
 )
 
+// Predefined terminal sizes
 const (
 	SizeTiny   = "tiny"
 	SizeSmall  = "small"
@@ -52,6 +55,7 @@ type Config struct {
 	IdleTimeout time.Duration
 	DefaultMode string
 	DefaultSize string
+	CursorRate  time.Duration
 	Debug       bool
 }
 

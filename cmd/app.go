@@ -28,6 +28,7 @@ func New() *cli.App {
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "script-dir", Aliases: []string{"d"}, EnvVars: []string{"REPLBOT_SCRIPT_DIR"}, Value: "/etc/replbot/script.d", DefaultText: "/etc/replbot/script.d", Usage: "script directory"}),
 		altsrc.NewDurationFlag(&cli.DurationFlag{Name: "idle-timeout", Aliases: []string{"T"}, EnvVars: []string{"REPLBOT_IDLE_TIMEOUT"}, Value: config.DefaultIdleTimeout, Usage: "timeout after which sessions are ended"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-mode", Aliases: []string{"m"}, EnvVars: []string{"REPLBOT_DEFAULT_MODE"}, Value: config.DefaultMode, DefaultText: config.DefaultMode, Usage: "default mode [channel, thread or split]"}),
+		altsrc.NewDurationFlag(&cli.DurationFlag{Name: "cursor-rate", Aliases: []string{"C"}, EnvVars: []string{"REPLBOT_CURSOR_RATE"}, Value: config.DefaultCursorRate, Usage: "cursor blink rate; too low values cause rate limiting issues"}),
 	}
 	return &cli.App{
 		Name:                   "replbot",
@@ -51,6 +52,7 @@ func execRun(c *cli.Context) error {
 	scriptDir := c.String("script-dir")
 	timeout := c.Duration("idle-timeout")
 	defaultMode := c.String("default-mode")
+	cursorRate := c.Duration("cursor-rate")
 	debug := c.Bool("debug")
 	if token == "" || token == "MUST_BE_SET" {
 		return errors.New("missing bot token, pass --slack-bot-token, set REPLBOT_SLACK_BOT_TOKEN env variable or slack-bot-token config option")
@@ -62,6 +64,10 @@ func execRun(c *cli.Context) error {
 		return errors.New("cannot read script directory, or directory empty")
 	} else if defaultMode != config.ModeChannel && defaultMode != config.ModeThread && defaultMode != config.ModeSplit {
 		return errors.New("default mode must be 'channel', 'thread' or 'split'")
+	} else if cursorRate < 500*time.Millisecond {
+		return fmt.Errorf("cursor rate is too low, min allowed is 500ms, though that'll probably cause rate limiting issues too")
+	} else if cursorRate < time.Second {
+		log.Printf("warning: cursor rate is really low; Slack will rate limit us if there are too many shells open")
 	}
 
 	// Create main bot
@@ -70,6 +76,7 @@ func execRun(c *cli.Context) error {
 	conf.ScriptDir = scriptDir
 	conf.IdleTimeout = timeout
 	conf.DefaultMode = defaultMode
+	conf.CursorRate = cursorRate
 	conf.Debug = debug
 	robot, err := bot.New(conf)
 	if err != nil {

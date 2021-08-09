@@ -103,6 +103,8 @@ type Session struct {
 	scriptID       string
 	mode           string
 	tmux           *util.Tmux
+	cursorOn       bool
+	cursorUpdated  time.Time
 	mu             sync.RWMutex
 }
 
@@ -134,7 +136,7 @@ func (s *Session) Run() error {
 	log.Printf("[session %s] Started REPL session", s.id)
 	defer log.Printf("[session %s] Closed REPL session", s.id)
 	if err := s.tmux.Start(s.script, scriptRunCommand, s.scriptID); err != nil {
-		log.Printf(err.Error())
+		log.Printf("[session %s] Failed to start tmux: %s", s.id, err.Error())
 		return err
 	}
 	if err := s.control.Send(s.sessionStartedMessage(), Markdown); err != nil {
@@ -261,27 +263,32 @@ func (s *Session) maybeRefreshTerminal(last, lastID string) (string, string, err
 			_ = s.terminal.Update(lastID, s.composeExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
 		}
 		return "", "", errExit // The command may have ended, gracefully exit
-	} else if current == last {
+	}
+	current = s.maybeAddCursor(sanitizeWindow(current))
+	if current == last {
 		return last, lastID, nil
 	}
 
-	// Remove control characters, mark empty screen
-	sanitized := consoleCodeRegex.ReplaceAllString(current, "")
-	if strings.TrimSpace(sanitized) == "" {
-		sanitized = fmt.Sprintf("(screen is empty) %s", sanitized)
-	}
-
+	log.Printf("updating")
 	// Update message (or send new)
 	if s.shouldUpdateTerminal(lastID) {
-		if err := s.terminal.Update(lastID, sanitized, Code); err == nil {
+		if err := s.terminal.Update(lastID, current, Code); err == nil {
 			return current, lastID, nil
 		}
 	}
-	if lastID, err = s.terminal.SendWithID(sanitized, Code); err != nil {
+	if lastID, err = s.terminal.SendWithID(current, Code); err != nil {
 		return "", "", err
 	}
 	atomic.StoreInt32(&s.userInputCount, 0)
 	return current, lastID, nil
+}
+
+func sanitizeWindow(window string) string {
+	sanitized := consoleCodeRegex.ReplaceAllString(window, "")
+	if strings.TrimSpace(sanitized) == "" {
+		sanitized = fmt.Sprintf("(screen is empty) %s", sanitized)
+	}
+	return sanitized
 }
 
 func (s *Session) shouldUpdateTerminal(lastID string) bool {
@@ -289,6 +296,31 @@ func (s *Session) shouldUpdateTerminal(lastID string) bool {
 		return lastID != ""
 	}
 	return lastID != "" && atomic.LoadInt32(&s.userInputCount) < updateMessageUserInputCountLimit
+}
+
+func (s *Session) maybeAddCursor(window string) string {
+	if s.config.CursorRate == 0 {
+		return window
+	}
+	showCursor, cursorX, cursorY, err := s.tmux.Cursor()
+	if !showCursor || err != nil {
+		s.cursorUpdated = time.Now()
+		return window
+	}
+	if time.Since(s.cursorUpdated) > s.config.CursorRate {
+		s.cursorOn = !s.cursorOn
+		s.cursorUpdated = time.Now()
+	}
+	if !s.cursorOn {
+		return window
+	}
+	lines := strings.Split(window, "\n")
+	line := lines[cursorY]
+	if len(line) < cursorX+1 {
+		line += strings.Repeat(" ", cursorX-len(line)+1)
+	}
+	lines[cursorY] = line[0:cursorX] + "█" + line[cursorX+1:]
+	return strings.Join(lines, "\n")
 }
 
 func (s *Session) shutdownHandler() error {
