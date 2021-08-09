@@ -15,7 +15,6 @@ const (
 
 	DefaultSize = SizeMedium
 
-	DefaultCursorRate = 2 * time.Second
 
 	// ModeThread is the mode constant to define that both terminal window and user control appear in a thread
 	ModeThread = "thread"
@@ -34,6 +33,12 @@ const (
 	SizeMedium = "medium"
 	SizeLarge  = "large"
 	SizeMax    = "max"
+)
+
+const (
+	DefaultCursor = CursorOn
+	CursorOff = time.Duration(0)
+	CursorOn  = time.Duration(1)
 )
 
 var (

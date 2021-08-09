@@ -49,3 +49,13 @@ slack-bot-token: MUST_BE_SET
 # Required:  No
 #
 # idle-timeout: 10m
+
+# Cursor setting for the terminal. Can be "on" to always render the cursor, "off" to turn it off entirely,
+# or a duration such as "1s" or "2s" to define the blink rate. Please do note that Slack heavily rate limits
+# messages (one message per second per channel), so re-rendering the terminal for the cursor can have side effects.
+#
+# Format:    on, off or <number>s
+# Default:   on
+# Required:  No
+#
+# cursor: on

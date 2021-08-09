@@ -268,9 +268,6 @@ func (s *Session) maybeRefreshTerminal(last, lastID string) (string, string, err
 	if current == last {
 		return last, lastID, nil
 	}
-
-	log.Printf("updating")
-	// Update message (or send new)
 	if s.shouldUpdateTerminal(lastID) {
 		if err := s.terminal.Update(lastID, current, Code); err == nil {
 			return current, lastID, nil
@@ -299,28 +296,29 @@ func (s *Session) shouldUpdateTerminal(lastID string) bool {
 }
 
 func (s *Session) maybeAddCursor(window string) string {
-	if s.config.CursorRate == 0 {
+	switch s.config.CursorRate {
+	case config.CursorOff:
 		return window
+	case config.CursorOn:
+		show, x, y, err := s.tmux.Cursor()
+		if !show || err != nil {
+			return window
+		}
+		return paintCursor(window, x, y)
+	default:
+		show, x, y, err := s.tmux.Cursor()
+		if !show || err != nil {
+			return window
+		}
+		if time.Since(s.cursorUpdated) > s.config.CursorRate {
+			s.cursorOn = !s.cursorOn
+			s.cursorUpdated = time.Now()
+		}
+		if !s.cursorOn {
+			return window
+		}
+		return paintCursor(window, x, y)
 	}
-	showCursor, cursorX, cursorY, err := s.tmux.Cursor()
-	if !showCursor || err != nil {
-		s.cursorUpdated = time.Now()
-		return window
-	}
-	if time.Since(s.cursorUpdated) > s.config.CursorRate {
-		s.cursorOn = !s.cursorOn
-		s.cursorUpdated = time.Now()
-	}
-	if !s.cursorOn {
-		return window
-	}
-	lines := strings.Split(window, "\n")
-	line := lines[cursorY]
-	if len(line) < cursorX+1 {
-		line += strings.Repeat(" ", cursorX-len(line)+1)
-	}
-	lines[cursorY] = line[0:cursorX] + "█" + line[cursorX+1:]
-	return strings.Join(lines, "\n")
 }
 
 func (s *Session) shutdownHandler() error {
@@ -381,7 +379,6 @@ func (s *Session) composeExitedMessage(last string) string {
 		lines[len(lines)-2] = "(REPL exited.)"
 		return strings.Join(lines, "\n")
 	}
-	log.Println("|" + strings.TrimSpace(lines[len(lines)-1]) + "|")
 	return sanitized + "\n(REPL exited.)"
 }
 
@@ -401,4 +398,17 @@ func convertSize(size string) (width int, height int, err error) {
 		}
 	}
 	return
+}
+
+func paintCursor(window string, x, y int) string {
+	lines := strings.Split(window, "\n")
+	if len(lines) <= y {
+		return window
+	}
+	line := lines[y]
+	if len(line) < x+1 {
+		line += strings.Repeat(" ", x-len(line)+1)
+	}
+	lines[y] = line[0:x] + "█" + line[x+1:]
+	return strings.Join(lines, "\n")
 }
