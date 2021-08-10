@@ -84,6 +84,8 @@ func (b *Bot) handleIncomingEvent(event slack.RTMEvent) error {
 	switch ev := event.Data.(type) {
 	case *slack.ConnectedEvent:
 		return b.handleConnectedEvent(ev)
+	case *slack.ChannelJoinedEvent:
+		return b.handleChannelJoinedEvent(ev)
 	case *slack.MessageEvent:
 		return b.handleMessageEvent(ev)
 	case *slack.LatencyReport:
@@ -111,8 +113,8 @@ func (b *Bot) handleConnectedEvent(ev *slack.ConnectedEvent) error {
 }
 
 func (b *Bot) handleMessageEvent(ev *slack.MessageEvent) error {
-	if ev.User == "" {
-		return nil // Ignore my own messages
+	if ev.User == "" || ev.SubType == "channel_join" {
+		return nil // Ignore my own and join messages
 	}
 	if b.maybeForwardMessage(ev) {
 		return nil // We forwarded the message
@@ -122,7 +124,7 @@ func (b *Bot) handleMessageEvent(ev *slack.MessageEvent) error {
 	}
 	script, mode, width, height, err := b.parseMessage(ev)
 	if err != nil {
-		return b.handleHelp(ev, err)
+		return b.handleHelp(ev.Channel, ev.ThreadTimestamp, err)
 	}
 	switch mode {
 	case config.ModeChannel:
@@ -247,8 +249,12 @@ func (b *Bot) parseMessage(ev *slack.MessageEvent) (script string, mode string, 
 	return
 }
 
-func (b *Bot) handleHelp(ev *slack.MessageEvent, err error) error {
-	sender := NewSlackSender(b.rtm, ev.Channel, ev.ThreadTimestamp)
+func (b *Bot) handleChannelJoinedEvent(ev *slack.ChannelJoinedEvent) error {
+	return b.handleHelp(ev.Channel.ID, "", nil)
+}
+
+func (b *Bot) handleHelp(channel, threadTS string, err error) error {
+	sender := NewSlackSender(b.rtm, channel, threadTS)
 	scripts := b.config.Scripts()
 	if len(scripts) == 0 {
 		return sender.Send(misconfiguredMessage, Markdown)
