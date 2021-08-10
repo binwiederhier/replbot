@@ -202,7 +202,9 @@ func (b *Bot) handleErrorEvent(err error) error {
 }
 
 func (b *Bot) handleLatencyReportEvent(ev *slack.LatencyReport) error {
-	log.Printf("Current latency: %v\n", ev.Value)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	log.Printf("%d active session(s), current latency: %v\n", len(b.sessions), ev.Value)
 	return nil
 }
 
