@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 )
 
 var (
@@ -20,6 +21,10 @@ var (
 	slackUserLinkRegex     = regexp.MustCompile(`<@U[^>]+>`)
 	slackMacQuotesRegex    = regexp.MustCompile(`[“”]`)
 	slackReplacer          = strings.NewReplacer("&amp;", "&", "&lt;", "<", "&gt;", ">") // see slackutilsx.go, EscapeMessage
+)
+
+const (
+	additionalRateLimitDuration = 500 * time.Millisecond
 )
 
 type SlackConn struct {
@@ -54,12 +59,35 @@ func (b *SlackConn) Connect(ctx context.Context) (<-chan event, error) {
 	return eventChan, nil
 }
 
-func (b *SlackConn) Close() error {
-	return nil
+func (s *SlackConn) Send(target *Target, message string, format Format) error {
+	_, err := s.SendWithID(target, message, format)
+	return err
 }
 
-func (b *SlackConn) Sender(channel, threadTS string) Sender {
-	return NewSlackSender(b.rtm, channel, threadTS)
+func (s *SlackConn) SendWithID(target *Target, message string, format Format) (string, error) {
+	switch format {
+	case Markdown:
+		return s.send(target, s.formatMarkdown(message))
+	case Code:
+		return s.send(target, s.formatCode(message))
+	default:
+		return "", fmt.Errorf("invalid format: %d", format)
+	}
+}
+
+func (s *SlackConn) Update(target *Target, id string, message string, format Format) error {
+	switch format {
+	case Markdown:
+		return s.update(target, id, s.formatMarkdown(message))
+	case Code:
+		return s.update(target, id, s.formatCode(message))
+	default:
+		return fmt.Errorf("invalid format: %d", format)
+	}
+}
+
+func (b *SlackConn) Close() error {
+	return nil
 }
 
 func (b *SlackConn) Mention() string {
@@ -77,10 +105,6 @@ func (b *SlackConn) Unescape(s string) string {
 	s = slackMacQuotesRegex.ReplaceAllString(s, `"`) // See issue #14, Mac client sends wrong quotes
 	s = slackReplacer.Replace(s)                     // Must happen last!
 	return s
-}
-
-func (b *SlackConn) ModeSupported(mode config.Mode) bool {
-	return true
 }
 
 func (b *SlackConn) translateEvent(event slack.RTMEvent) event {
@@ -150,4 +174,52 @@ func (b *SlackConn) channelType(channel string) ChannelType {
 		return DM
 	}
 	return Unknown
+}
+
+func (s *SlackConn) formatCode(message string) slack.MsgOption {
+	return slack.MsgOptionText(fmt.Sprintf("```%s```", strings.ReplaceAll(message, "```", "` ` `")), true) // Hack ...
+}
+
+func (s *SlackConn) formatMarkdown(markdown string) slack.MsgOption {
+	return slack.MsgOptionText(markdown, false)
+}
+
+func (s *SlackConn) send(target *Target, msg slack.MsgOption) (string, error) {
+	options := s.postOptions(target, msg)
+	for {
+		_, responseTS, err := s.rtm.PostMessage(target.Channel, options...)
+		if err == nil {
+			return responseTS, nil
+		}
+		if e, ok := err.(*slack.RateLimitedError); ok {
+			log.Printf("error: %s; sleeping before re-sending", err.Error())
+			time.Sleep(e.RetryAfter + 500*time.Millisecond)
+			continue
+		}
+		return "", err
+	}
+}
+
+func (s *SlackConn) update(target *Target, timestamp string, msg slack.MsgOption) error {
+	options := s.postOptions(target, msg)
+	for {
+		_, _, _, err := s.rtm.UpdateMessage(target.Channel, timestamp, options...)
+		if err == nil {
+			return nil
+		}
+		if e, ok := err.(*slack.RateLimitedError); ok {
+			log.Printf("error: %s; sleeping before re-sending", err.Error())
+			time.Sleep(e.RetryAfter + additionalRateLimitDuration)
+			continue
+		}
+		return err
+	}
+}
+
+func (s *SlackConn) postOptions(target *Target, msg slack.MsgOption) []slack.MsgOption {
+	options := []slack.MsgOption{msg, slack.MsgOptionDisableLinkUnfurl(), slack.MsgOptionDisableMediaUnfurl()}
+	if target.Thread != "" {
+		options = append(options, slack.MsgOptionTS(target.Thread))
+	}
+	return options
 }

@@ -85,12 +85,19 @@ const (
 	scriptKillCommand = "kill"
 )
 
+// Session represents a REPL session
+//
+// Slack:
+//   Channels and DMs have an ID (fields: Channel, Timestamp), and may have a ThreadTimestamp field
+//   to identify if they belong to a thread.
+// Discord:
+//   Channels, DMs and Threads are all channels with an ID
 type Session struct {
 	id             string
 	config         *config.Config
 	conn           Conn
-	control        Sender
-	terminal       Sender
+	control        *Target
+	terminal       *Target
 	userInputChan  chan string
 	userInputCount int32
 	forceResend    chan bool
@@ -109,7 +116,7 @@ type Session struct {
 	mu             sync.RWMutex
 }
 
-func NewSession(config *config.Config, conn Conn, id string, control Sender, terminal Sender, script string, mode config.Mode, width, height int) *Session {
+func NewSession(config *config.Config, conn Conn, id string, control *Target, terminal *Target, script string, mode config.Mode, width, height int) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 	return &Session{
@@ -141,7 +148,7 @@ func (s *Session) Run() error {
 		log.Printf("[session %s] Failed to start tmux: %s", s.id, err.Error())
 		return err
 	}
-	if err := s.control.Send(s.sessionStartedMessage(), Markdown); err != nil {
+	if err := s.conn.Send(s.control, s.sessionStartedMessage(), Markdown); err != nil {
 		return err
 	}
 	s.g.Go(s.userInputLoop)
@@ -177,7 +184,7 @@ func (s *Session) Active() bool {
 }
 
 func (s *Session) ForceClose() error {
-	_ = s.control.Send(forceCloseMessage, Markdown)
+	_ = s.conn.Send(s.control, forceCloseMessage, Markdown)
 	s.cancelFn()
 	if err := s.g.Wait(); err != nil && err != errExit {
 		return err
@@ -205,7 +212,7 @@ func (s *Session) handleUserInput(input string) error {
 	switch input {
 	case helpCommand, helpShortCommand:
 		atomic.AddInt32(&s.userInputCount, updateMessageUserInputCountLimit)
-		return s.control.Send(availableCommandsMessage, Markdown)
+		return s.conn.Send(s.control, availableCommandsMessage, Markdown)
 	case exitCommand, exitShortCommand:
 		return errExit
 	case screenCommand, screenShortCommand:
@@ -220,7 +227,7 @@ func (s *Session) handleUserInput(input string) error {
 		} else if strings.HasPrefix(input, resizePrefix) {
 			width, height, err := convertSize(strings.TrimPrefix(input, resizePrefix))
 			if err != nil {
-				return s.control.Send(err.Error(), Markdown)
+				return s.conn.Send(s.control, err.Error(), Markdown)
 			}
 			return s.tmux.Resize(width, height)
 		} else if len(input) > 1 && input[0] == '!' {
@@ -241,7 +248,7 @@ func (s *Session) commandOutputLoop() error {
 		select {
 		case <-s.ctx.Done():
 			if lastID != "" {
-				_ = s.terminal.Update(lastID, s.composeExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
+				_ = s.conn.Update(s.terminal, lastID, s.composeExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
 			}
 			return errExit
 		case <-s.forceResend:
@@ -262,7 +269,7 @@ func (s *Session) maybeRefreshTerminal(last, lastID string) (string, string, err
 	current, err := s.tmux.Capture()
 	if err != nil {
 		if lastID != "" {
-			_ = s.terminal.Update(lastID, s.composeExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
+			_ = s.conn.Update(s.terminal, lastID, s.composeExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
 		}
 		return "", "", errExit // The command may have ended, gracefully exit
 	}
@@ -271,11 +278,11 @@ func (s *Session) maybeRefreshTerminal(last, lastID string) (string, string, err
 		return last, lastID, nil
 	}
 	if s.shouldUpdateTerminal(lastID) {
-		if err := s.terminal.Update(lastID, current, Code); err == nil {
+		if err := s.conn.Update(s.terminal, lastID, current, Code); err == nil {
 			return current, lastID, nil
 		}
 	}
-	if lastID, err = s.terminal.SendWithID(current, Code); err != nil {
+	if lastID, err = s.conn.SendWithID(s.terminal, current, Code); err != nil {
 		return "", "", err
 	}
 	atomic.StoreInt32(&s.userInputCount, 0)
@@ -334,7 +341,7 @@ func (s *Session) shutdownHandler() error {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("[session %s] Warning: unable to kill command: %s; command output: %s", s.id, err.Error(), string(output))
 	}
-	if err := s.control.Send(sessionExitedMessage, Markdown); err != nil {
+	if err := s.conn.Send(s.control, sessionExitedMessage, Markdown); err != nil {
 		log.Printf("[session %s] Warning: unable to send exited message: %s", s.id, err.Error())
 	}
 	s.mu.Lock()
@@ -355,7 +362,7 @@ func (s *Session) activityMonitor() error {
 		case <-s.ctx.Done():
 			return errExit
 		case <-s.warnTimer.C:
-			_ = s.control.Send(timeoutWarningMessage, Markdown)
+			_ = s.conn.Send(s.control, timeoutWarningMessage, Markdown)
 			log.Printf("[session %s] Session has been idle for a long time. Warning sent to user.", s.id)
 		case <-s.closeTimer.C:
 			log.Printf("[session %s] Idle timeout reached. Closing session.", s.id)

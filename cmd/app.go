@@ -74,9 +74,6 @@ func execRun(c *cli.Context) error {
 	conf.DefaultMode = defaultMode
 	conf.Cursor = cursorRate
 	conf.Debug = debug
-	if conf.Type() == config.TypeDiscord && defaultMode != config.ModeChannel {
-		return errors.New("default mode be set to 'channel' for Discord; threads are not yet supported")
-	}
 	robot, err := bot.New(conf)
 	if err != nil {
 		return err

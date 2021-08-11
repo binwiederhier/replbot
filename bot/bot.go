@@ -128,35 +128,37 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 
 func (b *Bot) startSessionChannel(ev *messageEvent, script string, width, height int) error {
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, "")
-	return b.startSession(sessionID, ev.Channel, "", "", script, config.ModeChannel, width, height)
+	target := &Target{Channel: ev.Channel, Thread: ""}
+	return b.startSession(sessionID, target, target, script, config.ModeChannel, width, height)
 }
 
 func (b *Bot) startSessionThread(ev *messageEvent, script string, width, height int) error {
 	if ev.Thread == "" {
 		sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ID)
-		return b.startSession(sessionID, ev.Channel, ev.ID, ev.ID, script, config.ModeThread, width, height)
+		target := &Target{Channel: ev.Channel, Thread: ev.ID}
+		return b.startSession(sessionID, target, target, script, config.ModeThread, width, height)
 	}
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Thread)
-	return b.startSession(sessionID, ev.Channel, ev.Thread, ev.Thread, script, config.ModeThread, width, height)
+	target := &Target{Channel: ev.Channel, Thread: ev.Thread}
+	return b.startSession(sessionID, target, target, script, config.ModeThread, width, height)
 }
 
 func (b *Bot) startSessionSplit(ev *messageEvent, script string, width, height int) error {
 	if ev.Thread == "" {
 		sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ID)
-		return b.startSession(sessionID, ev.Channel, ev.ID, "", script, config.ModeSplit, width, height)
+		control := &Target{Channel: ev.Channel, Thread: ev.ID}
+		terminal := &Target{Channel: ev.Channel, Thread: ""}
+		return b.startSession(sessionID, control, terminal, script, config.ModeSplit, width, height)
 	}
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Thread)
-	return b.startSession(sessionID, ev.Channel, ev.Thread, "", script, config.ModeSplit, width, height)
+	control := &Target{Channel: ev.Channel, Thread: ev.Thread}
+	terminal := &Target{Channel: ev.Channel, Thread: ""}
+	return b.startSession(sessionID, control, terminal, script, config.ModeSplit, width, height)
 }
 
-func (b *Bot) startSession(sessionID string, channel string, controlTS string, terminalTS string, script string, mode config.Mode, width, height int) error {
+func (b *Bot) startSession(sessionID string, control *Target, terminal *Target, script string, mode config.Mode, width, height int) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	control := b.conn.Sender(channel, controlTS)
-	terminal := control
-	if terminalTS != controlTS {
-		terminal = b.conn.Sender(channel, terminalTS)
-	}
 	session := NewSession(b.config, b.conn, sessionID, control, terminal, script, mode, width, height)
 	b.sessions[sessionID] = session
 	log.Printf("[session %s] Starting session", sessionID)
@@ -216,9 +218,9 @@ func (b *Bot) parseMessage(ev *messageEvent) (script string, mode config.Mode, w
 		} else {
 			mode = b.config.DefaultMode
 		}
-		if !b.conn.ModeSupported(mode) {
-			return "", "", 0, 0, fmt.Errorf(unsupportedMode, mode)
-		}
+	}
+	if b.config.Type() == config.TypeDiscord && ev.ChannelType == DM && mode != config.ModeChannel {
+		mode = config.ModeChannel // special case: Discord does not support threads in direct messages
 	}
 	if width == 0 || height == 0 {
 		if mode == config.ModeThread {
@@ -234,11 +236,11 @@ func (b *Bot) handleChannelJoinedEvent(ev *messageEvent) error {
 	return b.handleHelp(ev.Channel, "", nil)
 }
 
-func (b *Bot) handleHelp(channel, threadTS string, err error) error {
-	sender := b.conn.Sender(channel, threadTS)
+func (b *Bot) handleHelp(channel, thread string, err error) error {
+	target := &Target{Channel: channel, Thread: thread}
 	scripts := b.config.Scripts()
 	if len(scripts) == 0 {
-		return sender.Send(misconfiguredMessage, Markdown)
+		return b.conn.Send(target, misconfiguredMessage, Markdown)
 	}
 	var messageTemplate string
 	if err == nil || err == errNoScript {
@@ -247,5 +249,5 @@ func (b *Bot) handleHelp(channel, threadTS string, err error) error {
 		messageTemplate = err.Error() + helpMessage
 	}
 	replList := fmt.Sprintf("`%s`", strings.Join(b.config.Scripts(), "`, `"))
-	return sender.Send(fmt.Sprintf(messageTemplate, b.conn.Mention(), scripts[0], replList), Markdown)
+	return b.conn.Send(target, fmt.Sprintf(messageTemplate, b.conn.Mention(), scripts[0], replList), Markdown)
 }
