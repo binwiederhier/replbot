@@ -180,7 +180,7 @@ func (s *DiscordConn) maybeCreateThread(target *Target) (string, error) {
 		return target.Thread, nil
 	}
 	c, err := s.session.StartThreadWithMessage(target.Channel, target.Thread, &discordgo.ThreadCreateData{
-		Name:                "REPL session",
+		Name:                "REPLbot session",
 		AutoArchiveDuration: discordgo.ArchiveDurationOneHour,
 	})
 	if err != nil {
