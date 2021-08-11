@@ -5,7 +5,13 @@ import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"heckel.io/replbot/config"
+	"regexp"
 	"sync"
+)
+
+var (
+	discordUserLinkRegex    = regexp.MustCompile(`<@![^>]+>`)
+	discordChannelLinkRegex = regexp.MustCompile(`<#[^>]+>`)
 )
 
 type DiscordConn struct {
@@ -54,7 +60,13 @@ func (b *DiscordConn) Mention() string {
 	return fmt.Sprintf("<@!%s>", b.session.State.User.ID)
 }
 
-func (b *DiscordConn) SupportsMode(mode config.Mode) bool {
+func (b *DiscordConn) Unescape(s string) string {
+	s = discordUserLinkRegex.ReplaceAllString(s, "")    // Remove entirely!
+	s = discordChannelLinkRegex.ReplaceAllString(s, "") // Remove entirely!
+	return s
+}
+
+func (b *DiscordConn) ModeSupported(mode config.Mode) bool {
 	return mode == config.ModeChannel
 }
 

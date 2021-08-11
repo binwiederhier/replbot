@@ -7,8 +7,19 @@ import (
 	"github.com/slack-go/slack"
 	"heckel.io/replbot/config"
 	"log"
+	"regexp"
 	"strings"
 	"sync"
+)
+
+var (
+	slackLinkWithTextRegex = regexp.MustCompile(`<https?://[^|\s]+\|([^>]+)>`)
+	slackRawLinkRegex      = regexp.MustCompile(`<(https?://[^|\s]+)>`)
+	slackCodeBlockRegex    = regexp.MustCompile("```([^`]+)```")
+	slackCodeRegex         = regexp.MustCompile("`([^`]+)`")
+	slackUserLinkRegex     = regexp.MustCompile(`<@U[^>]+>`)
+	slackMacQuotesRegex    = regexp.MustCompile(`[“”]`)
+	slackReplacer          = strings.NewReplacer("&amp;", "&", "&lt;", "<", "&gt;", ">") // see slackutilsx.go, EscapeMessage
 )
 
 type SlackConn struct {
@@ -57,7 +68,18 @@ func (b *SlackConn) Mention() string {
 	return fmt.Sprintf("<@%s>", b.userID)
 }
 
-func (b *SlackConn) SupportsMode(mode config.Mode) bool {
+func (b *SlackConn) Unescape(s string) string {
+	s = slackLinkWithTextRegex.ReplaceAllString(s, "$1")
+	s = slackRawLinkRegex.ReplaceAllString(s, "$1")
+	s = slackCodeBlockRegex.ReplaceAllString(s, "$1")
+	s = slackCodeRegex.ReplaceAllString(s, "$1")
+	s = slackUserLinkRegex.ReplaceAllString(s, "")   // Remove entirely!
+	s = slackMacQuotesRegex.ReplaceAllString(s, `"`) // See issue #14, Mac client sends wrong quotes
+	s = slackReplacer.Replace(s)                     // Must happen last!
+	return s
+}
+
+func (b *SlackConn) ModeSupported(mode config.Mode) bool {
 	return true
 }
 

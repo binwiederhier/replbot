@@ -156,7 +156,7 @@ func (b *Bot) startSession(sessionID string, channel string, controlTS string, t
 	if terminalTS != controlTS {
 		terminal = b.conn.Sender(channel, terminalTS)
 	}
-	session := NewSession(b.config, sessionID, control, terminal, script, mode, width, height)
+	session := NewSession(b.config, b.conn, sessionID, control, terminal, script, mode, width, height)
 	b.sessions[sessionID] = session
 	log.Printf("[session %s] Starting session", sessionID)
 	go func() {
@@ -215,7 +215,7 @@ func (b *Bot) parseMessage(ev *messageEvent) (script string, mode config.Mode, w
 		} else {
 			mode = b.config.DefaultMode
 		}
-		if !b.conn.SupportsMode(mode) {
+		if !b.conn.ModeSupported(mode) {
 			return "", "", 0, 0, fmt.Errorf(unsupportedMode, mode)
 		}
 	}

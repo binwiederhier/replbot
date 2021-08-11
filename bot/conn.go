@@ -17,6 +17,7 @@ type Conn interface {
 	Connect(ctx context.Context) (<-chan event, error)
 	Sender(channel, threadTS string) Sender
 	Mention() string
-	SupportsMode(mode config.Mode) bool
+	Unescape(s string) string
+	ModeSupported(mode config.Mode) bool
 	Close() error
 }

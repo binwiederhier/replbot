@@ -23,7 +23,7 @@ var (
 	// See https://man7.org/linux/man-pages/man4/console_codes.4.html
 	consoleCodeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
-	// sendKeysTable is a translation table that translates Slack input commands "!<command>" to something that can be
+	// sendKeysTable is a translation table that translates input commands "!<command>" to something that can be
 	// send via tmux's send-keys command, see https://man7.org/linux/man-pages/man1/tmux.1.html#KEY_BINDINGS
 	sendKeysTable = map[string]string{
 		"c":     "^C",
@@ -88,6 +88,7 @@ const (
 type Session struct {
 	id             string
 	config         *config.Config
+	conn           Conn
 	control        Sender
 	terminal       Sender
 	userInputChan  chan string
@@ -108,11 +109,12 @@ type Session struct {
 	mu             sync.RWMutex
 }
 
-func NewSession(config *config.Config, id string, control Sender, terminal Sender, script string, mode config.Mode, width, height int) *Session {
+func NewSession(config *config.Config, conn Conn, id string, control Sender, terminal Sender, script string, mode config.Mode, width, height int) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 	return &Session{
 		config:         config,
+		conn:           conn,
 		id:             id,
 		control:        control,
 		terminal:       terminal,
@@ -165,7 +167,7 @@ func (s *Session) HandleUserInput(message string) {
 	s.closeTimer.Reset(s.config.IdleTimeout)
 
 	// Convert message to raw text and forward to input channel
-	s.userInputChan <- util.RemoveSlackMarkup(message)
+	s.userInputChan <- s.conn.Unescape(message)
 }
 
 func (s *Session) Active() bool {
