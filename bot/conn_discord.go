@@ -12,6 +12,8 @@ import (
 var (
 	discordUserLinkRegex    = regexp.MustCompile(`<@![^>]+>`)
 	discordChannelLinkRegex = regexp.MustCompile(`<#[^>]+>`)
+	discordCodeBlockRegex    = regexp.MustCompile("```([^`]+)```")
+	discordCodeRegex         = regexp.MustCompile("`([^`]+)`")
 )
 
 type DiscordConn struct {
@@ -61,6 +63,8 @@ func (b *DiscordConn) Mention() string {
 }
 
 func (b *DiscordConn) Unescape(s string) string {
+	s = discordCodeBlockRegex.ReplaceAllString(s, "$1")
+	s = discordCodeRegex.ReplaceAllString(s, "$1")
 	s = discordUserLinkRegex.ReplaceAllString(s, "")    // Remove entirely!
 	s = discordChannelLinkRegex.ReplaceAllString(s, "") // Remove entirely!
 	return s
