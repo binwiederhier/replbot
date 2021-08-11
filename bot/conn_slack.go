@@ -29,7 +29,7 @@ type SlackConn struct {
 	mu     sync.RWMutex
 }
 
-func NewSlackConnection(conf *config.Config) *SlackConn {
+func NewSlackConn(conf *config.Config) *SlackConn {
 	return &SlackConn{
 		config: conf,
 	}

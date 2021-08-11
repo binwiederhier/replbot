@@ -47,9 +47,9 @@ func New(conf *config.Config) (*Bot, error) {
 	var conn Conn
 	switch conf.Type() {
 	case config.TypeSlack:
-		conn = NewSlackConnection(conf)
+		conn = NewSlackConn(conf)
 	case config.TypeDiscord:
-		conn = NewDiscordConnection(conf)
+		conn = NewDiscordConn(conf)
 	default:
 		return nil, fmt.Errorf("invalid type: %s", conf.Type())
 	}

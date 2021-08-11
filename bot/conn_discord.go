@@ -12,8 +12,8 @@ import (
 var (
 	discordUserLinkRegex    = regexp.MustCompile(`<@![^>]+>`)
 	discordChannelLinkRegex = regexp.MustCompile(`<#[^>]+>`)
-	discordCodeBlockRegex    = regexp.MustCompile("```([^`]+)```")
-	discordCodeRegex         = regexp.MustCompile("`([^`]+)`")
+	discordCodeBlockRegex   = regexp.MustCompile("```([^`]+)```")
+	discordCodeRegex        = regexp.MustCompile("`([^`]+)`")
 )
 
 type DiscordConn struct {
@@ -23,7 +23,7 @@ type DiscordConn struct {
 	mu       sync.Mutex
 }
 
-func NewDiscordConnection(conf *config.Config) *DiscordConn {
+func NewDiscordConn(conf *config.Config) *DiscordConn {
 	return &DiscordConn{
 		config:   conf,
 		channels: make(map[string]ChannelType),
