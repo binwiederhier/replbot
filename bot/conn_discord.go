@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"heckel.io/replbot/config"
+	"log"
 	"regexp"
 	"sync"
 )
@@ -78,6 +79,7 @@ func (b *DiscordConn) translateMessageEvent(m *discordgo.MessageCreate) event {
 	if m.Author.ID == b.session.State.User.ID {
 		return nil
 	}
+	log.Printf("msg: cont=%s, id=%s, chan=%s, thread=%v, type=%v", m.Content, m.ID, m.ChannelID, m.Thread, m.Type)
 	channelType, err := b.channelType(m.ChannelID)
 	if err != nil {
 		return &errorEvent{err}
@@ -107,6 +109,8 @@ func (b *DiscordConn) channelType(channel string) (ChannelType, error) {
 		b.channels[channel] = Channel
 	case discordgo.ChannelTypeDM:
 		b.channels[channel] = DM
+	case discordgo.ChannelTypeGuildPrivateThread, discordgo.ChannelTypeGuildPublicThread:
+		b.channels[channel] = Channel // FIXME this is wrong
 	default:
 		b.channels[channel] = Unknown
 	}

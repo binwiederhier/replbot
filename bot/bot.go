@@ -105,8 +105,9 @@ func (b *Bot) handleEvent(e event) error {
 func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 	if b.maybeForwardMessage(ev) {
 		return nil // We forwarded the message
-	}
-	if ev.ChannelType == Channel && !strings.Contains(ev.Message, b.conn.Mention()) {
+	} else if ev.ChannelType == Unknown {
+		return nil
+	} else if ev.ChannelType == Channel && !strings.Contains(ev.Message, b.conn.Mention()) {
 		return nil
 	}
 	script, mode, width, height, err := b.parseMessage(ev)
