@@ -16,22 +16,20 @@ import (
 	"time"
 )
 
-// TODO xterm.js URL
-
 // New creates a new CLI application
 func New() *cli.App {
 	flags := []cli.Flag{
 		&cli.StringFlag{Name: "config", Aliases: []string{"c"}, EnvVars: []string{"REPLBOT_CONFIG_FILE"}, Value: "/etc/replbot/config.yml", DefaultText: "/etc/replbot/config.yml", Usage: "config file"},
 		&cli.BoolFlag{Name: "debug", EnvVars: []string{"REPLBOT_DEBUG"}, Value: false, Usage: "enable debugging output"},
-		altsrc.NewStringFlag(&cli.StringFlag{Name: "slack-bot-token", Aliases: []string{"t"}, EnvVars: []string{"REPLBOT_SLACK_BOT_TOKEN"}, DefaultText: "none", Usage: "Slack bot token"}),
+		altsrc.NewStringFlag(&cli.StringFlag{Name: "bot-token", Aliases: []string{"t"}, EnvVars: []string{"REPLBOT_BOT_TOKEN"}, DefaultText: "none", Usage: "bot token"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "script-dir", Aliases: []string{"d"}, EnvVars: []string{"REPLBOT_SCRIPT_DIR"}, Value: "/etc/replbot/script.d", DefaultText: "/etc/replbot/script.d", Usage: "script directory"}),
 		altsrc.NewDurationFlag(&cli.DurationFlag{Name: "idle-timeout", Aliases: []string{"T"}, EnvVars: []string{"REPLBOT_IDLE_TIMEOUT"}, Value: config.DefaultIdleTimeout, Usage: "timeout after which sessions are ended"}),
-		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-mode", Aliases: []string{"m"}, EnvVars: []string{"REPLBOT_DEFAULT_MODE"}, Value: config.DefaultMode, DefaultText: config.DefaultMode, Usage: "default mode [channel, thread or split]"}),
+		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-mode", Aliases: []string{"m"}, EnvVars: []string{"REPLBOT_DEFAULT_MODE"}, Value: string(config.DefaultMode), DefaultText: string(config.DefaultMode), Usage: "default mode [channel, thread or split]"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "cursor", Aliases: []string{"C"}, EnvVars: []string{"REPLBOT_CURSOR"}, Value: "on", Usage: "cursor blink rate (on, off or duration)"}),
 	}
 	return &cli.App{
 		Name:                   "replbot",
-		Usage:                  "Slack bot that provides interactive REPLs",
+		Usage:                  "Slack/Discord bot that provides interactive REPLs",
 		UsageText:              "replbot [OPTION..]",
 		HideHelp:               true,
 		HideVersion:            true,
@@ -47,14 +45,14 @@ func New() *cli.App {
 }
 
 func execRun(c *cli.Context) error {
-	token := c.String("slack-bot-token")
+	token := c.String("bot-token")
 	scriptDir := c.String("script-dir")
 	timeout := c.Duration("idle-timeout")
-	defaultMode := c.String("default-mode")
+	defaultMode := config.Mode(c.String("default-mode"))
 	cursor := c.String("cursor")
 	debug := c.Bool("debug")
 	if token == "" || token == "MUST_BE_SET" {
-		return errors.New("missing bot token, pass --slack-bot-token, set REPLBOT_SLACK_BOT_TOKEN env variable or slack-bot-token config option")
+		return errors.New("missing bot token, pass --bot-token, set REPLBOT_BOT_TOKEN env variable or bot-token config option")
 	} else if _, err := os.Stat(scriptDir); err != nil {
 		return fmt.Errorf("cannot find REPL directory %s, set --script-dir, set REPLBOT_SCRIPT_DIR env variable, or script-dir config option", scriptDir)
 	} else if timeout < time.Minute {
@@ -70,13 +68,15 @@ func execRun(c *cli.Context) error {
 	}
 
 	// Create main bot
-	conf := config.New()
-	conf.Token = token
+	conf := config.New(token)
 	conf.ScriptDir = scriptDir
 	conf.IdleTimeout = timeout
 	conf.DefaultMode = defaultMode
-	conf.CursorRate = cursorRate
+	conf.Cursor = cursorRate
 	conf.Debug = debug
+	if conf.Type() == config.TypeDiscord && defaultMode != config.ModeChannel {
+		return errors.New("default mode be set to 'channel' for Discord; threads are not yet supported")
+	}
 	robot, err := bot.New(conf)
 	if err != nil {
 		return err
@@ -92,7 +92,7 @@ func execRun(c *cli.Context) error {
 	}()
 
 	// Run main bot, can be killed by signal
-	if err := robot.Start(); err != nil {
+	if err := robot.Run(); err != nil {
 		return err
 	}
 

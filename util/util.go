@@ -20,11 +20,6 @@ func SanitizeID(id string) string {
 	return invalidTmuxIDCharsRegex.ReplaceAllString(id, "_")
 }
 
-// RandomID generates a random string ID
-func RandomID(length int) string {
-	return RandomStringWithCharset(length, charsetRandomID)
-}
-
 // RandomStringWithCharset returns a random string with a given length, using the defined charset
 func RandomStringWithCharset(length int, charset string) string {
 	b := make([]byte, length)

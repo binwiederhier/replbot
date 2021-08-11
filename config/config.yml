@@ -2,6 +2,8 @@
 
 # Slack bot token used to authorize the bot activity.
 #
+# XXXXXXXXXXXX FIX
+#
 # REPLbot requires a Slack "Classic App (bot)", because of its use of the real time messaging (RTM)
 # API. To create a classic app and acquire a Slack bot token, follow these steps:
 #
@@ -14,7 +16,7 @@
 # Default:   None
 # Required:  Yes
 #
-slack-bot-token: MUST_BE_SET
+bot-token: MUST_BE_SET
 
 # Directory containing your REPL scripts. REPLbot ships with a bunch of default scripts. Be sure
 # to check them out and add/remove scripts as you like.

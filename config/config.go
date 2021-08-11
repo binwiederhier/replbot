@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -13,16 +14,20 @@ const (
 	// DefaultMode defines the default window mode in which sessions are controlled
 	DefaultMode = ModeSplit
 
-	DefaultSize = SizeMedium
+	DefaultSize = SizeSmall
+)
 
+type Mode string
+
+const (
 	// ModeThread is the mode constant to define that both terminal window and user control appear in a thread
-	ModeThread = "thread"
+	ModeThread = Mode("thread")
 
 	// ModeChannel is the mode constant to define that both terminal window and user control appear in a channel
-	ModeChannel = "channel"
+	ModeChannel = Mode("channel")
 
 	// ModeSplit is the mode constant to define that the terminal window is displayed in the main channel, and the user input from a thread
-	ModeSplit = "split"
+	ModeSplit = Mode("split")
 )
 
 // Predefined terminal sizes
@@ -35,9 +40,13 @@ const (
 )
 
 const (
-	DefaultCursor = CursorOn
-	CursorOff     = time.Duration(0)
-	CursorOn      = time.Duration(1)
+	CursorOff = time.Duration(0)
+	CursorOn  = time.Duration(1)
+)
+
+const (
+	TypeSlack   = "slack"
+	TypeDiscord = "discord"
 )
 
 var (
@@ -57,19 +66,27 @@ type Config struct {
 	Token       string
 	ScriptDir   string
 	IdleTimeout time.Duration
-	DefaultMode string
+	DefaultMode Mode
 	DefaultSize string
-	CursorRate  time.Duration
+	Cursor      time.Duration
 	Debug       bool
 }
 
 // New instantiates a default new config
-func New() *Config {
+func New(token string) *Config {
 	return &Config{
+		Token:       token,
 		IdleTimeout: DefaultIdleTimeout,
 		DefaultMode: DefaultMode,
 		DefaultSize: DefaultSize,
 	}
+}
+
+func (c *Config) Type() string {
+	if strings.HasPrefix(c.Token, "xoxb-") {
+		return TypeSlack
+	}
+	return TypeDiscord
 }
 
 // Scripts returns the names of all available scripts

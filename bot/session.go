@@ -101,14 +101,14 @@ type Session struct {
 	closeTimer     *time.Timer
 	script         string
 	scriptID       string
-	mode           string
+	mode           config.Mode
 	tmux           *util.Tmux
 	cursorOn       bool
 	cursorUpdated  time.Time
 	mu             sync.RWMutex
 }
 
-func NewSession(config *config.Config, id string, control Sender, terminal Sender, script string, mode string, width, height int) *Session {
+func NewSession(config *config.Config, id string, control Sender, terminal Sender, script string, mode config.Mode, width, height int) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 	return &Session{
@@ -296,7 +296,7 @@ func (s *Session) shouldUpdateTerminal(lastID string) bool {
 }
 
 func (s *Session) maybeAddCursor(window string) string {
-	switch s.config.CursorRate {
+	switch s.config.Cursor {
 	case config.CursorOff:
 		return window
 	case config.CursorOn:
@@ -310,7 +310,7 @@ func (s *Session) maybeAddCursor(window string) string {
 		if !show || err != nil {
 			return window
 		}
-		if time.Since(s.cursorUpdated) > s.config.CursorRate {
+		if time.Since(s.cursorUpdated) > s.config.Cursor {
 			s.cursorOn = !s.cursorOn
 			s.cursorUpdated = time.Now()
 		}
