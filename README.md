@@ -3,7 +3,7 @@ REPLbot is a bot for Slack and Discord that allows you to control a [REPL](https
 or shell from a chat. It comes with a few REPLs (Go 🥳, Java, NodeJS, PHP, Python, Ruby, Scala, Kotlin, C++ and Ubuntu/Bash), 
 but you can easily make/bring your own.
 
-![replbot demo](assets/demo.png)
+![replbot demo](assets/slack-php-count.gif)
 
 ## Why ...?
 I thought it might be a fun way to collaboratively dabble with a REPL in a team. Yes, I could have gone for a terminal 
@@ -18,6 +18,32 @@ And `tmux` does its job so well.
 The actual REPLs are just simple scripts (see [script.d folder](config/script.d)), so they could be anything you like. 
 I highly recommend using Docker to provide somewhat of an isolation, though you'll probably still need to trust the
 people using the bot if you give them an entire REPL.
+
+## Screenshots & Videos
+
+<table>
+  <tr>
+    <td><img src="assets/discord-scala-split.png" width="300"></td>
+    <td><img src="assets/discord-ubuntu-htop-split.png" width="300"></td>
+    <td><img src="assets/discord-cpp-channel.png" width="300"></td>
+  </tr>
+  <tr>
+    <td>Scala, split mode (Discord)</td>
+    <td>Ubuntu running `htop` (Discord)</td>
+    <td>C++, channel mode (Discord)</td>
+  </tr>
+  <tr>
+    <td><img src="assets/slack-ubuntu-cursor-train.gif" width="300"></td>    
+    <td><img src="assets/slack-ubuntu-custom-multiple.png" width="300"></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>Blinking cursors, choo choo 🚂 (Slack)</td>        
+    <td>Custom shells, multiple sessions (Slack)</td>
+    <td></td>
+  </tr>
+</table>
+
 
 ## Installation
 First, create a Slack or Discord app and authorize it.
@@ -94,6 +120,17 @@ go get -u heckel.io/replbot
 wget https://github.com/binwiederhier/replbot/releases/download/v0.1.2/replbot_0.1.2_linux_x86_64.tar.gz
 sudo tar -C /usr/bin -zxf replbot_0.1.2_linux_x86_64.tar.gz replbot
 ```
+
+## Building
+Building replbot is simple. Here's how you do it:
+
+```
+make build-simple
+# Builds to dist/replbot_linux_amd64/pcopy
+``` 
+
+To build releases, I use [GoReleaser](https://goreleaser.com/). If you have that installed, you can run `make build` or
+`make build-snapshot`.
 
 ## Contributing
 I welcome any and all contributions. Just create a PR or an issue, or talk to me [on Slack](https://gophers.slack.com/archives/C02ABHKDCN7).

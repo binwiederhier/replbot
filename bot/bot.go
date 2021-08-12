@@ -14,7 +14,7 @@ import (
 
 const (
 	welcomeMessage = "Hi there 👋! "
-	helpMessage    = "I'm a robot that you can use to control a REPL from Slack. To start a new session, simply tag me " +
+	helpMessage    = "I'm a robot that you can use to control a REPL from right here. To start a new session, simply tag me " +
 		"and name one of the available REPLs, like so: %s %s\n\nAvailable REPLs: %s. To run the session in a `thread`, " +
 		"the main `channel`, or in `split` mode, use the respective keywords. To define the terminal size, use the words " +
 		"`tiny`, `small`, `medium`, `large` or `WxH`. To start a private REPL session, just DM me."
