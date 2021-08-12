@@ -10,7 +10,6 @@ import (
 	"log"
 	"os/exec"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -37,6 +36,7 @@ var (
 		"down":  "down",   // Cursor down
 		"right": "right",  // Cursor right
 		"left":  "left",   // Cursor left
+		"space": "space",  // Space
 		"pd":    "ppage",  // Page up
 		"pu":    "npage",  // Page down
 	}
@@ -66,12 +66,12 @@ const (
 	availableCommandsMessage = "Available commands:\n" +
 		"  `!ret`, `!r` - Send empty return\n" +
 		"  `!n ...` - Send text without a new line\n" +
-		"  `!c`, `!d`, `!esc` - Send Ctrl-C/Ctrl-D/ESC\n" +
+		"  `!c`, `!d`, `!esc`, `space` - Send Ctrl-C/Ctrl-D/ESC/Space\n" +
 		"  `!t`, `!tt` - Send TAB / double-TAB\n" +
-		"  `!up`, `!down`, `!left`, `!right` - Send cursor up, down, left or right\n" +
+		"  `!up`, `!down`, `!left`, `!right` - Send cursor keys\n" +
 		"  `!pu`, `!pd` - Send page up / page down\n" +
-		"  `!! ...` - Lines prefixed like this are comments and are ignored\n" +
-		"  `!resize ...` - Resize terminal window\n" +
+		"  `!! ...` - Comment\n" +
+		"  `!resize ...` - Resize window\n" +
 		"  `!screen`, `!s` - Re-send a new terminal window\n" +
 		"  `!help`, `!h` - Show this help screen\n" +
 		"  `!exit`, `!q` - Exit REPL"
@@ -248,7 +248,7 @@ func (s *Session) commandOutputLoop() error {
 		select {
 		case <-s.ctx.Done():
 			if lastID != "" {
-				_ = s.conn.Update(s.terminal, lastID, s.composeExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
+				_ = s.conn.Update(s.terminal, lastID, s.addExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
 			}
 			return errExit
 		case <-s.forceResend:
@@ -269,11 +269,11 @@ func (s *Session) maybeRefreshTerminal(last, lastID string) (string, string, err
 	current, err := s.tmux.Capture()
 	if err != nil {
 		if lastID != "" {
-			_ = s.conn.Update(s.terminal, lastID, s.composeExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
+			_ = s.conn.Update(s.terminal, lastID, s.addExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
 		}
 		return "", "", errExit // The command may have ended, gracefully exit
 	}
-	current = s.maybeAddCursor(sanitizeWindow(current))
+	current = s.maybeAddCursor(s.maybeExpandWindow(sanitizeWindow(current)))
 	if current == last {
 		return last, lastID, nil
 	}
@@ -313,7 +313,7 @@ func (s *Session) maybeAddCursor(window string) string {
 		if !show || err != nil {
 			return window
 		}
-		return paintCursor(window, x, y)
+		return addCursor(window, x, y)
 	default:
 		show, x, y, err := s.tmux.Cursor()
 		if !show || err != nil {
@@ -326,7 +326,7 @@ func (s *Session) maybeAddCursor(window string) string {
 		if !s.cursorOn {
 			return window
 		}
-		return paintCursor(window, x, y)
+		return addCursor(window, x, y)
 	}
 }
 
@@ -378,8 +378,15 @@ func (s *Session) sessionStartedMessage() string {
 	return fmt.Sprintf(sessionStartedMessage, "")
 }
 
-func (s *Session) composeExitedMessage(last string) string {
-	sanitized := consoleCodeRegex.ReplaceAllString(last, "")
+func (s *Session) maybeExpandWindow(window string) string {
+	if s.config.Type() == config.TypeSlack {
+		return window
+	}
+	return expandWindow(window)
+}
+
+func (s *Session) addExitedMessage(window string) string {
+	sanitized := consoleCodeRegex.ReplaceAllString(window, "")
 	lines := strings.Split(sanitized, "\n")
 	if len(lines) <= 2 {
 		return sanitized
@@ -389,35 +396,4 @@ func (s *Session) composeExitedMessage(last string) string {
 		return strings.Join(lines, "\n")
 	}
 	return sanitized + "\n(REPL exited.)"
-}
-
-func convertSize(size string) (width int, height int, err error) {
-	switch size {
-	case config.SizeTiny, config.SizeSmall, config.SizeMedium, config.SizeLarge:
-		width, height = config.Sizes[size][0], config.Sizes[size][1]
-	default:
-		matches := sizeRegex.FindStringSubmatch(size)
-		if len(matches) == 0 {
-			return 0, 0, fmt.Errorf(malformatedTerminalSizeMessage)
-		}
-		width, _ = strconv.Atoi(matches[1])
-		height, _ = strconv.Atoi(matches[2])
-		if width < config.MinSize[0] || height < config.MinSize[1] || width > config.MaxSize[0] || height > config.MaxSize[1] {
-			return 0, 0, fmt.Errorf(invalidTerminalSizeMessage, config.MinSize[0], config.MinSize[1], config.MaxSize[0], config.MaxSize[1])
-		}
-	}
-	return
-}
-
-func paintCursor(window string, x, y int) string {
-	lines := strings.Split(window, "\n")
-	if len(lines) <= y {
-		return window
-	}
-	line := lines[y]
-	if len(line) < x+1 {
-		line += strings.Repeat(" ", x-len(line)+1)
-	}
-	lines[y] = line[0:x] + "█" + line[x+1:]
-	return strings.Join(lines, "\n")
 }
