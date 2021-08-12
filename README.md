@@ -46,9 +46,9 @@ people using the bot if you give them an entire REPL.
 
 
 ## Installation
-First, create a Slack or Discord app and authorize it.
+First, create a Slack or Discord app and authorize it. After that, you can install REPLbot via packages or binaries.
 
-### Creating a REPLbot Slack app
+**Creating a REPLbot Slack app**:   
 REPLbot requires a Slack "Classic App (bot)", because of its use of the real time messaging (RTM)
 API. To create a classic app and acquire a Slack bot token, follow these steps:
 1. Create a [classic Slack app](https://api.slack.com/apps?new_classic_app=1)
@@ -56,7 +56,7 @@ API. To create a classic app and acquire a Slack bot token, follow these steps:
 3. In the "OAuth & Permissions" section, click "Install to Workspace" (_this may require workspace admin approval_)
 4. Copy the "Bot User OAuth Token" starting with "xoxb-..."
 
-### Creating a REPLbot Discord app
+**Creating a REPLbot Discord app**:   
 1. Create a [Discord app](https://discord.com/developers/applications) 
 2. In the "Bot" section, click "Add Bot" and disable "Public Bot"
 3. In the "OAuth2" section, click "Add Redirect" and type a URL (even https://google.com is fine),
@@ -65,7 +65,7 @@ API. To create a classic app and acquire a Slack bot token, follow these steps:
 4. Copy the OAuth2 URL and navigate to it in the browser and authorize the app.
 5. In the "Bot" section, copy the token and paste it here
 
-### Installing `replbot`
+**Installing `replbot`**:   
 1. Make sure `tmux` and probably also `docker` are installed. Then install REPLbot using any of the methods below. 
 2. Then edit `/etc/replbot/config.yml` to add Slack or Discord bot token. REPLbot will figure out which one is which based on the format.
 3. Review the scripts in `/etc/replbot/script.d`, and make sure that you have Docker installed if you'd like to use them.
