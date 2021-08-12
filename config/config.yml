@@ -1,18 +1,26 @@
 # REPLbot config file
 
-# Slack bot token used to authorize the bot activity.
+# Slack/Discord bot token used to authorize the bot. The token format is used by REPLbot to figure out
+# which kind of token it is.
 #
-# XXXXXXXXXXXX FIX
+# For Slack:
+#   REPLbot requires a Slack "Classic App (bot)", because of its use of the real time messaging (RTM)
+#   API. To create a classic app and acquire a Slack bot token, follow these steps:
+#     1. Create a classic app: https://api.slack.com/apps?new_classic_app=1
+#     2. In the "App Home" section, add a "Legacy bot user"
+#     3. In the "OAuth & Permissions" section, click "Install to Workspace"
+#     4. Copy the "Bot User OAuth Token" starting with "xoxb-..."
 #
-# REPLbot requires a Slack "Classic App (bot)", because of its use of the real time messaging (RTM)
-# API. To create a classic app and acquire a Slack bot token, follow these steps:
+# For Discord:
+#   1. Create an app: https://discord.com/developers/applications
+#   2. In the "Bot" section, click "Add Bot" and disable "Public Bot"
+#   3. In the "OAuth2" section, click "Add Redirect" and type a URL (even https://google.com is fine),
+#      select the scopes "bot" and "messages.read", and the permissions "public threads", "private thread",
+#      "send messages", "manage messages", "manage threads". Click "Save changes".
+#   4. Copy the OAuth2 URL and navigate to it in the browser and authorize the app.
+#   5. In the "Bot" section, copy the token and paste it here
 #
-#   1. Create a classic app: https://api.slack.com/apps?new_classic_app=1
-#   2. In the "App Home" section, add a "Legacy bot user"
-#   3. In the "OAuth & Permissions" section, click "Install to Workspace"
-#   4. Copy the "Bot User OAuth Token" starting with "xoxb-..."
-#
-# Format:    xoxb-...
+# Format:    long cryptic string
 # Default:   None
 # Required:  Yes
 #
@@ -22,7 +30,7 @@ bot-token: MUST_BE_SET
 # to check them out and add/remove scripts as you like.
 #
 # Security note:
-#   Scripts are run in and controlled by a tmux(1) and can be executed from Slack by users, so it is
+#   Scripts are run in and controlled by a tmux(1) and can be executed from Slack/Discord by users, so it is
 #   vital that you make sure you cannot do anything nasty from these scripts. Either properly restrict
 #   them (limited shell), and/or put them in a Docker container.
 #
@@ -53,8 +61,13 @@ bot-token: MUST_BE_SET
 # idle-timeout: 10m
 
 # Cursor setting for the terminal. Can be "on" to always render the cursor, "off" to turn it off entirely,
-# or a duration such as "1s" or "2s" to define the blink rate. Please do note that Slack heavily rate limits
-# messages (one message per second per channel), so re-rendering the terminal for the cursor can have side effects.
+# or a duration such as "1s" or "2s" to define the blink rate.
+#
+# Slack:
+#   Please do note that Slack heavily rate limits messages (one message per second per channel), so
+#   re-rendering the terminal for the cursor can have side effects.
+# Discord:
+#   Discord allows 50 requests per second, so a blinking cursor is totally possible in Discord.
 #
 # Format:    on, off or <number>s
 # Default:   on

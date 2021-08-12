@@ -20,7 +20,6 @@ const (
 		"`tiny`, `small`, `medium`, `large` or `WxH`. To start a private REPL session, just DM me."
 	misconfiguredMessage  = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
 	unknownCommandMessage = "I am not quite sure what you mean by _%s_ ⁉️\n\n"
-	unsupportedMode       = "I'm sorry, but mode _%s_ is not supported on this platform.\n\n"
 )
 
 var (
