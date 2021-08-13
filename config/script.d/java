@@ -7,7 +7,7 @@
 case "$1" in
   run)
     echo 'The Java REPL uses commands prefixed with a slash, e.g. /help.'
-    echo 'To type these in Slack, prefix them with space, e.g. " /help".'
+    echo 'To type these in Slack/Discord, prefix them with space, e.g. " /help".'
     echo
     docker run --rm --name "$2" -it openjdk
     ;;

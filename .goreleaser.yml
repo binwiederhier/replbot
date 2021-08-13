@@ -15,7 +15,7 @@ nfpms:
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}"
     homepage: https://heckel.io/replbot
     maintainer: Philipp C. Heckel <philipp.heckel@gmail.com>
-    description: Slack bot that provides interactive REPLs
+    description: Slack/Discord bot for running interactive REPLs
     license: Apache 2.0
     formats:
       - deb
