@@ -20,9 +20,24 @@ func addCursor(window string, x, y int) string {
 	return strings.Join(lines, "\n")
 }
 
+func addExitedMessage(window string) string {
+	lines := strings.Split(window, "\n")
+	if len(lines) <= 2 {
+		return window
+	}
+	if strings.TrimSpace(lines[len(lines)-1]) == "" && (strings.TrimSpace(lines[len(lines)-2]) == "" || strings.TrimSpace(lines[len(lines)-2]) == ".") {
+		lines[len(lines)-2] = "(REPL exited.)"
+		return strings.Join(lines, "\n")
+	}
+	return window + "\n(REPL exited.)"
+}
+
 func expandWindow(window string) string {
 	lines := strings.Split(window, "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[len(lines)-1]) != "" {
+	if len(lines) <= 2 {
+		return window
+	}
+	if strings.TrimSpace(lines[len(lines)-1]) != "" || strings.TrimSpace(lines[len(lines)-2]) != "" {
 		return window
 	}
 	lines[len(lines)-1] = "."

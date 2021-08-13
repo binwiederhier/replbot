@@ -25,11 +25,12 @@ func New() *cli.App {
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "script-dir", Aliases: []string{"d"}, EnvVars: []string{"REPLBOT_SCRIPT_DIR"}, Value: "/etc/replbot/script.d", DefaultText: "/etc/replbot/script.d", Usage: "script directory"}),
 		altsrc.NewDurationFlag(&cli.DurationFlag{Name: "idle-timeout", Aliases: []string{"T"}, EnvVars: []string{"REPLBOT_IDLE_TIMEOUT"}, Value: config.DefaultIdleTimeout, Usage: "timeout after which sessions are ended"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-mode", Aliases: []string{"m"}, EnvVars: []string{"REPLBOT_DEFAULT_MODE"}, Value: string(config.DefaultMode), DefaultText: string(config.DefaultMode), Usage: "default mode [channel, thread or split]"}),
+		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-window-mode", Aliases: []string{"w"}, EnvVars: []string{"REPLBOT_DEFAULT_WINDOW_MODE"}, Value: string(config.DefaultWindowMode), DefaultText: string(config.DefaultWindowMode), Usage: "default window mode [full or trim]"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "cursor", Aliases: []string{"C"}, EnvVars: []string{"REPLBOT_CURSOR"}, Value: "on", Usage: "cursor blink rate (on, off or duration)"}),
 	}
 	return &cli.App{
 		Name:                   "replbot",
-		Usage:                  "Slack/Discord bot that provides interactive REPLs",
+		Usage:                  "Slack/Discord bot for running interactive REPLs and shells from a chat",
 		UsageText:              "replbot [OPTION..]",
 		HideHelp:               true,
 		HideVersion:            true,
@@ -49,6 +50,7 @@ func execRun(c *cli.Context) error {
 	scriptDir := c.String("script-dir")
 	timeout := c.Duration("idle-timeout")
 	defaultMode := config.Mode(c.String("default-mode"))
+	defaultWindowMode := config.WindowMode(c.String("default-window-mode"))
 	cursor := c.String("cursor")
 	debug := c.Bool("debug")
 	if token == "" || token == "MUST_BE_SET" {
@@ -61,6 +63,8 @@ func execRun(c *cli.Context) error {
 		return errors.New("cannot read script directory, or directory empty")
 	} else if defaultMode != config.ModeChannel && defaultMode != config.ModeThread && defaultMode != config.ModeSplit {
 		return errors.New("default mode must be 'channel', 'thread' or 'split'")
+	} else if defaultWindowMode != config.WindowModeFull && defaultWindowMode != config.WindowModeTrim {
+		return errors.New("default window mode must be 'full' or 'trim'")
 	}
 	cursorRate, err := parseCursorRate(cursor)
 	if err != nil {
@@ -72,6 +76,7 @@ func execRun(c *cli.Context) error {
 	conf.ScriptDir = scriptDir
 	conf.IdleTimeout = timeout
 	conf.DefaultMode = defaultMode
+	conf.DefaultWindowMode = defaultWindowMode
 	conf.Cursor = cursorRate
 	conf.Debug = debug
 	robot, err := bot.New(conf)

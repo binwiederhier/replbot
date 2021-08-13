@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 )
 
 var (
@@ -110,13 +111,14 @@ type Session struct {
 	script         string
 	scriptID       string
 	mode           config.Mode
+	windowMode     config.WindowMode
 	tmux           *util.Tmux
 	cursorOn       bool
 	cursorUpdated  time.Time
 	mu             sync.RWMutex
 }
 
-func NewSession(config *config.Config, conn Conn, id string, control *Target, terminal *Target, script string, mode config.Mode, width, height int) *Session {
+func NewSession(config *config.Config, conn Conn, id string, control *Target, terminal *Target, script string, mode config.Mode, windowMode config.WindowMode, width, height int) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 	return &Session{
@@ -128,6 +130,7 @@ func NewSession(config *config.Config, conn Conn, id string, control *Target, te
 		script:         script,
 		scriptID:       util.SanitizeID(id),
 		mode:           mode,
+		windowMode:     windowMode,
 		tmux:           util.NewTmux(id, width, height),
 		userInputChan:  make(chan string, 10), // buffered!
 		userInputCount: 0,
@@ -248,7 +251,7 @@ func (s *Session) commandOutputLoop() error {
 		select {
 		case <-s.ctx.Done():
 			if lastID != "" {
-				_ = s.conn.Update(s.terminal, lastID, s.addExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
+				_ = s.conn.Update(s.terminal, lastID, addExitedMessage(sanitizeWindow(last)), Code) // Show "(REPL exited.)" in terminal
 			}
 			return errExit
 		case <-s.forceResend:
@@ -269,11 +272,11 @@ func (s *Session) maybeRefreshTerminal(last, lastID string) (string, string, err
 	current, err := s.tmux.Capture()
 	if err != nil {
 		if lastID != "" {
-			_ = s.conn.Update(s.terminal, lastID, s.addExitedMessage(last), Code) // Show "(REPL exited.)" in terminal
+			_ = s.conn.Update(s.terminal, lastID, addExitedMessage(sanitizeWindow(last)), Code) // Show "(REPL exited.)" in terminal
 		}
 		return "", "", errExit // The command may have ended, gracefully exit
 	}
-	current = s.maybeAddCursor(s.maybeExpandWindow(sanitizeWindow(current)))
+	current = s.maybeAddCursor(s.maybeTrimWindow(sanitizeWindow(current)))
 	if current == last {
 		return last, lastID, nil
 	}
@@ -378,22 +381,16 @@ func (s *Session) sessionStartedMessage() string {
 	return fmt.Sprintf(sessionStartedMessage, "")
 }
 
-func (s *Session) maybeExpandWindow(window string) string {
-	if s.config.Type() == config.TypeSlack {
+func (s *Session) maybeTrimWindow(window string) string {
+	switch s.windowMode {
+	case config.WindowModeFull:
+		if s.config.Type() == config.TypeSlack {
+			return window
+		}
+		return expandWindow(window)
+	case config.WindowModeTrim:
+		return strings.TrimRightFunc(window, unicode.IsSpace)
+	default:
 		return window
 	}
-	return expandWindow(window)
-}
-
-func (s *Session) addExitedMessage(window string) string {
-	sanitized := consoleCodeRegex.ReplaceAllString(window, "")
-	lines := strings.Split(sanitized, "\n")
-	if len(lines) <= 2 {
-		return sanitized
-	}
-	if strings.TrimSpace(lines[len(lines)-1]) == "" && strings.TrimSpace(lines[len(lines)-2]) == "" {
-		lines[len(lines)-2] = "(REPL exited.)"
-		return strings.Join(lines, "\n")
-	}
-	return sanitized + "\n(REPL exited.)"
 }

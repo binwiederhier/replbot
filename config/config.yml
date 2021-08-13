@@ -52,6 +52,17 @@ bot-token: MUST_BE_SET
 #
 # default-mode: split
 
+# Default window mode. This defines whether white space and new lines are trimmed in the chat terminal window.
+#
+# - full: The terminal window is left unchanged
+# - trim: White spaces are new lines are trimmed from the end
+#
+# Format:    full|trim
+# Default:   full
+# Required:  No
+#
+# default-window-mode: full
+
 # Timeout after which REPL sessions are terminated if there is no user input.
 #
 # Format:    <number>(hms), must be >1m

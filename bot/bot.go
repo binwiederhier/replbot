@@ -14,10 +14,11 @@ import (
 
 const (
 	welcomeMessage = "Hi there 👋! "
-	helpMessage    = "I'm a robot that you can use to control a REPL from right here. To start a new session, simply tag me " +
+	helpMessage    = "I'm a robot for running interactive REPLs and shells from a right here. To start a new session, simply tag me " +
 		"and name one of the available REPLs, like so: %s %s\n\nAvailable REPLs: %s. To run the session in a `thread`, " +
 		"the main `channel`, or in `split` mode, use the respective keywords. To define the terminal size, use the words " +
-		"`tiny`, `small`, `medium`, `large` or `WxH`. To start a private REPL session, just DM me."
+		"`tiny`, `small`, `medium`, `large` or `WxH`. Use `full` or `trim` to set the window mode. To start a private REPL " +
+		"session, just DM me."
 	misconfiguredMessage  = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
 	unknownCommandMessage = "I am not quite sure what you mean by _%s_ ⁉️\n\n"
 )
@@ -31,7 +32,6 @@ type Bot struct {
 	config   *config.Config
 	conn     Conn
 	sessions map[string]*Session
-	ctx      context.Context
 	cancelFn context.CancelFunc
 	mu       sync.RWMutex
 }
@@ -109,56 +109,56 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 	} else if ev.ChannelType == Channel && !strings.Contains(ev.Message, b.conn.Mention()) {
 		return nil
 	}
-	script, mode, width, height, err := b.parseMessage(ev)
+	script, mode, windowMode, width, height, err := b.parseMessage(ev)
 	if err != nil {
 		return b.handleHelp(ev.Channel, ev.Thread, err)
 	}
 	switch mode {
 	case config.ModeChannel:
-		return b.startSessionChannel(ev, script, width, height)
+		return b.startSessionChannel(ev, script, windowMode, width, height)
 	case config.ModeThread:
-		return b.startSessionThread(ev, script, width, height)
+		return b.startSessionThread(ev, script, windowMode, width, height)
 	case config.ModeSplit:
-		return b.startSessionSplit(ev, script, width, height)
+		return b.startSessionSplit(ev, script, windowMode, width, height)
 	default:
 		return fmt.Errorf("unexpected mode: %s", mode)
 	}
 }
 
-func (b *Bot) startSessionChannel(ev *messageEvent, script string, width, height int) error {
+func (b *Bot) startSessionChannel(ev *messageEvent, script string, windowMode config.WindowMode, width, height int) error {
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, "")
 	target := &Target{Channel: ev.Channel, Thread: ""}
-	return b.startSession(sessionID, target, target, script, config.ModeChannel, width, height)
+	return b.startSession(sessionID, target, target, script, config.ModeChannel, windowMode, width, height)
 }
 
-func (b *Bot) startSessionThread(ev *messageEvent, script string, width, height int) error {
+func (b *Bot) startSessionThread(ev *messageEvent, script string, windowMode config.WindowMode, width, height int) error {
 	if ev.Thread == "" {
 		sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ID)
 		target := &Target{Channel: ev.Channel, Thread: ev.ID}
-		return b.startSession(sessionID, target, target, script, config.ModeThread, width, height)
+		return b.startSession(sessionID, target, target, script, config.ModeThread, windowMode, width, height)
 	}
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Thread)
 	target := &Target{Channel: ev.Channel, Thread: ev.Thread}
-	return b.startSession(sessionID, target, target, script, config.ModeThread, width, height)
+	return b.startSession(sessionID, target, target, script, config.ModeThread, windowMode, width, height)
 }
 
-func (b *Bot) startSessionSplit(ev *messageEvent, script string, width, height int) error {
+func (b *Bot) startSessionSplit(ev *messageEvent, script string, windowMode config.WindowMode, width, height int) error {
 	if ev.Thread == "" {
 		sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ID)
 		control := &Target{Channel: ev.Channel, Thread: ev.ID}
 		terminal := &Target{Channel: ev.Channel, Thread: ""}
-		return b.startSession(sessionID, control, terminal, script, config.ModeSplit, width, height)
+		return b.startSession(sessionID, control, terminal, script, config.ModeSplit, windowMode, width, height)
 	}
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Thread)
 	control := &Target{Channel: ev.Channel, Thread: ev.Thread}
 	terminal := &Target{Channel: ev.Channel, Thread: ""}
-	return b.startSession(sessionID, control, terminal, script, config.ModeSplit, width, height)
+	return b.startSession(sessionID, control, terminal, script, config.ModeSplit, windowMode, width, height)
 }
 
-func (b *Bot) startSession(sessionID string, control *Target, terminal *Target, script string, mode config.Mode, width, height int) error {
+func (b *Bot) startSession(sessionID string, control *Target, terminal *Target, script string, mode config.Mode, windowMode config.WindowMode, width, height int) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	session := NewSession(b.config, b.conn, sessionID, control, terminal, script, mode, width, height)
+	session := NewSession(b.config, b.conn, sessionID, control, terminal, script, mode, windowMode, width, height)
 	b.sessions[sessionID] = session
 	log.Printf("[session %s] Starting session", sessionID)
 	go func() {
@@ -185,7 +185,7 @@ func (b *Bot) maybeForwardMessage(ev *messageEvent) bool {
 	return false
 }
 
-func (b *Bot) parseMessage(ev *messageEvent) (script string, mode config.Mode, width int, height int, err error) {
+func (b *Bot) parseMessage(ev *messageEvent) (script string, mode config.Mode, windowMode config.WindowMode, width int, height int, err error) {
 	fields := strings.Fields(ev.Message)
 	for _, field := range fields {
 		switch field {
@@ -193,6 +193,8 @@ func (b *Bot) parseMessage(ev *messageEvent) (script string, mode config.Mode, w
 			// Ignore
 		case string(config.ModeThread), string(config.ModeChannel), string(config.ModeSplit):
 			mode = config.Mode(field)
+		case string(config.WindowModeFull), string(config.WindowModeTrim):
+			windowMode = config.WindowMode(field)
 		case config.SizeTiny, config.SizeSmall, config.SizeMedium, config.SizeLarge:
 			width, height = config.Sizes[field][0], config.Sizes[field][1]
 		default:
@@ -204,12 +206,12 @@ func (b *Bot) parseMessage(ev *messageEvent) (script string, mode config.Mode, w
 					return
 				}
 			} else {
-				return "", "", 0, 0, fmt.Errorf(unknownCommandMessage, field)
+				return "", "", "", 0, 0, fmt.Errorf(unknownCommandMessage, field)
 			}
 		}
 	}
 	if script == "" {
-		return "", "", 0, 0, errNoScript
+		return "", "", "", 0, 0, errNoScript
 	}
 	if mode == "" {
 		if ev.Thread != "" {
@@ -220,6 +222,13 @@ func (b *Bot) parseMessage(ev *messageEvent) (script string, mode config.Mode, w
 	}
 	if b.config.Type() == config.TypeDiscord && ev.ChannelType == DM && mode != config.ModeChannel {
 		mode = config.ModeChannel // special case: Discord does not support threads in direct messages
+	}
+	if windowMode == "" {
+		if mode == config.ModeThread {
+			windowMode = config.WindowModeTrim
+		} else {
+			windowMode = b.config.DefaultWindowMode
+		}
 	}
 	if width == 0 || height == 0 {
 		if mode == config.ModeThread {
