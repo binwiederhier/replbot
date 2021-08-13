@@ -1,0 +1,14 @@
+#!/bin/sh
+# This is a helper script to kill a Docker instance with a
+# few retries. This is necessary since there were races between
+# Docker exiting and the kill script before.
+
+for i in 1 2 3 4 5; do
+  if [ -z "$(docker ps -q -f "name=$1")" ] || docker kill "$1" 2>/dev/null; then
+    exit
+  fi
+  sleep .5
+done
+
+echo "Unable to kill Docker instance $1"
+exit 1

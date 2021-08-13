@@ -4,8 +4,9 @@
 # Scripts are executed as "./script run <id>" to start the REPL,
 # and as "./script kill <id>" to stop it.
 
+DIR="$(cd -- "$(dirname "$0")" >/dev/null 2>&1 && pwd -P)"
 case "$1" in
   run) docker run --rm --name "$2" -it ruby ;;
-  kill) if [ -n "$(docker ps -q -f "name=$2")" ]; then docker kill "$2"; fi ;;
+  kill) "$DIR"/helpers/docker-kill "$2" ;;
   *) echo "Syntax: $0 (run|kill) ID"; exit 1 ;;
 esac
