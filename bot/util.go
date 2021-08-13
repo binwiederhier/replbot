@@ -1,10 +1,22 @@
 package bot
 
 import (
+	"encoding/hex"
 	"fmt"
 	"heckel.io/replbot/config"
+	"regexp"
 	"strconv"
 	"strings"
+)
+
+var (
+	unquoteReplacer = strings.NewReplacer(
+		"\\n", "\n", // new line
+		"\\r", "\r", // line feed
+		"\\t", "\t", // tab
+		"\\b", "\b", // backspace
+	)
+	unquoteHexCharRegex = regexp.MustCompile(`\\x[a-fA-F0-9]{2}`)
 )
 
 func addCursor(window string, x, y int) string {
@@ -60,4 +72,13 @@ func convertSize(size string) (width int, height int, err error) {
 		}
 	}
 	return
+}
+
+func unquote(s string) string {
+	s = unquoteReplacer.Replace(s)
+	s = unquoteHexCharRegex.ReplaceAllStringFunc(s, func(r string) string {
+		b, _ := hex.DecodeString(r[2:]) // strip \x prefix
+		return string(b)
+	})
+	return s
 }

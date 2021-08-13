@@ -64,10 +64,12 @@ const (
 	resizePrefix             = "!resize "
 	commentPrefix            = "!! "
 	rawPrefix                = "!n "
+	unquotePrefix            = "!e "
 	availableCommandsMessage = "Available commands:\n" +
 		"  `!ret`, `!r` - Send empty return\n" +
-		"  `!n ...` - Send text without a new line\n" +
-		"  `!c`, `!d`, `!esc`, `space` - Send Ctrl-C/Ctrl-D/ESC/Space\n" +
+		"  `!n ...` - Text without a new line\n" +
+		"  `!e ...` - Text with escape sequences (`\\n`, `\\t`, ...)\n" +
+		"  `!c`, `!d`, `!esc`, `!space` - Send Ctrl-C/Ctrl-D/ESC/Space\n" +
 		"  `!t`, `!tt` - Send TAB / double-TAB\n" +
 		"  `!up`, `!down`, `!left`, `!right` - Send cursor keys\n" +
 		"  `!pu`, `!pd` - Send page up / page down\n" +
@@ -227,6 +229,8 @@ func (s *Session) handleUserInput(input string) error {
 			return nil // Ignore comments
 		} else if strings.HasPrefix(input, rawPrefix) {
 			return s.tmux.Paste(strings.TrimPrefix(input, rawPrefix))
+		} else if strings.HasPrefix(input, unquotePrefix) {
+			return s.tmux.Paste(unquote(strings.TrimPrefix(input, unquotePrefix)))
 		} else if strings.HasPrefix(input, resizePrefix) {
 			width, height, err := convertSize(strings.TrimPrefix(input, resizePrefix))
 			if err != nil {
