@@ -39,17 +39,17 @@ type Size struct {
 }
 
 var (
-	Tiny   = Size{"tiny", 60, 15}
-	Small  = Size{"small", 80, 24}
-	Medium = Size{"medium", 100, 30}
-	Large  = Size{"large", 120, 38}
+	Tiny   = &Size{"tiny", 60, 15}
+	Small  = &Size{"small", 80, 24}
+	Medium = &Size{"medium", 100, 30}
+	Large  = &Size{"large", 120, 38}
 
 	DefaultSize = Small
 	Sizes       = map[string]*Size{
-		Tiny.Name:   &Tiny,
-		Small.Name:  &Small,
-		Medium.Name: &Medium,
-		Large.Name:  &Large,
+		Tiny.Name:   Tiny,
+		Small.Name:  Small,
+		Medium.Name: Medium,
+		Large.Name:  Large,
 	}
 )
 
@@ -70,7 +70,7 @@ type Config struct {
 	IdleTimeout        time.Duration
 	DefaultControlMode ControlMode
 	DefaultWindowMode  WindowMode
-	DefaultSize        Size
+	DefaultSize        *Size
 	Cursor             time.Duration
 	Debug              bool
 }
