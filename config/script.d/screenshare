@@ -1,0 +1,18 @@
+#!/bin/sh
+
+case "$1" in
+  run)
+    echo "Hi there. Please run this command to create a local tmux session"
+    echo "and connect it to REPLbot:"
+    echo
+    echo "ssh abc@localhost | sh"
+    echo
+    read a
+    socat file:$(tty),raw,echo=0 tcp-connect:localhost:10000
+    ;;
+  kill)
+    ;;
+  *) echo "Syntax: $0 (run|kill) ID"; exit 1 ;;
+esac
+
+

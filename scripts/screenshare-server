@@ -1,0 +1,2 @@
+#!/bin/sh
+socat file:`tty`,raw,echo=0 tcp-connect:localhost:10000
