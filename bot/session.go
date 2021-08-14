@@ -41,8 +41,8 @@ var (
 		"pd":    "ppage",  // Page up
 		"pu":    "npage",  // Page down
 	}
-
-	errExit = errors.New("exited REPL")
+	ctrlCommandRegex = regexp.MustCompile(`^!c-([a-z])$`)
+	errExit          = errors.New("exited REPL")
 )
 
 const (
@@ -67,10 +67,11 @@ const (
 		"  `!ret`, `!r` - Send empty return\n" +
 		"  `!n ...` - Text without a new line\n" +
 		"  `!e ...` - Text with escape sequences (`\\n`, `\\t`, ...)\n" +
-		"  `!c`, `!d`, `!esc`, `!space` - Send Ctrl-C/Ctrl-D/ESC/Space\n" +
+		"  `!c`, `!d`, `!c-...` - Send Ctrl-C/Ctrl-D/Ctrl-...\n" +
 		"  `!t`, `!tt` - Send TAB / double-TAB\n" +
 		"  `!up`, `!down`, `!left`, `!right` - Send cursor keys\n" +
 		"  `!pu`, `!pd` - Send page up / page down\n" +
+		"  `!esc`, `!space` - Send Ctrl-C/Ctrl-D/ESC/Space\n" +
 		"  `!! ...` - Comment\n" +
 		"  `!resize ...` - Resize window\n" +
 		"  `!screen`, `!s` - Re-send a new terminal window\n" +
@@ -229,6 +230,8 @@ func (s *Session) handleUserInput(input string) error {
 			return s.tmux.Paste(strings.TrimPrefix(input, rawPrefix))
 		} else if strings.HasPrefix(input, unquotePrefix) {
 			return s.tmux.Paste(unquote(strings.TrimPrefix(input, unquotePrefix)))
+		} else if matches := ctrlCommandRegex.FindStringSubmatch(input); len(matches) > 0 {
+			return s.tmux.SendKeys("^" + strings.ToUpper(matches[1]))
 		} else if strings.HasPrefix(input, resizePrefix) {
 			size, err := convertSize(strings.TrimPrefix(input, resizePrefix))
 			if err != nil {
