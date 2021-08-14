@@ -5,10 +5,10 @@ case "$1" in
     echo "Hi there. Please run this command to create a local tmux session"
     echo "and connect it to REPLbot:"
     echo
-    echo "ssh abc@localhost | sh"
+    echo "bash -c "'"'"\$(ssh -T -p ${REPLBOT_SSH_SERVER_PORT} ${REPLBOT_SESSION_ID}@${REPLBOT_SSH_SERVER_HOST})"'"'
     echo
     read a
-    socat file:$(tty),raw,echo=0 tcp-connect:localhost:10000
+    socat file:$(tty),raw,echo=0 tcp-connect:localhost:${REPLBOT_RELAY_PORT}
     ;;
   kill)
     ;;

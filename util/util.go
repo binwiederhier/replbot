@@ -1,19 +1,17 @@
 package util
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
 )
 
 var (
-	invalidTmuxIDCharsRegex = regexp.MustCompile(`[^A-Za-z0-9]`)
+	nonAlphanumericCharsRegex = regexp.MustCompile(`[^A-Za-z0-9]`)
 )
 
 func SanitizeID(id string) string {
-	id = fmt.Sprintf("replbot_%s", id)
-	return invalidTmuxIDCharsRegex.ReplaceAllString(id, "_")
+	return nonAlphanumericCharsRegex.ReplaceAllString(id, "_")
 }
 
 // FileExists returns true if a file with the given filename exists

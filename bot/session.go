@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/gliderlabs/ssh"
 	"golang.org/x/sync/errgroup"
 	"heckel.io/replbot/config"
 	"heckel.io/replbot/util"
@@ -131,7 +130,7 @@ func NewSession(config *config.Config, conn Conn, id string, control *Target, te
 		control:        control,
 		terminal:       terminal,
 		script:         script,
-		scriptID:       util.SanitizeID(id),
+		scriptID:       fmt.Sprintf("replbot_%s", id),
 		mode:           mode,
 		windowMode:     windowMode,
 		tmux:           util.NewTmux(id, width, height),
@@ -148,9 +147,12 @@ func NewSession(config *config.Config, conn Conn, id string, control *Target, te
 }
 
 func (s *Session) Run() error {
-	screenshare := strings.Contains(s.script, "screenshare")
 	log.Printf("[session %s] Started REPL session", s.id)
 	defer log.Printf("[session %s] Closed REPL session", s.id)
+	os.Setenv("REPLBOT_SESSION_ID", s.id)
+	os.Setenv("REPLBOT_SSH_SERVER_HOST", "localhost")
+	os.Setenv("REPLBOT_SSH_SERVER_PORT", "10022")
+	os.Setenv("REPLBOT_RELAY_PORT", "10000")
 	if err := s.tmux.Start(s.script, scriptRunCommand, s.scriptID); err != nil {
 		log.Printf("[session %s] Failed to start tmux: %s", s.id, err.Error())
 		return err
@@ -162,9 +164,6 @@ func (s *Session) Run() error {
 	s.g.Go(s.commandOutputLoop)
 	s.g.Go(s.activityMonitor)
 	s.g.Go(s.shutdownHandler)
-	if screenshare {
-		s.g.Go(s.sshd)
-	}
 	if err := s.g.Wait(); err != nil && err != errExit {
 		return err
 	}
@@ -396,49 +395,4 @@ func (s *Session) maybeTrimWindow(window string) string {
 	default:
 		return window
 	}
-}
-
-func (s *Session) sshd() error {
-	forwardHandler := &ssh.ForwardedTCPHandler{}
-
-	server := ssh.Server{
-		Version:                       "SSH",
-		Addr:                          ":10022",
-		PublicKeyHandler:              func(ctx ssh.Context, key ssh.PublicKey) bool {
-			return true
-		},
-		ReversePortForwardingCallback: func(ctx ssh.Context, host string, port uint32) bool {
-			return true
-		},
-		Handler:                       func(s ssh.Session) {
-			b, err := os.ReadFile("client")
-			if err != nil {
-				log.Printf(err.Error())
-				return
-			}
-			s.Write(b)
-			// When exiting this method, the connection is closed!
-		},
-		RequestHandlers: map[string]ssh.RequestHandler{
-			"tcpip-forward":        forwardHandler.HandleSSHRequest,
-			"cancel-tcpip-forward": forwardHandler.HandleSSHRequest,
-		},
-		ChannelHandlers: map[string]ssh.ChannelHandler{
-			"session":      ssh.DefaultSessionHandler,
-			"direct-tcpip": ssh.DirectTCPIPHandler,
-		},
-	}
-
-	if err := server.SetOption(ssh.HostKeyFile("tmp/hostkey")); err != nil {
-		return err
-	}
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil {
-			log.Printf("error: " + err.Error())
-			return
-		}
-	}()
-	<-s.ctx.Done()
-	return nil
 }

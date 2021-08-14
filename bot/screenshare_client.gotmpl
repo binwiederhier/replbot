@@ -1,0 +1,43 @@
+#!/bin/bash
+
+local_port=10001
+relay_server={{.ServerHost}}
+relay_server_port={{.ServerPort}}
+relay_port={{.RelayPort}}
+tmux_session={{.SessionID}}_client
+
+[ -f /usr/bin/ssh ] || { echo "error: ssh is required."; exit 1; }
+[ -f /usr/bin/tmux ] || { echo "error: tmux is required."; exit 1; }
+[ -f /usr/bin/socat ] || { echo "error: socat is required."; exit 1; }
+tmux has-session -t ${tmux_session} 2>/dev/null && { echo "error: tmux session ${tmux_session} already exists"; exit 1; }
+
+# Set up cleanup hooks
+cleanup() {
+  echo cleaning up ${SOCAT_PID} ${SSH_PID} ${tmux_session}
+  tmux kill-session -t ${tmux_session} 2>/dev/null
+  kill ${SOCAT_PID} ${SSH_PID} 2>/dev/null
+}
+trap cleanup EXIT
+
+# Start new tmux session, and redirect TTY to relay port
+tmux new-session -d -s ${tmux_session}
+socat exec:"tmux attach -t ${tmux_session}",pty,raw,echo=0,stderr,setsid,sigint,sane \
+    tcp-listen:${local_port},bind=localhost,reuseaddr &
+export SOCAT_PID=$!
+
+# Open reverse tunnel and redirect incoming traffic to local port
+ssh \
+  -fN \
+  -R ${relay_port}:localhost:${local_port} \
+  -p ${relay_server_port} \
+  -o ExitOnForwardFailure=yes \
+  -o UserKnownHostsFile=/dev/null \
+  -o ExitOnForwardFailure=yes \
+  -o StrictHostKeyChecking=no \
+  -o PasswordAuthentication=no \
+  ${relay_server}
+export SSH_PID=$! SSH_CODE=$?
+[ $SSH_CODE -eq 0 ] || { echo "error: cannot start reverse tunnel"; exit 1; }
+
+# Bring tmux into foreground
+tmux attach -t ${tmux_session}

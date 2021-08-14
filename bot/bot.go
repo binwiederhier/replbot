@@ -2,13 +2,17 @@ package bot
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
+	"github.com/gliderlabs/ssh"
+	"golang.org/x/sync/errgroup"
 	"heckel.io/replbot/config"
 	"heckel.io/replbot/util"
 	"log"
 	"strings"
 	"sync"
+	"text/template"
 )
 
 const (
@@ -60,10 +64,23 @@ func New(conf *config.Config) (*Bot, error) {
 func (b *Bot) Run() error {
 	var ctx context.Context
 	ctx, b.cancelFn = context.WithCancel(context.Background())
+	g, ctx := errgroup.WithContext(ctx)
 	eventChan, err := b.conn.Connect(ctx)
 	if err != nil {
 		return err
 	}
+	g.Go(func() error {
+		return b.handleEvents(ctx, eventChan)
+	})
+	if true {
+		g.Go(func() error {
+			return b.runSSHd(ctx)
+		})
+	}
+	return g.Wait()
+}
+
+func (b *Bot) handleEvents(ctx context.Context, eventChan <-chan event) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -124,30 +141,30 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 }
 
 func (b *Bot) startSessionChannel(ev *messageEvent, script string, windowMode config.WindowMode, width, height int) error {
-	sessionID := fmt.Sprintf("%s:%s", ev.Channel, "")
+	sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ""))
 	target := &Target{Channel: ev.Channel, Thread: ""}
 	return b.startSession(sessionID, target, target, script, config.Channel, windowMode, width, height)
 }
 
 func (b *Bot) startSessionThread(ev *messageEvent, script string, windowMode config.WindowMode, width, height int) error {
 	if ev.Thread == "" {
-		sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ID)
+		sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
 		target := &Target{Channel: ev.Channel, Thread: ev.ID}
 		return b.startSession(sessionID, target, target, script, config.Thread, windowMode, width, height)
 	}
-	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Thread)
+	sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
 	target := &Target{Channel: ev.Channel, Thread: ev.Thread}
 	return b.startSession(sessionID, target, target, script, config.Thread, windowMode, width, height)
 }
 
 func (b *Bot) startSessionSplit(ev *messageEvent, script string, windowMode config.WindowMode, width, height int) error {
 	if ev.Thread == "" {
-		sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ID)
+		sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
 		control := &Target{Channel: ev.Channel, Thread: ev.ID}
 		terminal := &Target{Channel: ev.Channel, Thread: ""}
 		return b.startSession(sessionID, control, terminal, script, config.Split, windowMode, width, height)
 	}
-	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Thread)
+	sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
 	control := &Target{Channel: ev.Channel, Thread: ev.Thread}
 	terminal := &Target{Channel: ev.Channel, Thread: ""}
 	return b.startSession(sessionID, control, terminal, script, config.Split, windowMode, width, height)
@@ -175,7 +192,7 @@ func (b *Bot) startSession(sessionID string, control *Target, terminal *Target, 
 func (b *Bot) maybeForwardMessage(ev *messageEvent) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Thread) // Thread may be empty, that's ok
+	sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread)) // Thread may be empty, that's ok
 	if session, ok := b.sessions[sessionID]; ok && session.Active() {
 		session.HandleUserInput(ev.Message)
 		return true
@@ -251,4 +268,77 @@ func (b *Bot) handleHelp(channel, thread string, err error) error {
 	}
 	replList := fmt.Sprintf("`%s`", strings.Join(b.config.Scripts(), "`, `"))
 	return b.conn.Send(target, fmt.Sprintf(messageTemplate, b.conn.Mention(), scripts[0], replList), Markdown)
+}
+
+var (
+	//go:embed screenshare_client.gotmpl
+	screenshareClient         string
+	screenshareClientTemplate = template.Must(template.New("screenshare-client").Parse(screenshareClient))
+)
+
+type sshSession struct {
+	SessionID  string
+	ServerHost string
+	ServerPort int
+	RelayPort  int
+}
+
+func (b *Bot) runSSHd(ctx context.Context) error {
+	forwardHandler := &ssh.ForwardedTCPHandler{}
+
+	server := ssh.Server{
+		Version: "SSH",
+		Addr:    ":10022",
+		PublicKeyHandler: func(ctx ssh.Context, key ssh.PublicKey) bool {
+			return true
+		},
+		ReversePortForwardingCallback: func(ctx ssh.Context, host string, port uint32) bool {
+			if host != "localhost" && host != "127.0.0.1" {
+				return false
+			}
+			return true
+		},
+		Handler: func(s ssh.Session) {
+			b.mu.RLock()
+			defer b.mu.RUnlock()
+			session, ok := b.sessions[s.User()]
+			if !ok {
+				log.Printf("unknown session: %s", s.User())
+				return
+			}
+			sessionInfo := &sshSession{
+				SessionID:  session.id,
+				ServerHost: "localhost",
+				ServerPort: 10022,
+				RelayPort:  10000,
+			}
+			if err := screenshareClientTemplate.Execute(s, sessionInfo); err != nil {
+				log.Printf(err.Error())
+				return
+			}
+			// When exiting this method, the connection is closed!
+		},
+		RequestHandlers: map[string]ssh.RequestHandler{
+			"tcpip-forward":        forwardHandler.HandleSSHRequest,
+			"cancel-tcpip-forward": forwardHandler.HandleSSHRequest,
+		},
+		ChannelHandlers: map[string]ssh.ChannelHandler{
+			"session":      ssh.DefaultSessionHandler,
+			"direct-tcpip": ssh.DirectTCPIPHandler,
+		},
+	}
+
+	if err := server.SetOption(ssh.HostKeyFile("tmp/hostkey")); err != nil {
+		return err
+	}
+	errChan := make(chan error)
+	go func() {
+		errChan <- server.ListenAndServe()
+	}()
+	select {
+	case err := <-errChan:
+		return err
+	case <-ctx.Done():
+		return nil
+	}
 }

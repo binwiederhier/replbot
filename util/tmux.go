@@ -36,7 +36,7 @@ const (
 // NewTmux creates a new Tmux instance, but does not start the tmux
 func NewTmux(id string, width, height int) *Tmux {
 	return &Tmux{
-		id:     SanitizeID(id),
+		id:     fmt.Sprintf("replbot_%s", id),
 		width:  width,
 		height: height,
 	}
