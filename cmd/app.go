@@ -24,7 +24,7 @@ func New() *cli.App {
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "bot-token", Aliases: []string{"t"}, EnvVars: []string{"REPLBOT_BOT_TOKEN"}, DefaultText: "none", Usage: "bot token"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "script-dir", Aliases: []string{"d"}, EnvVars: []string{"REPLBOT_SCRIPT_DIR"}, Value: "/etc/replbot/script.d", DefaultText: "/etc/replbot/script.d", Usage: "script directory"}),
 		altsrc.NewDurationFlag(&cli.DurationFlag{Name: "idle-timeout", Aliases: []string{"T"}, EnvVars: []string{"REPLBOT_IDLE_TIMEOUT"}, Value: config.DefaultIdleTimeout, Usage: "timeout after which sessions are ended"}),
-		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-mode", Aliases: []string{"m"}, EnvVars: []string{"REPLBOT_DEFAULT_MODE"}, Value: string(config.DefaultMode), DefaultText: string(config.DefaultMode), Usage: "default mode [channel, thread or split]"}),
+		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-control-mode", Aliases: []string{"m"}, EnvVars: []string{"REPLBOT_DEFAULT_CONTROL_MODE"}, Value: string(config.DefaultControlMode), DefaultText: string(config.DefaultControlMode), Usage: "default control mode [channel, thread or split]"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-window-mode", Aliases: []string{"w"}, EnvVars: []string{"REPLBOT_DEFAULT_WINDOW_MODE"}, Value: string(config.DefaultWindowMode), DefaultText: string(config.DefaultWindowMode), Usage: "default window mode [full or trim]"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "cursor", Aliases: []string{"C"}, EnvVars: []string{"REPLBOT_CURSOR"}, Value: "on", Usage: "cursor blink rate (on, off or duration)"}),
 	}
@@ -49,7 +49,7 @@ func execRun(c *cli.Context) error {
 	token := c.String("bot-token")
 	scriptDir := c.String("script-dir")
 	timeout := c.Duration("idle-timeout")
-	defaultMode := config.Mode(c.String("default-mode"))
+	defaultControlMode := config.ControlMode(c.String("default-control-mode"))
 	defaultWindowMode := config.WindowMode(c.String("default-window-mode"))
 	cursor := c.String("cursor")
 	debug := c.Bool("debug")
@@ -61,9 +61,9 @@ func execRun(c *cli.Context) error {
 		return fmt.Errorf("idle timeout has to be at least one minute")
 	} else if entries, err := os.ReadDir(scriptDir); err != nil || len(entries) == 0 {
 		return errors.New("cannot read script directory, or directory empty")
-	} else if defaultMode != config.ModeChannel && defaultMode != config.ModeThread && defaultMode != config.ModeSplit {
+	} else if defaultControlMode != config.Channel && defaultControlMode != config.Thread && defaultControlMode != config.Split {
 		return errors.New("default mode must be 'channel', 'thread' or 'split'")
-	} else if defaultWindowMode != config.WindowModeFull && defaultWindowMode != config.WindowModeTrim {
+	} else if defaultWindowMode != config.Full && defaultWindowMode != config.Trim {
 		return errors.New("default window mode must be 'full' or 'trim'")
 	}
 	cursorRate, err := parseCursorRate(cursor)
@@ -75,7 +75,7 @@ func execRun(c *cli.Context) error {
 	conf := config.New(token)
 	conf.ScriptDir = scriptDir
 	conf.IdleTimeout = timeout
-	conf.DefaultMode = defaultMode
+	conf.DefaultControlMode = defaultControlMode
 	conf.DefaultWindowMode = defaultWindowMode
 	conf.Cursor = cursorRate
 	conf.Debug = debug
@@ -100,7 +100,6 @@ func execRun(c *cli.Context) error {
 
 	log.Printf("Exiting.")
 	return nil
-
 }
 
 func parseCursorRate(cursor string) (time.Duration, error) {
@@ -116,7 +115,7 @@ func parseCursorRate(cursor string) (time.Duration, error) {
 		} else if cursorRate < 500*time.Millisecond {
 			return 0, fmt.Errorf("cursor rate is too low, min allowed is 500ms, though that'll probably cause rate limiting issues too")
 		} else if cursorRate < time.Second {
-			log.Printf("warning: cursor rate is really low; Slack will rate limit us if there are too many shells open")
+			log.Printf("warning: cursor rate is really low; we'll get rate limited if there are too many shells open")
 		}
 		return cursorRate, nil
 	}

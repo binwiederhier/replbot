@@ -52,20 +52,18 @@ const (
 	sessionExitedMessage           = "👋 REPL exited. See you later!"
 	timeoutWarningMessage          = "⏱️ Are you still there? Your session will time out in one minute."
 	forceCloseMessage              = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
-	malformatedTerminalSizeMessage = "🙁 You entered an invalid size. Use `tiny`, `small`, `medium`, `large` or `WxH` instead."
-	invalidTerminalSizeMessage     = "🙁 Oh my, you requested a terminal size that is quite unusual. I can't let you do that. " +
-		"The minimal supported size is %dx%d, the maximal size is %dx%d.\n\n"
-	helpCommand              = "!help"
-	helpShortCommand         = "!h"
-	exitCommand              = "!exit"
-	exitShortCommand         = "!q"
-	screenCommand            = "!screen"
-	screenShortCommand       = "!s"
-	resizePrefix             = "!resize "
-	commentPrefix            = "!! "
-	rawPrefix                = "!n "
-	unquotePrefix            = "!e "
-	availableCommandsMessage = "Available commands:\n" +
+	malformatedTerminalSizeMessage = "🙁 You entered an invalid size. Use `tiny`, `small`, `medium` or `large` instead."
+	helpCommand                    = "!help"
+	helpShortCommand               = "!h"
+	exitCommand                    = "!exit"
+	exitShortCommand               = "!q"
+	screenCommand                  = "!screen"
+	screenShortCommand             = "!s"
+	resizePrefix                   = "!resize "
+	commentPrefix                  = "!! "
+	rawPrefix                      = "!n "
+	unquotePrefix                  = "!e "
+	availableCommandsMessage       = "Available commands:\n" +
 		"  `!ret`, `!r` - Send empty return\n" +
 		"  `!n ...` - Text without a new line\n" +
 		"  `!e ...` - Text with escape sequences (`\\n`, `\\t`, ...)\n" +
@@ -112,7 +110,7 @@ type Session struct {
 	closeTimer     *time.Timer
 	script         string
 	scriptID       string
-	mode           config.Mode
+	mode           config.ControlMode
 	windowMode     config.WindowMode
 	tmux           *util.Tmux
 	cursorOn       bool
@@ -120,7 +118,7 @@ type Session struct {
 	mu             sync.RWMutex
 }
 
-func NewSession(config *config.Config, conn Conn, id string, control *Target, terminal *Target, script string, mode config.Mode, windowMode config.WindowMode, width, height int) *Session {
+func NewSession(config *config.Config, conn Conn, id string, control *Target, terminal *Target, script string, mode config.ControlMode, windowMode config.WindowMode, width, height int) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 	return &Session{
@@ -232,11 +230,11 @@ func (s *Session) handleUserInput(input string) error {
 		} else if strings.HasPrefix(input, unquotePrefix) {
 			return s.tmux.Paste(unquote(strings.TrimPrefix(input, unquotePrefix)))
 		} else if strings.HasPrefix(input, resizePrefix) {
-			width, height, err := convertSize(strings.TrimPrefix(input, resizePrefix))
+			size, err := convertSize(strings.TrimPrefix(input, resizePrefix))
 			if err != nil {
 				return s.conn.Send(s.control, err.Error(), Markdown)
 			}
-			return s.tmux.Resize(width, height)
+			return s.tmux.Resize(size.Width, size.Height)
 		} else if len(input) > 1 && input[0] == '!' {
 			if controlChar, ok := sendKeysTable[input[1:]]; ok {
 				return s.tmux.SendKeys(controlChar)
@@ -296,16 +294,8 @@ func (s *Session) maybeRefreshTerminal(last, lastID string) (string, string, err
 	return current, lastID, nil
 }
 
-func sanitizeWindow(window string) string {
-	sanitized := consoleCodeRegex.ReplaceAllString(window, "")
-	if strings.TrimSpace(sanitized) == "" {
-		sanitized = fmt.Sprintf("(screen is empty) %s", sanitized)
-	}
-	return sanitized
-}
-
 func (s *Session) shouldUpdateTerminal(lastID string) bool {
-	if s.mode == config.ModeSplit {
+	if s.mode == config.Split {
 		return lastID != ""
 	}
 	return lastID != "" && atomic.LoadInt32(&s.userInputCount) < updateMessageUserInputCountLimit
@@ -379,7 +369,7 @@ func (s *Session) activityMonitor() error {
 }
 
 func (s *Session) sessionStartedMessage() string {
-	if s.mode == config.ModeSplit {
+	if s.mode == config.Split {
 		return fmt.Sprintf(sessionStartedMessage, " "+splitModeThreadMessage)
 	}
 	return fmt.Sprintf(sessionStartedMessage, "")
@@ -387,12 +377,12 @@ func (s *Session) sessionStartedMessage() string {
 
 func (s *Session) maybeTrimWindow(window string) string {
 	switch s.windowMode {
-	case config.WindowModeFull:
+	case config.Full:
 		if s.config.Type() == config.TypeSlack {
 			return window
 		}
 		return expandWindow(window)
-	case config.WindowModeTrim:
+	case config.Trim:
 		return strings.TrimRightFunc(window, unicode.IsSpace)
 	default:
 		return window

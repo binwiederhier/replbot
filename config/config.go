@@ -10,40 +10,47 @@ import (
 const (
 	// DefaultIdleTimeout defines the default time after which a session is terminated
 	DefaultIdleTimeout = 10 * time.Minute
-
-	// DefaultMode defines the default window mode in which sessions are controlled
-	DefaultMode       = ModeSplit
-	DefaultWindowMode = WindowModeFull
-	DefaultSize       = SizeSmall
 )
 
-type Mode string
+// ControlMode defines where the control channel and where the terminal will be
+// opened, see config.yml for details
+type ControlMode string
 
 const (
-	// ModeThread is the mode constant to define that both terminal window and user control appear in a thread
-	ModeThread = Mode("thread")
-
-	// ModeChannel is the mode constant to define that both terminal window and user control appear in a channel
-	ModeChannel = Mode("channel")
-
-	// ModeSplit is the mode constant to define that the terminal window is displayed in the main channel, and the user input from a thread
-	ModeSplit = Mode("split")
+	DefaultControlMode = Split
+	Thread             = ControlMode("thread")
+	Channel            = ControlMode("channel")
+	Split              = ControlMode("split")
 )
 
 type WindowMode string
 
 const (
-	WindowModeFull = WindowMode("full")
-	WindowModeTrim = WindowMode("trim")
+	DefaultWindowMode = Full
+	Full              = WindowMode("full")
+	Trim              = WindowMode("trim")
 )
 
-// Predefined terminal sizes
-const (
-	SizeTiny   = "tiny"
-	SizeSmall  = "small"
-	SizeMedium = "medium"
-	SizeLarge  = "large"
-	SizeMax    = "max"
+// Size defines the dimensions of the terminal
+type Size struct {
+	Name   string
+	Width  int
+	Height int
+}
+
+var (
+	Tiny   = Size{"tiny", 60, 15}
+	Small  = Size{"small", 80, 24}
+	Medium = Size{"medium", 100, 30}
+	Large  = Size{"large", 120, 38}
+
+	DefaultSize = Small
+	Sizes       = map[string]*Size{
+		Tiny.Name:   &Tiny,
+		Small.Name:  &Small,
+		Medium.Name: &Medium,
+		Large.Name:  &Large,
+	}
 )
 
 const (
@@ -56,38 +63,26 @@ const (
 	TypeDiscord = "discord"
 )
 
-var (
-	Sizes = map[string][2]int{
-		SizeTiny:   {60, 15},
-		SizeSmall:  {80, 24},
-		SizeMedium: {100, 30},
-		SizeLarge:  {120, 38},
-		SizeMax:    {150, 50},
-	}
-	MinSize = Sizes[SizeTiny]
-	MaxSize = Sizes[SizeMax]
-)
-
 // Config is the main config struct for the application. Use New to instantiate a default config struct.
 type Config struct {
-	Token             string
-	ScriptDir         string
-	IdleTimeout       time.Duration
-	DefaultMode       Mode
-	DefaultWindowMode WindowMode
-	DefaultSize       string
-	Cursor            time.Duration
-	Debug             bool
+	Token              string
+	ScriptDir          string
+	IdleTimeout        time.Duration
+	DefaultControlMode ControlMode
+	DefaultWindowMode  WindowMode
+	DefaultSize        Size
+	Cursor             time.Duration
+	Debug              bool
 }
 
 // New instantiates a default new config
 func New(token string) *Config {
 	return &Config{
-		Token:             token,
-		IdleTimeout:       DefaultIdleTimeout,
-		DefaultMode:       DefaultMode,
-		DefaultWindowMode: DefaultWindowMode,
-		DefaultSize:       DefaultSize,
+		Token:              token,
+		IdleTimeout:        DefaultIdleTimeout,
+		DefaultControlMode: DefaultControlMode,
+		DefaultWindowMode:  DefaultWindowMode,
+		DefaultSize:        DefaultSize,
 	}
 }
 

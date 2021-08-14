@@ -7,7 +7,6 @@ import (
 	"heckel.io/replbot/config"
 	"heckel.io/replbot/util"
 	"log"
-	"regexp"
 	"strings"
 	"sync"
 )
@@ -17,14 +16,13 @@ const (
 	helpMessage    = "I'm a robot for running interactive REPLs and shells from a right here. To start a new session, simply tag me " +
 		"and name one of the available REPLs, like so: %s %s\n\nAvailable REPLs: %s. To run the session in a `thread`, " +
 		"the main `channel`, or in `split` mode, use the respective keywords. To define the terminal size, use the words " +
-		"`tiny`, `small`, `medium`, `large` or `WxH`. Use `full` or `trim` to set the window mode. To start a private REPL " +
+		"`tiny`, `small`, `medium` or `large`. Use `full` or `trim` to set the window mode. To start a private REPL " +
 		"session, just DM me."
 	misconfiguredMessage  = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
 	unknownCommandMessage = "I am not quite sure what you mean by _%s_ ⁉️\n\n"
 )
 
 var (
-	sizeRegex   = regexp.MustCompile(`(\d+)x(\d+)`)
 	errNoScript = errors.New("no script defined")
 )
 
@@ -114,11 +112,11 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 		return b.handleHelp(ev.Channel, ev.Thread, err)
 	}
 	switch mode {
-	case config.ModeChannel:
+	case config.Channel:
 		return b.startSessionChannel(ev, script, windowMode, width, height)
-	case config.ModeThread:
+	case config.Thread:
 		return b.startSessionThread(ev, script, windowMode, width, height)
-	case config.ModeSplit:
+	case config.Split:
 		return b.startSessionSplit(ev, script, windowMode, width, height)
 	default:
 		return fmt.Errorf("unexpected mode: %s", mode)
@@ -128,18 +126,18 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 func (b *Bot) startSessionChannel(ev *messageEvent, script string, windowMode config.WindowMode, width, height int) error {
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, "")
 	target := &Target{Channel: ev.Channel, Thread: ""}
-	return b.startSession(sessionID, target, target, script, config.ModeChannel, windowMode, width, height)
+	return b.startSession(sessionID, target, target, script, config.Channel, windowMode, width, height)
 }
 
 func (b *Bot) startSessionThread(ev *messageEvent, script string, windowMode config.WindowMode, width, height int) error {
 	if ev.Thread == "" {
 		sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ID)
 		target := &Target{Channel: ev.Channel, Thread: ev.ID}
-		return b.startSession(sessionID, target, target, script, config.ModeThread, windowMode, width, height)
+		return b.startSession(sessionID, target, target, script, config.Thread, windowMode, width, height)
 	}
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Thread)
 	target := &Target{Channel: ev.Channel, Thread: ev.Thread}
-	return b.startSession(sessionID, target, target, script, config.ModeThread, windowMode, width, height)
+	return b.startSession(sessionID, target, target, script, config.Thread, windowMode, width, height)
 }
 
 func (b *Bot) startSessionSplit(ev *messageEvent, script string, windowMode config.WindowMode, width, height int) error {
@@ -147,15 +145,15 @@ func (b *Bot) startSessionSplit(ev *messageEvent, script string, windowMode conf
 		sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.ID)
 		control := &Target{Channel: ev.Channel, Thread: ev.ID}
 		terminal := &Target{Channel: ev.Channel, Thread: ""}
-		return b.startSession(sessionID, control, terminal, script, config.ModeSplit, windowMode, width, height)
+		return b.startSession(sessionID, control, terminal, script, config.Split, windowMode, width, height)
 	}
 	sessionID := fmt.Sprintf("%s:%s", ev.Channel, ev.Thread)
 	control := &Target{Channel: ev.Channel, Thread: ev.Thread}
 	terminal := &Target{Channel: ev.Channel, Thread: ""}
-	return b.startSession(sessionID, control, terminal, script, config.ModeSplit, windowMode, width, height)
+	return b.startSession(sessionID, control, terminal, script, config.Split, windowMode, width, height)
 }
 
-func (b *Bot) startSession(sessionID string, control *Target, terminal *Target, script string, mode config.Mode, windowMode config.WindowMode, width, height int) error {
+func (b *Bot) startSession(sessionID string, control *Target, terminal *Target, script string, mode config.ControlMode, windowMode config.WindowMode, width, height int) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	session := NewSession(b.config, b.conn, sessionID, control, terminal, script, mode, windowMode, width, height)
@@ -185,26 +183,21 @@ func (b *Bot) maybeForwardMessage(ev *messageEvent) bool {
 	return false
 }
 
-func (b *Bot) parseMessage(ev *messageEvent) (script string, mode config.Mode, windowMode config.WindowMode, width int, height int, err error) {
+func (b *Bot) parseMessage(ev *messageEvent) (script string, mode config.ControlMode, windowMode config.WindowMode, width int, height int, err error) {
 	fields := strings.Fields(ev.Message)
 	for _, field := range fields {
 		switch field {
 		case b.conn.Mention():
 			// Ignore
-		case string(config.ModeThread), string(config.ModeChannel), string(config.ModeSplit):
-			mode = config.Mode(field)
-		case string(config.WindowModeFull), string(config.WindowModeTrim):
+		case string(config.Thread), string(config.Channel), string(config.Split):
+			mode = config.ControlMode(field)
+		case string(config.Full), string(config.Trim):
 			windowMode = config.WindowMode(field)
-		case config.SizeTiny, config.SizeSmall, config.SizeMedium, config.SizeLarge:
-			width, height = config.Sizes[field][0], config.Sizes[field][1]
+		case config.Tiny.Name, config.Small.Name, config.Medium.Name, config.Large.Name:
+			width, height = config.Sizes[field].Width, config.Sizes[field].Height
 		default:
 			if s := b.config.Script(field); s != "" {
 				script = s
-			} else if sizeRegex.MatchString(field) {
-				width, height, err = convertSize(field)
-				if err != nil {
-					return
-				}
 			} else {
 				return "", "", "", 0, 0, fmt.Errorf(unknownCommandMessage, field)
 			}
@@ -215,26 +208,26 @@ func (b *Bot) parseMessage(ev *messageEvent) (script string, mode config.Mode, w
 	}
 	if mode == "" {
 		if ev.Thread != "" {
-			mode = config.ModeThread // special handling, because it'd be weird otherwise
+			mode = config.Thread // special handling, because it'd be weird otherwise
 		} else {
-			mode = b.config.DefaultMode
+			mode = b.config.DefaultControlMode
 		}
 	}
-	if b.config.Type() == config.TypeDiscord && ev.ChannelType == DM && mode != config.ModeChannel {
-		mode = config.ModeChannel // special case: Discord does not support threads in direct messages
+	if b.config.Type() == config.TypeDiscord && ev.ChannelType == DM && mode != config.Channel {
+		mode = config.Channel // special case: Discord does not support threads in direct messages
 	}
 	if windowMode == "" {
-		if mode == config.ModeThread {
-			windowMode = config.WindowModeTrim
+		if mode == config.Thread {
+			windowMode = config.Trim
 		} else {
 			windowMode = b.config.DefaultWindowMode
 		}
 	}
 	if width == 0 || height == 0 {
-		if mode == config.ModeThread {
-			width, height = config.Sizes[config.SizeTiny][0], config.Sizes[config.SizeTiny][1] // special case: make it tiny in a thread
+		if mode == config.Thread {
+			width, height = config.Tiny.Width, config.Tiny.Height // special case: make it tiny in a thread
 		} else {
-			width, height = config.Sizes[b.config.DefaultSize][0], config.Sizes[b.config.DefaultSize][1]
+			width, height = b.config.DefaultSize.Width, b.config.DefaultSize.Height
 		}
 	}
 	return

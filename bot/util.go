@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"heckel.io/replbot/config"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -56,22 +55,13 @@ func expandWindow(window string) string {
 	return strings.Join(lines, "\n")
 }
 
-func convertSize(size string) (width int, height int, err error) {
+func convertSize(size string) (*config.Size, error) {
 	switch size {
-	case config.SizeTiny, config.SizeSmall, config.SizeMedium, config.SizeLarge:
-		width, height = config.Sizes[size][0], config.Sizes[size][1]
+	case config.Tiny.Name, config.Small.Name, config.Medium.Name, config.Large.Name:
+		return config.Sizes[size], nil
 	default:
-		matches := sizeRegex.FindStringSubmatch(size)
-		if len(matches) == 0 {
-			return 0, 0, fmt.Errorf(malformatedTerminalSizeMessage)
-		}
-		width, _ = strconv.Atoi(matches[1])
-		height, _ = strconv.Atoi(matches[2])
-		if width < config.MinSize[0] || height < config.MinSize[1] || width > config.MaxSize[0] || height > config.MaxSize[1] {
-			return 0, 0, fmt.Errorf(invalidTerminalSizeMessage, config.MinSize[0], config.MinSize[1], config.MaxSize[0], config.MaxSize[1])
-		}
+		return nil, fmt.Errorf(malformatedTerminalSizeMessage)
 	}
-	return
 }
 
 func unquote(s string) string {
@@ -81,4 +71,12 @@ func unquote(s string) string {
 		return string(b)
 	})
 	return s
+}
+
+func sanitizeWindow(window string) string {
+	sanitized := consoleCodeRegex.ReplaceAllString(window, "")
+	if strings.TrimSpace(sanitized) == "" {
+		sanitized = fmt.Sprintf("(screen is empty) %s", sanitized)
+	}
+	return sanitized
 }
