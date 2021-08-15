@@ -78,6 +78,20 @@ func (s *DiscordConn) Update(target *Target, id string, message string, format F
 		return fmt.Errorf("invalid format: %d", format)
 	}
 }
+
+func (s *DiscordConn) Archive(target *Target) error {
+	if target.Thread == "" {
+		return nil
+	}
+	_, err := s.session.ThreadEditComplex(target.Thread, &discordgo.ThreadEditData{
+		Name:                "REPLbot session",
+		Archived:            true,
+		Locked:              false,
+		AutoArchiveDuration: discordgo.ArchiveDurationOneHour,
+	})
+	return err
+}
+
 func (b *DiscordConn) Close() error {
 	return b.session.Close()
 }
