@@ -10,6 +10,7 @@ import (
 	"heckel.io/replbot/config"
 	"heckel.io/replbot/util"
 	"log"
+	"net"
 	"strings"
 	"sync"
 	"text/template"
@@ -72,7 +73,7 @@ func (b *Bot) Run() error {
 	g.Go(func() error {
 		return b.handleEvents(ctx, eventChan)
 	})
-	if true {
+	if b.config.SSHServerListen != "" && b.config.SSHServerHost != "" {
 		g.Go(func() error {
 			return b.runSSHd(ctx)
 		})
@@ -279,24 +280,38 @@ var (
 type sshSession struct {
 	SessionID  string
 	ServerHost string
-	ServerPort int
+	ServerPort string
 	RelayPort  int
 }
 
 func (b *Bot) runSSHd(ctx context.Context) error {
+	serverHost, serverPort, err := net.SplitHostPort(b.config.SSHServerHost)
+	if err != nil {
+		return err
+	}
+
 	forwardHandler := &ssh.ForwardedTCPHandler{}
 
 	server := ssh.Server{
-		Version: "SSH",
-		Addr:    ":10022",
+		Addr:                       b.config.SSHServerListen,
+		PasswordHandler:            nil,
+		KeyboardInteractiveHandler: nil,
 		PublicKeyHandler: func(ctx ssh.Context, key ssh.PublicKey) bool {
 			return true
 		},
 		ReversePortForwardingCallback: func(ctx ssh.Context, host string, port uint32) bool {
-			if host != "localhost" && host != "127.0.0.1" {
+			if port < 1024 || (host != "localhost" && host != "127.0.0.1") {
 				return false
 			}
-			return true
+			b.mu.RLock()
+			defer b.mu.RUnlock()
+			session, ok := b.sessions[ctx.User()]
+			if !ok {
+				log.Printf("unknown session: %s", ctx.User())
+				return false
+			}
+			log.Printf("host: %v, port: %v", host, port)
+			return int(port) == session.relayPort
 		},
 		Handler: func(s ssh.Session) {
 			b.mu.RLock()
@@ -308,8 +323,8 @@ func (b *Bot) runSSHd(ctx context.Context) error {
 			}
 			sessionInfo := &sshSession{
 				SessionID:  session.id,
-				ServerHost: "localhost",
-				ServerPort: 10022,
+				ServerHost: serverHost,
+				ServerPort: serverPort,
 				RelayPort:  10000,
 			}
 			if err := screenshareClientTemplate.Execute(s, sessionInfo); err != nil {

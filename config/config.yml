@@ -85,3 +85,9 @@ bot-token: MUST_BE_SET
 # Required:  No
 #
 # cursor: on
+
+# XXX
+share:
+  listen: ":10022"
+  addr: "
+# ssh-port:

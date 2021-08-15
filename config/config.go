@@ -72,6 +72,8 @@ type Config struct {
 	DefaultWindowMode  WindowMode
 	DefaultSize        *Size
 	Cursor             time.Duration
+	SSHServerHost      string
+	SSHServerListen    string
 	Debug              bool
 }
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-local_port=10001
+local_socket=/tmp/replbot_{{.SessionID}}.sock
 relay_server={{.ServerHost}}
 relay_server_port={{.ServerPort}}
 relay_port={{.RelayPort}}
@@ -19,16 +19,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Start new tmux session, and redirect TTY to relay port
+# Start new tmux session, and redirect TTY to relay port, attach tmux client and forward traffic to local socket
 tmux new-session -d -s ${tmux_session}
 socat exec:"tmux attach -t ${tmux_session}",pty,raw,echo=0,stderr,setsid,sigint,sane \
-    tcp-listen:${local_port},bind=localhost,reuseaddr &
+    unix-listen:${local_socket} &
 export SOCAT_PID=$!
 
 # Open reverse tunnel and redirect incoming traffic to local port
 ssh \
   -fN \
-  -R ${relay_port}:localhost:${local_port} \
+  -R ${relay_port}:${local_socket} \
   -p ${relay_server_port} \
   -o ExitOnForwardFailure=yes \
   -o UserKnownHostsFile=/dev/null \
@@ -39,5 +39,5 @@ ssh \
 export SSH_PID=$! SSH_CODE=$?
 [ $SSH_CODE -eq 0 ] || { echo "error: cannot start reverse tunnel"; exit 1; }
 
-# Bring tmux into foreground
+# Attach another client
 tmux attach -t ${tmux_session}

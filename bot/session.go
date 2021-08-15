@@ -8,9 +8,11 @@ import (
 	"heckel.io/replbot/config"
 	"heckel.io/replbot/util"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -117,6 +119,7 @@ type Session struct {
 	tmux           *util.Tmux
 	cursorOn       bool
 	cursorUpdated  time.Time
+	relayPort      int
 	mu             sync.RWMutex
 }
 
@@ -149,10 +152,10 @@ func NewSession(config *config.Config, conn Conn, id string, control *Target, te
 func (s *Session) Run() error {
 	log.Printf("[session %s] Started REPL session", s.id)
 	defer log.Printf("[session %s] Closed REPL session", s.id)
-	os.Setenv("REPLBOT_SESSION_ID", s.id)
-	os.Setenv("REPLBOT_SSH_SERVER_HOST", "localhost")
-	os.Setenv("REPLBOT_SSH_SERVER_PORT", "10022")
-	os.Setenv("REPLBOT_RELAY_PORT", "10000")
+
+	if err := s.setEnvVars(); err != nil {
+		return err
+	}
 	if err := s.tmux.Start(s.script, scriptRunCommand, s.scriptID); err != nil {
 		log.Printf("[session %s] Failed to start tmux: %s", s.id, err.Error())
 		return err
@@ -395,4 +398,26 @@ func (s *Session) maybeTrimWindow(window string) string {
 	default:
 		return window
 	}
+}
+
+func (s *Session) setEnvVars() error {
+	host, port, err := net.SplitHostPort(s.config.SSHServerHost)
+	if err != nil {
+		return err
+	} else if port == "" {
+		port = "22"
+	}
+	if err := os.Setenv("REPLBOT_SESSION_ID", s.id); err != nil {
+		return err
+	}
+	if err := os.Setenv("REPLBOT_SSH_SERVER_HOST", host); err != nil {
+		return err
+	}
+	if err := os.Setenv("REPLBOT_SSH_SERVER_PORT", port); err != nil {
+		return err
+	}
+	if err := os.Setenv("REPLBOT_RELAY_PORT", strconv.Itoa(s.relayPort)); err != nil {
+		return err
+	}
+	return nil
 }
