@@ -86,6 +86,10 @@ func (s *SlackConn) Update(target *Target, id string, message string, format For
 	}
 }
 
+func (s *SlackConn) Archive(target *Target) error {
+	return nil
+}
+
 func (b *SlackConn) Close() error {
 	return nil
 }

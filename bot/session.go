@@ -344,6 +344,9 @@ func (s *Session) shutdownHandler() error {
 	if err := s.conn.Send(s.control, sessionExitedMessage, Markdown); err != nil {
 		log.Printf("[session %s] Warning: unable to send exited message: %s", s.id, err.Error())
 	}
+	if err := s.conn.Archive(s.control); err != nil {
+		log.Printf("[session %s] Warning: unable to archive thread: %s", s.id, err.Error())
+	}
 	s.mu.Lock()
 	s.active = false
 	s.mu.Unlock()

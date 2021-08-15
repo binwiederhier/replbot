@@ -29,6 +29,7 @@ type Conn interface {
 	Send(target *Target, message string, format Format) error
 	SendWithID(target *Target, message string, format Format) (string, error)
 	Update(target *Target, id string, message string, format Format) error
+	Archive(target *Target) error
 	Mention() string
 	Unescape(s string) string
 	Close() error
