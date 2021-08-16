@@ -72,8 +72,8 @@ type Config struct {
 	DefaultWindowMode  WindowMode
 	DefaultSize        *Size
 	Cursor             time.Duration
-	SSHServerHost      string
-	SSHServerListen    string
+	SSHHost            string
+	SSHListen          string
 	Debug              bool
 }
 
@@ -93,6 +93,10 @@ func (c *Config) Type() string {
 		return TypeSlack
 	}
 	return TypeDiscord
+}
+
+func (c *Config) ShareEnabled() bool {
+	return c.SSHHost != "" && c.SSHListen != ""
 }
 
 // Scripts returns the names of all available scripts

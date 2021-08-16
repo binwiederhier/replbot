@@ -1,7 +1,6 @@
 package util
 
 import (
-	"errors"
 	"net"
 	"os"
 	"os/exec"
@@ -37,22 +36,19 @@ func RunAll(commands ...[]string) error {
 	return nil
 }
 
-func TCPPort() (int, error) {
-	for i := 0; i < 20; i++ {
-		listener, err := net.Listen("tcp4", ":0")
-		if err != nil {
-			continue
-		}
-		_, p, err := net.SplitHostPort(listener.Addr().String())
-		if err != nil {
-			continue
-		}
-		port, err := strconv.Atoi(p)
-		if err != nil {
-			continue
-		}
-		_ = listener.Close()
-		return port, nil
+func RandomPort() (int, error) {
+	listener, err := net.Listen("tcp4", ":0")
+	if err != nil {
+		return 0, err
 	}
-	return 0, errors.New("unable to find free port")
+	defer listener.Close()
+	_, p, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		return 0, err
+	}
+	port, err := strconv.Atoi(p)
+	if err != nil {
+		return 0, err
+	}
+	return port, nil
 }

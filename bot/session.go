@@ -123,7 +123,7 @@ type Session struct {
 	mu             sync.RWMutex
 }
 
-func NewSession(config *config.Config, conn Conn, id string, control *Target, terminal *Target, script string, mode config.ControlMode, windowMode config.WindowMode, width, height int) *Session {
+func NewSession(config *config.Config, conn Conn, id string, control *Target, terminal *Target, script string, mode config.ControlMode, windowMode config.WindowMode, width, height int, relayPort int) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 	return &Session{
@@ -146,13 +146,13 @@ func NewSession(config *config.Config, conn Conn, id string, control *Target, te
 		active:         true,
 		warnTimer:      time.NewTimer(config.IdleTimeout - time.Minute),
 		closeTimer:     time.NewTimer(config.IdleTimeout),
+		relayPort:      relayPort,
 	}
 }
 
 func (s *Session) Run() error {
 	log.Printf("[session %s] Started REPL session", s.id)
 	defer log.Printf("[session %s] Closed REPL session", s.id)
-
 	if err := s.setEnvVars(); err != nil {
 		return err
 	}
@@ -404,22 +404,27 @@ func (s *Session) maybeTrimWindow(window string) string {
 }
 
 func (s *Session) setEnvVars() error {
-	host, port, err := net.SplitHostPort(s.config.SSHServerHost)
-	if err != nil {
-		return err
-	} else if port == "" {
-		port = "22"
+	var host, port, relayPort string
+	var err error
+	if s.config.SSHHost != "" {
+		host, port, err = net.SplitHostPort(s.config.SSHHost)
+		if err != nil {
+			return err
+		}
+	}
+	if s.relayPort > 0 {
+		relayPort = strconv.Itoa(s.relayPort)
 	}
 	if err := os.Setenv("REPLBOT_SESSION_ID", s.id); err != nil {
 		return err
 	}
-	if err := os.Setenv("REPLBOT_SSH_SERVER_HOST", host); err != nil {
+	if err := os.Setenv("REPLBOT_SSH_HOST", host); err != nil {
 		return err
 	}
-	if err := os.Setenv("REPLBOT_SSH_SERVER_PORT", port); err != nil {
+	if err := os.Setenv("REPLBOT_SSH_PORT", port); err != nil {
 		return err
 	}
-	if err := os.Setenv("REPLBOT_RELAY_PORT", strconv.Itoa(s.relayPort)); err != nil {
+	if err := os.Setenv("REPLBOT_RELAY_PORT", relayPort); err != nil {
 		return err
 	}
 	return nil
