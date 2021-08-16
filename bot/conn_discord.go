@@ -52,12 +52,12 @@ func (b *DiscordConn) Connect(ctx context.Context) (<-chan event, error) {
 	return eventChan, nil
 }
 
-func (s *DiscordConn) Send(target *Target, message string, format Format) error {
+func (s *DiscordConn) Send(target *ChatWindow, message string, format Format) error {
 	_, err := s.SendWithID(target, message, format)
 	return err
 }
 
-func (s *DiscordConn) SendWithID(target *Target, message string, format Format) (string, error) {
+func (s *DiscordConn) SendWithID(target *ChatWindow, message string, format Format) (string, error) {
 	switch format {
 	case Markdown:
 		return s.send(target, message)
@@ -68,7 +68,7 @@ func (s *DiscordConn) SendWithID(target *Target, message string, format Format) 
 	}
 }
 
-func (s *DiscordConn) Update(target *Target, id string, message string, format Format) error {
+func (s *DiscordConn) Update(target *ChatWindow, id string, message string, format Format) error {
 	switch format {
 	case Markdown:
 		return s.update(target, id, message)
@@ -79,7 +79,7 @@ func (s *DiscordConn) Update(target *Target, id string, message string, format F
 	}
 }
 
-func (s *DiscordConn) Archive(target *Target) error {
+func (s *DiscordConn) Archive(target *ChatWindow) error {
 	if target.Thread == "" {
 		return nil
 	}
@@ -162,7 +162,7 @@ func (s *DiscordConn) formatCode(message string) string {
 	return fmt.Sprintf("```%s```", strings.ReplaceAll(message, "```", "` ` `")) // Hack ...
 }
 
-func (s *DiscordConn) send(target *Target, content string) (string, error) {
+func (s *DiscordConn) send(target *ChatWindow, content string) (string, error) {
 	channel, err := s.maybeCreateThread(target)
 	if err != nil {
 		return "", err
@@ -174,7 +174,7 @@ func (s *DiscordConn) send(target *Target, content string) (string, error) {
 	return msg.ID, nil
 }
 
-func (s *DiscordConn) update(target *Target, messageID string, content string) error {
+func (s *DiscordConn) update(target *ChatWindow, messageID string, content string) error {
 	channel := target.Channel
 	if target.Thread != "" {
 		channel = target.Thread
@@ -183,7 +183,7 @@ func (s *DiscordConn) update(target *Target, messageID string, content string) e
 	return err
 }
 
-func (s *DiscordConn) maybeCreateThread(target *Target) (string, error) {
+func (s *DiscordConn) maybeCreateThread(target *ChatWindow) (string, error) {
 	channel := target.Channel
 	if target.Thread == "" {
 		return channel, nil

@@ -27,16 +27,16 @@ const (
 	misconfiguredMessage  = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
 	unknownCommandMessage = "I am not quite sure what you mean by _%s_ ⁉️\n\n"
 	shareCommand          = "share"
-	shareServerFile       = "/tmp/replbot_share_server.sh"
+	shareServerScriptFile = "/tmp/replbot_share_server.sh"
 )
 
 var (
 	//go:embed share_server.sh
-	shareServerScript string
+	shareServerScriptSource string
 
 	//go:embed share_client.sh.gotmpl
-	shareClientScript   string
-	shareClientTemplate = template.Must(template.New("share_client").Parse(shareClientScript))
+	shareClientScriptSource   string
+	shareClientScriptTemplate = template.Must(template.New("share_client").Parse(shareClientScriptSource))
 
 	errNoScript = errors.New("no script defined")
 )
@@ -135,75 +135,69 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 	} else if ev.ChannelType == Channel && !strings.Contains(ev.Message, b.conn.Mention()) {
 		return nil
 	}
-	script, mode, windowMode, width, height, share, err := b.parseMessage(ev)
+	conf, err := b.parseSessionConfig(ev)
 	if err != nil {
 		return b.handleHelp(ev.Channel, ev.Thread, err)
 	}
-	switch mode {
+	switch conf.ControlMode {
 	case config.Channel:
-		return b.startSessionChannel(ev, script, windowMode, width, height, share)
+		return b.startSessionChannel(ev, conf)
 	case config.Thread:
-		return b.startSessionThread(ev, script, windowMode, width, height, share)
+		return b.startSessionThread(ev, conf)
 	case config.Split:
-		return b.startSessionSplit(ev, script, windowMode, width, height, share)
+		return b.startSessionSplit(ev, conf)
 	default:
-		return fmt.Errorf("unexpected mode: %s", mode)
+		return fmt.Errorf("unexpected mode: %s", conf.ControlMode)
 	}
 }
 
-func (b *Bot) startSessionChannel(ev *messageEvent, script string, windowMode config.WindowMode, width, height int, share bool) error {
-	sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ""))
-	target := &Target{Channel: ev.Channel, Thread: ""}
-	return b.startSession(sessionID, target, target, script, config.Channel, windowMode, width, height, share)
+func (b *Bot) startSessionChannel(ev *messageEvent, conf *SessionConfig) error {
+	conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ""))
+	conf.Control = &ChatWindow{Channel: ev.Channel, Thread: ""}
+	conf.Terminal = conf.Control
+	return b.startSession(conf)
 }
 
-func (b *Bot) startSessionThread(ev *messageEvent, script string, windowMode config.WindowMode, width, height int, share bool) error {
+func (b *Bot) startSessionThread(ev *messageEvent, conf *SessionConfig) error {
 	if ev.Thread == "" {
-		sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
-		target := &Target{Channel: ev.Channel, Thread: ev.ID}
-		return b.startSession(sessionID, target, target, script, config.Thread, windowMode, width, height, share)
+		conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
+		conf.Control = &ChatWindow{Channel: ev.Channel, Thread: ev.ID}
+		conf.Terminal = conf.Control
+		return b.startSession(conf)
 	}
-	sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
-	target := &Target{Channel: ev.Channel, Thread: ev.Thread}
-	return b.startSession(sessionID, target, target, script, config.Thread, windowMode, width, height, share)
+	conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
+	conf.Control = &ChatWindow{Channel: ev.Channel, Thread: ev.Thread}
+	conf.Terminal = conf.Control
+	return b.startSession(conf)
 }
 
-func (b *Bot) startSessionSplit(ev *messageEvent, script string, windowMode config.WindowMode, width, height int, share bool) error {
+func (b *Bot) startSessionSplit(ev *messageEvent, conf *SessionConfig) error {
 	if ev.Thread == "" {
-		sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
-		control := &Target{Channel: ev.Channel, Thread: ev.ID}
-		terminal := &Target{Channel: ev.Channel, Thread: ""}
-		return b.startSession(sessionID, control, terminal, script, config.Split, windowMode, width, height, share)
+		conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
+		conf.Control = &ChatWindow{Channel: ev.Channel, Thread: ev.ID}
+		conf.Terminal = &ChatWindow{Channel: ev.Channel, Thread: ""}
+		return b.startSession(conf)
 	}
-	sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
-	control := &Target{Channel: ev.Channel, Thread: ev.Thread}
-	terminal := &Target{Channel: ev.Channel, Thread: ""}
-	return b.startSession(sessionID, control, terminal, script, config.Split, windowMode, width, height, share)
+	conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
+	conf.Control = &ChatWindow{Channel: ev.Channel, Thread: ev.Thread}
+	conf.Terminal = &ChatWindow{Channel: ev.Channel, Thread: ""}
+	return b.startSession(conf)
 }
 
-func (b *Bot) startSession(sessionID string, control *Target, terminal *Target, script string, mode config.ControlMode, windowMode config.WindowMode, width, height int, share bool) error {
+func (b *Bot) startSession(conf *SessionConfig) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	var relayPort int
-	var err error
-	if share {
-		script = shareServerFile
-		relayPort, err = util.RandomPort()
-		if err != nil {
-			return err
-		}
-	}
-	session := NewSession(b.config, b.conn, sessionID, control, terminal, script, mode, windowMode, width, height, relayPort)
-	b.sessions[sessionID] = session
-	log.Printf("[session %s] Starting session", sessionID)
+	session := NewSession(b.config, b.conn, conf)
+	b.sessions[conf.ID] = session
+	log.Printf("[session %s] Starting session", conf.ID)
 	go func() {
 		if err := session.Run(); err != nil {
-			log.Printf("[session %s] Session exited with error: %s", sessionID, err.Error())
+			log.Printf("[session %s] Session exited with error: %s", conf.ID, err.Error())
 		} else {
-			log.Printf("[session %s] Session exited", sessionID)
+			log.Printf("[session %s] Session exited", conf.ID)
 		}
 		b.mu.Lock()
-		delete(b.sessions, sessionID)
+		delete(b.sessions, conf.ID)
 		b.mu.Unlock()
 	}()
 	return nil
@@ -214,62 +208,68 @@ func (b *Bot) maybeForwardMessage(ev *messageEvent) bool {
 	defer b.mu.Unlock()
 	sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread)) // Thread may be empty, that's ok
 	if session, ok := b.sessions[sessionID]; ok && session.Active() {
-		session.HandleUserInput(ev.Message)
+		session.UserInput(ev.Message)
 		return true
 	}
 	return false
 }
 
-func (b *Bot) parseMessage(ev *messageEvent) (script string, controlMode config.ControlMode, windowMode config.WindowMode, width int, height int, share bool, err error) {
+func (b *Bot) parseSessionConfig(ev *messageEvent) (*SessionConfig, error) {
+	conf := &SessionConfig{}
 	fields := strings.Fields(ev.Message)
 	for _, field := range fields {
 		switch field {
 		case b.conn.Mention():
 			// Ignore
 		case string(config.Thread), string(config.Channel), string(config.Split):
-			controlMode = config.ControlMode(field)
+			conf.ControlMode = config.ControlMode(field)
 		case string(config.Full), string(config.Trim):
-			windowMode = config.WindowMode(field)
+			conf.WindowMode = config.WindowMode(field)
 		case config.Tiny.Name, config.Small.Name, config.Medium.Name, config.Large.Name:
-			width, height = config.Sizes[field].Width, config.Sizes[field].Height
+			conf.Size = config.Sizes[field]
 		default:
 			if b.config.ShareEnabled() && field == shareCommand {
-				share = true
-			} else if s := b.config.Script(field); s != "" {
-				script = s
+				relayPort, err := util.RandomPort()
+				if err != nil {
+					return nil, err
+				}
+				conf.Script = shareServerScriptFile
+				conf.RelayPort = relayPort
+			} else if s := b.config.Script(field); conf.Script == "" && s != "" {
+				conf.Script = s
 			} else {
-				return "", "", "", 0, 0, false, fmt.Errorf(unknownCommandMessage, field)
+				return nil, fmt.Errorf(unknownCommandMessage, field)
 			}
 		}
 	}
-	if script == "" && !share {
-		return "", "", "", 0, 0, false, errNoScript
+	if conf.Script == "" {
+		return nil, errNoScript
 	}
-	if controlMode == "" {
+	if conf.ControlMode == "" {
 		if ev.Thread != "" {
-			controlMode = config.Thread // special handling, because it'd be weird otherwise
+			conf.ControlMode = config.Thread // special handling, because it'd be weird otherwise
 		} else {
-			controlMode = b.config.DefaultControlMode
+			conf.ControlMode = b.config.DefaultControlMode
 		}
 	}
-	if b.config.Type() == config.TypeDiscord && ev.ChannelType == DM && controlMode != config.Channel {
-		controlMode = config.Channel // special case: Discord does not support threads in direct messages
+	if b.config.Type() == config.TypeDiscord && ev.ChannelType == DM && conf.ControlMode != config.Channel {
+		conf.ControlMode = config.Channel // special case: Discord does not support threads in direct messages
 	}
-	if windowMode == "" {
-		if controlMode == config.Thread {
-			windowMode = config.Trim
+	if conf.WindowMode == "" {
+		if conf.ControlMode == config.Thread {
+			conf.WindowMode = config.Trim
 		} else {
-			windowMode = b.config.DefaultWindowMode
+			conf.WindowMode = b.config.DefaultWindowMode
 		}
 	}
-	if width == 0 || height == 0 {
-		if controlMode == config.Thread {
-			width, height = config.Tiny.Width, config.Tiny.Height // special case: make it tiny in a thread
+	if conf.Size == nil {
+		if conf.ControlMode == config.Thread {
+			conf.Size = config.Tiny // special case: make it tiny in a thread
 		} else {
-			width, height = b.config.DefaultSize.Width, b.config.DefaultSize.Height
+			conf.Size = b.config.DefaultSize
 		}
 	}
-	return
+	return conf, nil
 }
 
 func (b *Bot) handleChannelJoinedEvent(ev *messageEvent) error {
@@ -277,7 +277,7 @@ func (b *Bot) handleChannelJoinedEvent(ev *messageEvent) error {
 }
 
 func (b *Bot) handleHelp(channel, thread string, err error) error {
-	target := &Target{Channel: channel, Thread: thread}
+	target := &ChatWindow{Channel: channel, Thread: thread}
 	scripts := b.config.Scripts()
 	if len(scripts) == 0 {
 		return b.conn.Send(target, misconfiguredMessage, Markdown)
@@ -300,7 +300,7 @@ type sshSession struct {
 }
 
 func (b *Bot) runSSHd(ctx context.Context) error {
-	if err := os.WriteFile(shareServerFile, []byte(shareServerScript), 0700); err != nil {
+	if err := os.WriteFile(shareServerScriptFile, []byte(shareServerScriptSource), 0700); err != nil {
 		return err
 	}
 	host, port, err := net.SplitHostPort(b.config.SSHHost)
@@ -343,7 +343,7 @@ func (b *Bot) runSSHd(ctx context.Context) error {
 				ServerPort: port,
 				RelayPort:  session.relayPort,
 			}
-			if err := shareClientTemplate.Execute(s, sessionInfo); err != nil {
+			if err := shareClientScriptTemplate.Execute(s, sessionInfo); err != nil {
 				log.Printf(err.Error())
 				return
 			}

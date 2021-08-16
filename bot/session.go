@@ -101,8 +101,8 @@ type Session struct {
 	id             string
 	config         *config.Config
 	conn           Conn
-	control        *Target
-	terminal       *Target
+	control        *ChatWindow
+	terminal       *ChatWindow
 	userInputChan  chan string
 	userInputCount int32
 	forceResend    chan bool
@@ -114,7 +114,7 @@ type Session struct {
 	closeTimer     *time.Timer
 	script         string
 	scriptID       string
-	mode           config.ControlMode
+	controlMode    config.ControlMode
 	windowMode     config.WindowMode
 	tmux           *util.Tmux
 	cursorOn       bool
@@ -123,20 +123,32 @@ type Session struct {
 	mu             sync.RWMutex
 }
 
-func NewSession(config *config.Config, conn Conn, id string, control *Target, terminal *Target, script string, mode config.ControlMode, windowMode config.WindowMode, width, height int, relayPort int) *Session {
+type SessionConfig struct {
+	ID          string
+	Control     *ChatWindow
+	Terminal    *ChatWindow
+	Script      string
+	ControlMode config.ControlMode
+	WindowMode  config.WindowMode
+	Size        *config.Size
+	RelayPort   int
+}
+
+func NewSession(config *config.Config, conn Conn, sconfig *SessionConfig) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 	return &Session{
 		config:         config,
 		conn:           conn,
-		id:             id,
-		control:        control,
-		terminal:       terminal,
-		script:         script,
-		scriptID:       fmt.Sprintf("replbot_%s", id),
-		mode:           mode,
-		windowMode:     windowMode,
-		tmux:           util.NewTmux(id, width, height),
+		id:             sconfig.ID,
+		control:        sconfig.Control,
+		terminal:       sconfig.Terminal,
+		script:         sconfig.Script,
+		scriptID:       fmt.Sprintf("replbot_%s", sconfig.ID),
+		controlMode:    sconfig.ControlMode,
+		windowMode:     sconfig.WindowMode,
+		relayPort:      sconfig.RelayPort,
+		tmux:           util.NewTmux(sconfig.ID, sconfig.Size.Width, sconfig.Size.Height),
 		userInputChan:  make(chan string, 10), // buffered!
 		userInputCount: 0,
 		forceResend:    make(chan bool),
@@ -146,7 +158,6 @@ func NewSession(config *config.Config, conn Conn, id string, control *Target, te
 		active:         true,
 		warnTimer:      time.NewTimer(config.IdleTimeout - time.Minute),
 		closeTimer:     time.NewTimer(config.IdleTimeout),
-		relayPort:      relayPort,
 	}
 }
 
@@ -173,8 +184,8 @@ func (s *Session) Run() error {
 	return nil
 }
 
-// HandleUserInput handles user input by forwarding to the underlying shell
-func (s *Session) HandleUserInput(message string) {
+// UserInput handles user input by forwarding to the underlying shell
+func (s *Session) UserInput(message string) {
 	if !s.Active() {
 		return
 	}
@@ -306,7 +317,7 @@ func (s *Session) maybeRefreshTerminal(last, lastID string) (string, string, err
 }
 
 func (s *Session) shouldUpdateTerminal(lastID string) bool {
-	if s.mode == config.Split {
+	if s.controlMode == config.Split {
 		return lastID != ""
 	}
 	return lastID != "" && atomic.LoadInt32(&s.userInputCount) < updateMessageUserInputCountLimit
@@ -383,7 +394,7 @@ func (s *Session) activityMonitor() error {
 }
 
 func (s *Session) sessionStartedMessage() string {
-	if s.mode == config.Split {
+	if s.controlMode == config.Split {
 		return fmt.Sprintf(sessionStartedMessage, " "+splitModeThreadMessage)
 	}
 	return fmt.Sprintf(sessionStartedMessage, "")
