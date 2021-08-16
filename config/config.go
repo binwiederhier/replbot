@@ -72,8 +72,7 @@ type Config struct {
 	DefaultWindowMode  WindowMode
 	DefaultSize        *Size
 	Cursor             time.Duration
-	SSHHost            string
-	SSHListen          string
+	ShareHost          string
 	Debug              bool
 }
 
@@ -96,7 +95,7 @@ func (c *Config) Type() string {
 }
 
 func (c *Config) ShareEnabled() bool {
-	return c.SSHHost != "" && c.SSHListen != ""
+	return c.ShareHost != ""
 }
 
 // Scripts returns the names of all available scripts

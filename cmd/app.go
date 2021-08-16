@@ -27,8 +27,7 @@ func New() *cli.App {
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-control-mode", Aliases: []string{"m"}, EnvVars: []string{"REPLBOT_DEFAULT_CONTROL_MODE"}, Value: string(config.DefaultControlMode), DefaultText: string(config.DefaultControlMode), Usage: "default control mode [channel, thread or split]"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-window-mode", Aliases: []string{"w"}, EnvVars: []string{"REPLBOT_DEFAULT_WINDOW_MODE"}, Value: string(config.DefaultWindowMode), DefaultText: string(config.DefaultWindowMode), Usage: "default window mode [full or trim]"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "cursor", Aliases: []string{"C"}, EnvVars: []string{"REPLBOT_CURSOR"}, Value: "on", Usage: "cursor blink rate (on, off or duration)"}),
-		altsrc.NewStringFlag(&cli.StringFlag{Name: "ssh-host", Aliases: []string{"H"}, EnvVars: []string{"REPLBOT_SSH_HOST"}, Usage: "SSH hostname:port, used for terminal sharing"}),
-		altsrc.NewStringFlag(&cli.StringFlag{Name: "ssh-listen", Aliases: []string{"L"}, EnvVars: []string{"REPLBOT_SSH_LISTEN"}, Usage: "SSH listen [address]:port, used for terminal sharing"}),
+		altsrc.NewStringFlag(&cli.StringFlag{Name: "share-host", Aliases: []string{"H"}, EnvVars: []string{"REPLBOT_SHARE_HOST"}, Usage: "SSH hostname:port, used for terminal sharing"}),
 	}
 	return &cli.App{
 		Name:                   "replbot",
@@ -54,8 +53,7 @@ func execRun(c *cli.Context) error {
 	defaultControlMode := config.ControlMode(c.String("default-control-mode"))
 	defaultWindowMode := config.WindowMode(c.String("default-window-mode"))
 	cursor := c.String("cursor")
-	sshHost := c.String("ssh-host")
-	sshListen := c.String("ssh-listen")
+	shareHost := c.String("share-host")
 	debug := c.Bool("debug")
 	if token == "" || token == "MUST_BE_SET" {
 		return errors.New("missing bot token, pass --bot-token, set REPLBOT_BOT_TOKEN env variable or bot-token config option")
@@ -82,8 +80,7 @@ func execRun(c *cli.Context) error {
 	conf.DefaultControlMode = defaultControlMode
 	conf.DefaultWindowMode = defaultWindowMode
 	conf.Cursor = cursorRate
-	conf.SSHHost = sshHost
-	conf.SSHListen = sshListen
+	conf.ShareHost = shareHost
 	conf.Debug = debug
 	robot, err := bot.New(conf)
 	if err != nil {

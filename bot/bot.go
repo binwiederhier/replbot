@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gliderlabs/ssh"
+	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/sync/errgroup"
 	"heckel.io/replbot/config"
 	"heckel.io/replbot/util"
@@ -14,7 +15,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"text/template"
 )
 
 const (
@@ -33,12 +33,7 @@ const (
 var (
 	//go:embed share_server.sh
 	shareServerScriptSource string
-
-	//go:embed share_client.sh.gotmpl
-	shareClientScriptSource   string
-	shareClientScriptTemplate = template.Must(template.New("share_client").Parse(shareClientScriptSource))
-
-	errNoScript = errors.New("no script defined")
+	errNoScript             = errors.New("no script defined")
 )
 
 type Bot struct {
@@ -83,7 +78,7 @@ func (b *Bot) Run() error {
 	g.Go(func() error {
 		return b.handleEvents(ctx, eventChan)
 	})
-	if b.config.SSHListen != "" && b.config.SSHHost != "" {
+	if b.config.ShareHost != "" {
 		g.Go(func() error {
 			return b.runSSHd(ctx)
 		})
@@ -303,62 +298,27 @@ func (b *Bot) runSSHd(ctx context.Context) error {
 	if err := os.WriteFile(shareServerScriptFile, []byte(shareServerScriptSource), 0700); err != nil {
 		return err
 	}
-	host, port, err := net.SplitHostPort(b.config.SSHHost)
+	_, port, err := net.SplitHostPort(b.config.ShareHost)
 	if err != nil {
 		return err
 	}
 	forwardHandler := &ssh.ForwardedTCPHandler{}
 	server := ssh.Server{
-		Addr:                       b.config.SSHListen,
-		PasswordHandler:            nil,
-		KeyboardInteractiveHandler: nil,
-		PublicKeyHandler: func(ctx ssh.Context, key ssh.PublicKey) bool {
-			return true
-		},
-		ReversePortForwardingCallback: func(ctx ssh.Context, host string, port uint32) bool {
-			if port < 1024 || (host != "localhost" && host != "127.0.0.1") {
-				return false
-			}
-			b.mu.RLock()
-			defer b.mu.RUnlock()
-			session, ok := b.sessions[ctx.User()]
-			if !ok {
-				log.Printf("unknown session: %s", ctx.User())
-				return false
-			}
-			log.Printf("host: %v, port: %v", host, port)
-			return int(port) == session.relayPort
-		},
-		Handler: func(s ssh.Session) {
-			b.mu.RLock()
-			defer b.mu.RUnlock()
-			session, ok := b.sessions[s.User()]
-			if !ok || session.relayPort == 0 {
-				log.Printf("unknown session: %s", s.User())
-				return
-			}
-			sessionInfo := &sshSession{
-				SessionID:  session.id,
-				ServerHost: host,
-				ServerPort: port,
-				RelayPort:  session.relayPort,
-			}
-			if err := shareClientScriptTemplate.Execute(s, sessionInfo); err != nil {
-				log.Printf(err.Error())
-				return
-			}
-			// When exiting this method, the connection is closed!
-		},
+		Addr:                          fmt.Sprintf(":%s", port),
+		PasswordHandler:               nil,
+		PublicKeyHandler:              nil,
+		KeyboardInteractiveHandler:    nil,
+		PtyCallback:                   b.sshPtyCallback,
+		ReversePortForwardingCallback: b.sshReversePortForwardingCallback,
+		Handler:                       b.sshSessionHandler,
 		RequestHandlers: map[string]ssh.RequestHandler{
 			"tcpip-forward":        forwardHandler.HandleSSHRequest,
 			"cancel-tcpip-forward": forwardHandler.HandleSSHRequest,
 		},
 		ChannelHandlers: map[string]ssh.ChannelHandler{
-			"session":      ssh.DefaultSessionHandler,
-			"direct-tcpip": ssh.DirectTCPIPHandler,
+			"session": ssh.DefaultSessionHandler,
 		},
 	}
-
 	if err := server.SetOption(ssh.HostKeyFile("tmp/hostkey")); err != nil {
 		return err
 	}
@@ -372,4 +332,44 @@ func (b *Bot) runSSHd(ctx context.Context) error {
 	case <-ctx.Done():
 		return nil
 	}
+}
+
+func (b *Bot) sshSessionHandler(s ssh.Session) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	session, ok := b.sessions[s.User()]
+	if !ok {
+		log.Printf("unknown session: %s", s.User())
+		return
+	}
+	session.WriteShareClientScript(s)
+}
+
+func (b *Bot) sshReversePortForwardingCallback(ctx ssh.Context, host string, port uint32) (allow bool) {
+	conn, ok := ctx.Value(ssh.ContextKeyConn).(*gossh.ServerConn)
+	if !ok {
+		return false
+	}
+	defer func() {
+		if !allow {
+			log.Printf("rejecting connection %s", conn.RemoteAddr())
+			conn.Close()
+		}
+	}()
+	if port < 1024 || (host != "localhost" && host != "127.0.0.1") {
+		return
+	}
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	sessionID := ctx.User() // FIXME make this a session token
+	session, ok := b.sessions[sessionID]
+	if !ok || int(port) != session.relayPort {
+		return
+	}
+	allow = session.RegisterShareConn(conn)
+	return
+}
+
+func (b *Bot) sshPtyCallback(ctx ssh.Context, pty ssh.Pty) bool {
+	return false
 }

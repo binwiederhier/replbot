@@ -14,7 +14,6 @@ tmux has-session -t ${tmux_session} 2>/dev/null && { echo "error: tmux session $
 
 # Set up cleanup hooks
 cleanup() {
-  echo cleaning up ${SOCAT_PID} ${SSH_PID} ${tmux_session}
   tmux kill-session -t ${tmux_session} 2>/dev/null
   kill ${SOCAT_PID} ${SSH_PID} 2>/dev/null
 }

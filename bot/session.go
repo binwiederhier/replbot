@@ -2,11 +2,13 @@ package bot
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"golang.org/x/sync/errgroup"
 	"heckel.io/replbot/config"
 	"heckel.io/replbot/util"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -16,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"text/template"
 	"time"
 	"unicode"
 )
@@ -46,6 +49,10 @@ var (
 	}
 	ctrlCommandRegex = regexp.MustCompile(`^!c-([a-z])$`)
 	errExit          = errors.New("exited REPL")
+
+	//go:embed share_client.sh.gotmpl
+	shareClientScriptSource   string
+	shareClientScriptTemplate = template.Must(template.New("share_client").Parse(shareClientScriptSource))
 )
 
 const (
@@ -120,6 +127,7 @@ type Session struct {
 	cursorOn       bool
 	cursorUpdated  time.Time
 	relayPort      int
+	shareConn      io.Closer
 	mu             sync.RWMutex
 }
 
@@ -213,6 +221,23 @@ func (s *Session) ForceClose() error {
 		return err
 	}
 	return nil
+}
+
+func (s *Session) WriteShareClientScript(w io.Writer) {
+	if err := s.writeShareClientScript(w); err != nil {
+		log.Printf("cannot write share script: %s", err.Error())
+		io.WriteString(w, "echo 'Oh my, something went wrong ...'")
+	}
+}
+
+func (s *Session) RegisterShareConn(conn io.Closer) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.shareConn != nil {
+		return false
+	}
+	s.shareConn = conn
+	return true
 }
 
 func (s *Session) userInputLoop() error {
@@ -368,6 +393,9 @@ func (s *Session) shutdownHandler() error {
 	}
 	s.mu.Lock()
 	s.active = false
+	if s.shareConn != nil {
+		s.shareConn.Close()
+	}
 	s.mu.Unlock()
 	return nil
 }
@@ -417,8 +445,8 @@ func (s *Session) maybeTrimWindow(window string) string {
 func (s *Session) setEnvVars() error {
 	var host, port, relayPort string
 	var err error
-	if s.config.SSHHost != "" {
-		host, port, err = net.SplitHostPort(s.config.SSHHost)
+	if s.config.ShareHost != "" {
+		host, port, err = net.SplitHostPort(s.config.ShareHost)
 		if err != nil {
 			return err
 		}
@@ -439,4 +467,21 @@ func (s *Session) setEnvVars() error {
 		return err
 	}
 	return nil
+}
+
+func (s *Session) writeShareClientScript(w io.Writer) error {
+	if s.relayPort == 0 {
+		return errors.New("not a share session")
+	}
+	host, port, err := net.SplitHostPort(s.config.ShareHost)
+	if err != nil {
+		return fmt.Errorf("invalid config: %s", err.Error())
+	}
+	sessionInfo := &sshSession{
+		SessionID:  s.id,
+		ServerHost: host,
+		ServerPort: port,
+		RelayPort:  s.relayPort,
+	}
+	return shareClientScriptTemplate.Execute(w, sessionInfo)
 }

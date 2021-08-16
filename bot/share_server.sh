@@ -11,7 +11,8 @@ case "$1" in
     echo "Waiting for client to connect ..."
     while true; do
       if socat file:$(tty),raw,echo=0 tcp-connect:localhost:${REPLBOT_RELAY_PORT} 2>/dev/null; then
-        echo "Exiting"
+        clear
+        echo "Session exited."
         exit
       fi
       sleep 1

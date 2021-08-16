@@ -78,7 +78,7 @@ bot-token: MUST_BE_SET
 #   Please do note that Slack heavily rate limits messages (one message per second per channel), so
 #   re-rendering the terminal for the cursor can have side effects.
 # Discord:
-#   Discord allows 50 requests per second, so a blinking cursor is totally possible in Discord.
+#   Discord allows 50 requests per second, though in practice a blinking cursor leads to delays too.
 #
 # Format:    on, off or <number>s
 # Default:   on
@@ -86,8 +86,11 @@ bot-token: MUST_BE_SET
 #
 # cursor: on
 
-# XXX
-share:
-  listen: ":10022"
-  addr: "
-# ssh-port:
+# To allow terminal sharing via "@replbot share", REPLbot must run an SSH server that clients can
+# connect to. The value is a hostname:port pair. The SSH server will be bound to the port.
+#
+# Format:   <hostname>:<port>
+# Default:  (empty)
+# Required: No
+#
+# share-host:
