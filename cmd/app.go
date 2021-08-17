@@ -28,6 +28,7 @@ func New() *cli.App {
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-window-mode", Aliases: []string{"w"}, EnvVars: []string{"REPLBOT_DEFAULT_WINDOW_MODE"}, Value: string(config.DefaultWindowMode), DefaultText: string(config.DefaultWindowMode), Usage: "default window mode [full or trim]"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "cursor", Aliases: []string{"C"}, EnvVars: []string{"REPLBOT_CURSOR"}, Value: "on", Usage: "cursor blink rate (on, off or duration)"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "share-host", Aliases: []string{"H"}, EnvVars: []string{"REPLBOT_SHARE_HOST"}, Usage: "SSH hostname:port, used for terminal sharing"}),
+		altsrc.NewStringFlag(&cli.StringFlag{Name: "share-key-file", Aliases: []string{"K"}, EnvVars: []string{"REPLBOT_SHARE_KEY_FILE"}, Value: "/etc/replbot/hostkey", Usage: "SSH host key file, used for terminal sharing"}),
 	}
 	return &cli.App{
 		Name:                   "replbot",
@@ -54,6 +55,7 @@ func execRun(c *cli.Context) error {
 	defaultWindowMode := config.WindowMode(c.String("default-window-mode"))
 	cursor := c.String("cursor")
 	shareHost := c.String("share-host")
+	shareKeyFile := c.String("share-key-file")
 	debug := c.Bool("debug")
 	if token == "" || token == "MUST_BE_SET" {
 		return errors.New("missing bot token, pass --bot-token, set REPLBOT_BOT_TOKEN env variable or bot-token config option")
@@ -67,6 +69,8 @@ func execRun(c *cli.Context) error {
 		return errors.New("default mode must be 'channel', 'thread' or 'split'")
 	} else if defaultWindowMode != config.Full && defaultWindowMode != config.Trim {
 		return errors.New("default window mode must be 'full' or 'trim'")
+	} else if shareHost != "" && (shareKeyFile == "" || !util.FileExists(shareKeyFile)) {
+		return errors.New("share key file must be set and exist if share host is set, check --share-key-file or REPLBOT_SHARE_KEY_FILE")
 	}
 	cursorRate, err := parseCursorRate(cursor)
 	if err != nil {
@@ -81,6 +85,7 @@ func execRun(c *cli.Context) error {
 	conf.DefaultWindowMode = defaultWindowMode
 	conf.Cursor = cursorRate
 	conf.ShareHost = shareHost
+	conf.ShareKeyFile = shareKeyFile
 	conf.Debug = debug
 	robot, err := bot.New(conf)
 	if err != nil {

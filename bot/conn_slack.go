@@ -59,12 +59,12 @@ func (b *SlackConn) Connect(ctx context.Context) (<-chan event, error) {
 	return eventChan, nil
 }
 
-func (s *SlackConn) Send(target *ChatWindow, message string, format Format) error {
+func (s *SlackConn) Send(target *ChatID, message string, format Format) error {
 	_, err := s.SendWithID(target, message, format)
 	return err
 }
 
-func (s *SlackConn) SendWithID(target *ChatWindow, message string, format Format) (string, error) {
+func (s *SlackConn) SendWithID(target *ChatID, message string, format Format) (string, error) {
 	switch format {
 	case Markdown:
 		return s.send(target, s.formatMarkdown(message))
@@ -75,7 +75,7 @@ func (s *SlackConn) SendWithID(target *ChatWindow, message string, format Format
 	}
 }
 
-func (s *SlackConn) Update(target *ChatWindow, id string, message string, format Format) error {
+func (s *SlackConn) Update(target *ChatID, id string, message string, format Format) error {
 	switch format {
 	case Markdown:
 		return s.update(target, id, s.formatMarkdown(message))
@@ -86,7 +86,7 @@ func (s *SlackConn) Update(target *ChatWindow, id string, message string, format
 	}
 }
 
-func (s *SlackConn) Archive(target *ChatWindow) error {
+func (s *SlackConn) Archive(target *ChatID) error {
 	return nil
 }
 
@@ -188,7 +188,7 @@ func (s *SlackConn) formatMarkdown(markdown string) slack.MsgOption {
 	return slack.MsgOptionText(markdown, false)
 }
 
-func (s *SlackConn) send(target *ChatWindow, msg slack.MsgOption) (string, error) {
+func (s *SlackConn) send(target *ChatID, msg slack.MsgOption) (string, error) {
 	options := s.postOptions(target, msg)
 	for {
 		_, responseTS, err := s.rtm.PostMessage(target.Channel, options...)
@@ -204,7 +204,7 @@ func (s *SlackConn) send(target *ChatWindow, msg slack.MsgOption) (string, error
 	}
 }
 
-func (s *SlackConn) update(target *ChatWindow, timestamp string, msg slack.MsgOption) error {
+func (s *SlackConn) update(target *ChatID, timestamp string, msg slack.MsgOption) error {
 	options := s.postOptions(target, msg)
 	for {
 		_, _, _, err := s.rtm.UpdateMessage(target.Channel, timestamp, options...)
@@ -220,7 +220,7 @@ func (s *SlackConn) update(target *ChatWindow, timestamp string, msg slack.MsgOp
 	}
 }
 
-func (s *SlackConn) postOptions(target *ChatWindow, msg slack.MsgOption) []slack.MsgOption {
+func (s *SlackConn) postOptions(target *ChatID, msg slack.MsgOption) []slack.MsgOption {
 	options := []slack.MsgOption{msg, slack.MsgOptionDisableLinkUnfurl(), slack.MsgOptionDisableMediaUnfurl()}
 	if target.Thread != "" {
 		options = append(options, slack.MsgOptionTS(target.Thread))

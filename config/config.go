@@ -73,6 +73,7 @@ type Config struct {
 	DefaultSize        *Size
 	Cursor             time.Duration
 	ShareHost          string
+	ShareKeyFile       string
 	Debug              bool
 }
 

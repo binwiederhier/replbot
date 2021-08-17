@@ -23,8 +23,9 @@ nfpms:
     dependencies:
       - tmux
     suggests:
-      - bash-completion
       - docker-ce
+    recommends:
+      - openssh-client
     bindir: /usr/bin
     contents:
       - src: config/config.yml

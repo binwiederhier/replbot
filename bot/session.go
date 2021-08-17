@@ -108,8 +108,8 @@ type Session struct {
 	id             string
 	config         *config.Config
 	conn           Conn
-	control        *ChatWindow
-	terminal       *ChatWindow
+	control        *ChatID
+	terminal       *ChatID
 	userInputChan  chan string
 	userInputCount int32
 	forceResend    chan bool
@@ -133,13 +133,20 @@ type Session struct {
 
 type SessionConfig struct {
 	ID          string
-	Control     *ChatWindow
-	Terminal    *ChatWindow
+	Control     *ChatID
+	Terminal    *ChatID
 	Script      string
 	ControlMode config.ControlMode
 	WindowMode  config.WindowMode
 	Size        *config.Size
 	RelayPort   int
+}
+
+type sshSession struct {
+	SessionID  string
+	ServerHost string
+	ServerPort string
+	RelayPort  int
 }
 
 func NewSession(config *config.Config, conn Conn, sconfig *SessionConfig) *Session {

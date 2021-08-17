@@ -19,17 +19,17 @@ const (
 	Code
 )
 
-type ChatWindow struct {
+type ChatID struct {
 	Channel string
 	Thread  string
 }
 
 type Conn interface {
 	Connect(ctx context.Context) (<-chan event, error)
-	Send(window *ChatWindow, message string, format Format) error
-	SendWithID(window *ChatWindow, message string, format Format) (string, error)
-	Update(window *ChatWindow, id string, message string, format Format) error
-	Archive(window *ChatWindow) error
+	Send(chat *ChatID, message string, format Format) error
+	SendWithID(chat *ChatID, message string, format Format) (string, error)
+	Update(chat *ChatID, id string, message string, format Format) error
+	Archive(chat *ChatID) error
 	Mention() string
 	Unescape(s string) string
 	Close() error

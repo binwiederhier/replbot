@@ -87,10 +87,22 @@ bot-token: MUST_BE_SET
 # cursor: on
 
 # To allow terminal sharing via "@replbot share", REPLbot must run an SSH server that clients can
-# connect to. The value is a hostname:port pair. The SSH server will be bound to the port.
+# connect to. This section defines the host (hostname:port pair). The SSH server will be bound to the
+# port in the "host" config.
 #
 # Format:   <hostname>:<port>
 # Default:  (empty)
 # Required: No
 #
 # share-host:
+
+# The SSH host key file name ("key") used by above-mentioned SSH server.
+#
+# To generate a hostkey, you may run:
+#   $ sudo ssh-keygen -q -N "" -f /etc/replbot/hostkey
+#
+# Format:   key: <filename>
+# Default:  /etc/replbot/hostkey
+# Required: No
+#
+# share-key-file: /etc/replbot/hostkey

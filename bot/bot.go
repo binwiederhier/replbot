@@ -24,8 +24,9 @@ const (
 		"the main `channel`, or in `split` mode, use the respective keywords. To define the terminal size, use the words " +
 		"`tiny`, `small`, `medium` or `large`. Use `full` or `trim` to set the window mode. To start a private REPL " +
 		"session, just DM me."
+	shareMessage          = "Using the word `share` will allow you to share your own terminal here in the chat."
+	unknownCommandMessage = "I am not quite sure what you mean by _%s_ ⁉"
 	misconfiguredMessage  = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
-	unknownCommandMessage = "I am not quite sure what you mean by _%s_ ⁉️\n\n"
 	shareCommand          = "share"
 	shareServerScriptFile = "/tmp/replbot_share_server.sh"
 )
@@ -47,8 +48,7 @@ type Bot struct {
 func New(conf *config.Config) (*Bot, error) {
 	if len(conf.Scripts()) == 0 {
 		return nil, errors.New("no REPL scripts found in script dir")
-	}
-	if err := util.TmuxInstalled(); err != nil {
+	} else if err := util.TmuxInstalled(); err != nil {
 		return nil, fmt.Errorf("tmux check failed: %s", err.Error())
 	}
 	var conn Conn
@@ -80,7 +80,7 @@ func (b *Bot) Run() error {
 	})
 	if b.config.ShareHost != "" {
 		g.Go(func() error {
-			return b.runSSHd(ctx)
+			return b.runShareServer(ctx)
 		})
 	}
 	return g.Wait()
@@ -148,7 +148,7 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 
 func (b *Bot) startSessionChannel(ev *messageEvent, conf *SessionConfig) error {
 	conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ""))
-	conf.Control = &ChatWindow{Channel: ev.Channel, Thread: ""}
+	conf.Control = &ChatID{Channel: ev.Channel, Thread: ""}
 	conf.Terminal = conf.Control
 	return b.startSession(conf)
 }
@@ -156,12 +156,12 @@ func (b *Bot) startSessionChannel(ev *messageEvent, conf *SessionConfig) error {
 func (b *Bot) startSessionThread(ev *messageEvent, conf *SessionConfig) error {
 	if ev.Thread == "" {
 		conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
-		conf.Control = &ChatWindow{Channel: ev.Channel, Thread: ev.ID}
+		conf.Control = &ChatID{Channel: ev.Channel, Thread: ev.ID}
 		conf.Terminal = conf.Control
 		return b.startSession(conf)
 	}
 	conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
-	conf.Control = &ChatWindow{Channel: ev.Channel, Thread: ev.Thread}
+	conf.Control = &ChatID{Channel: ev.Channel, Thread: ev.Thread}
 	conf.Terminal = conf.Control
 	return b.startSession(conf)
 }
@@ -169,13 +169,13 @@ func (b *Bot) startSessionThread(ev *messageEvent, conf *SessionConfig) error {
 func (b *Bot) startSessionSplit(ev *messageEvent, conf *SessionConfig) error {
 	if ev.Thread == "" {
 		conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
-		conf.Control = &ChatWindow{Channel: ev.Channel, Thread: ev.ID}
-		conf.Terminal = &ChatWindow{Channel: ev.Channel, Thread: ""}
+		conf.Control = &ChatID{Channel: ev.Channel, Thread: ev.ID}
+		conf.Terminal = &ChatID{Channel: ev.Channel, Thread: ""}
 		return b.startSession(conf)
 	}
 	conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
-	conf.Control = &ChatWindow{Channel: ev.Channel, Thread: ev.Thread}
-	conf.Terminal = &ChatWindow{Channel: ev.Channel, Thread: ""}
+	conf.Control = &ChatID{Channel: ev.Channel, Thread: ev.Thread}
+	conf.Terminal = &ChatID{Channel: ev.Channel, Thread: ""}
 	return b.startSession(conf)
 }
 
@@ -272,7 +272,7 @@ func (b *Bot) handleChannelJoinedEvent(ev *messageEvent) error {
 }
 
 func (b *Bot) handleHelp(channel, thread string, err error) error {
-	target := &ChatWindow{Channel: channel, Thread: thread}
+	target := &ChatID{Channel: channel, Thread: thread}
 	scripts := b.config.Scripts()
 	if len(scripts) == 0 {
 		return b.conn.Send(target, misconfiguredMessage, Markdown)
@@ -281,20 +281,17 @@ func (b *Bot) handleHelp(channel, thread string, err error) error {
 	if err == nil || err == errNoScript {
 		messageTemplate = welcomeMessage + helpMessage
 	} else {
-		messageTemplate = err.Error() + helpMessage
+		messageTemplate = err.Error() + "\n\n" + helpMessage
 	}
-	replList := fmt.Sprintf("`%s`", strings.Join(b.config.Scripts(), "`, `"))
+	if b.config.ShareEnabled() {
+		messageTemplate += "\n\n" + shareMessage
+		scripts = append(scripts, shareCommand)
+	}
+	replList := fmt.Sprintf("`%s`", strings.Join(scripts, "`, `"))
 	return b.conn.Send(target, fmt.Sprintf(messageTemplate, b.conn.Mention(), scripts[0], replList), Markdown)
 }
 
-type sshSession struct {
-	SessionID  string
-	ServerHost string
-	ServerPort string
-	RelayPort  int
-}
-
-func (b *Bot) runSSHd(ctx context.Context) error {
+func (b *Bot) runShareServer(ctx context.Context) error {
 	if err := os.WriteFile(shareServerScriptFile, []byte(shareServerScriptSource), 0700); err != nil {
 		return err
 	}
@@ -319,7 +316,7 @@ func (b *Bot) runSSHd(ctx context.Context) error {
 			"session": ssh.DefaultSessionHandler,
 		},
 	}
-	if err := server.SetOption(ssh.HostKeyFile("tmp/hostkey")); err != nil {
+	if err := server.SetOption(ssh.HostKeyFile(b.config.ShareKeyFile)); err != nil {
 		return err
 	}
 	errChan := make(chan error)
