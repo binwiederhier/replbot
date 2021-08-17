@@ -1,4 +1,13 @@
 #!/bin/bash
+#
+# REPLbot terminal sharing script for the client.
+# See https://heckel.io/replbot for details.
+#
+# This script will create a local tmux session, and a reverse SSH tunnel (ssh -R) to the REPLbot server,
+# connecting the local tmux session to a remote tmux session.
+#
+# This script is customized for one session only. It'll only work once.
+#
 
 local_socket=/tmp/replbot_{{.SessionID}}.sock
 ssh_server={{.ServerHost}}
@@ -21,6 +30,7 @@ trap cleanup EXIT
 
 # Start new tmux session, and redirect TTY to relay port, attach tmux client and forward traffic to local socket
 tmux new-session -d -s ${tmux_session}
+tmux set-option -g -t ${tmux_session} status off
 socat exec:"tmux attach -t ${tmux_session}",pty,raw,echo=0,stderr,setsid,sigint,sane \
     unix-listen:${local_socket} &
 export SOCAT_PID=$!
