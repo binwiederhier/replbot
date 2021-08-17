@@ -50,7 +50,7 @@ bot-token: MUST_BE_SET
 # Default:   split
 # Required:  No
 #
-# default-mode: split
+# default-control-mode: split
 
 # Default window mode. This defines whether white space and new lines are trimmed in the chat terminal window.
 #
@@ -62,6 +62,18 @@ bot-token: MUST_BE_SET
 # Required:  No
 #
 # default-window-mode: full
+
+# Default auth mode. This defines who can send commands in a new session. In an active session, users can be
+# added/removed using the !allow and !disallow commands.
+#
+# - only-me: In a new session, only the person who started the session can send commands
+# - everyone: White spaces are new lines are trimmed from the end
+#
+# Format:    only-me|everyone
+# Default:   everyone; for terminal sharing sessions: only-me
+# Required:  No
+#
+# default-auth-mode: everyone
 
 # Timeout after which REPL sessions are terminated if there is no user input.
 #

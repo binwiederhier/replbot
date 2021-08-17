@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"heckel.io/replbot/config"
@@ -12,7 +13,7 @@ import (
 )
 
 var (
-	discordUserLinkRegex    = regexp.MustCompile(`<@![^>]+>`)
+	discordUserLinkRegex    = regexp.MustCompile(`<@!([^>]+)>`)
 	discordChannelLinkRegex = regexp.MustCompile(`<#[^>]+>`)
 	discordCodeBlockRegex   = regexp.MustCompile("```([^`]+)```")
 	discordCodeRegex        = regexp.MustCompile("`([^`]+)`")
@@ -96,8 +97,19 @@ func (b *DiscordConn) Close() error {
 	return b.session.Close()
 }
 
-func (b *DiscordConn) Mention() string {
+func (b *DiscordConn) MentionBot() string {
 	return fmt.Sprintf("<@!%s>", b.session.State.User.ID)
+}
+
+func (b *DiscordConn) Mention(user string) string {
+	return fmt.Sprintf("<@!%s>", user)
+}
+
+func (b *DiscordConn) ParseMention(user string) (string, error) {
+	if matches := discordUserLinkRegex.FindStringSubmatch(user); len(matches) > 0 {
+		return matches[1], nil
+	}
+	return "", errors.New("invalid user")
 }
 
 func (b *DiscordConn) Unescape(s string) string {

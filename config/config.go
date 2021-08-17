@@ -31,6 +31,14 @@ const (
 	Trim              = WindowMode("trim")
 )
 
+type AuthMode string
+
+const (
+	DefaultAuthMode = Everyone
+	OnlyMe          = AuthMode("only-me")
+	Everyone        = AuthMode("everyone")
+)
+
 // Size defines the dimensions of the terminal
 type Size struct {
 	Name   string
@@ -70,6 +78,7 @@ type Config struct {
 	IdleTimeout        time.Duration
 	DefaultControlMode ControlMode
 	DefaultWindowMode  WindowMode
+	DefaultAuthMode    AuthMode
 	DefaultSize        *Size
 	Cursor             time.Duration
 	ShareHost          string
@@ -84,6 +93,7 @@ func New(token string) *Config {
 		IdleTimeout:        DefaultIdleTimeout,
 		DefaultControlMode: DefaultControlMode,
 		DefaultWindowMode:  DefaultWindowMode,
+		DefaultAuthMode:    DefaultAuthMode,
 		DefaultSize:        DefaultSize,
 	}
 }

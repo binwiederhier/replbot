@@ -36,6 +36,15 @@ func RunAll(commands ...[]string) error {
 	return nil
 }
 
+func StringContains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
+}
+
 func RandomPort() (int, error) {
 	listener, err := net.Listen("tcp4", ":0")
 	if err != nil {

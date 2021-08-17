@@ -18,7 +18,7 @@ var (
 	slackRawLinkRegex      = regexp.MustCompile(`<(https?://[^|\s]+)>`)
 	slackCodeBlockRegex    = regexp.MustCompile("```([^`]+)```")
 	slackCodeRegex         = regexp.MustCompile("`([^`]+)`")
-	slackUserLinkRegex     = regexp.MustCompile(`<@U[^>]+>`)
+	slackUserLinkRegex     = regexp.MustCompile(`<@(U[^>]+)>`)
 	slackMacQuotesRegex    = regexp.MustCompile(`[“”]`)
 	slackReplacer          = strings.NewReplacer("&amp;", "&", "&lt;", "<", "&gt;", ">") // see slackutilsx.go, EscapeMessage
 )
@@ -94,10 +94,21 @@ func (b *SlackConn) Close() error {
 	return nil
 }
 
-func (b *SlackConn) Mention() string {
+func (b *SlackConn) MentionBot() string {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return fmt.Sprintf("<@%s>", b.userID)
+}
+
+func (b *SlackConn) Mention(user string) string {
+	return fmt.Sprintf("<@%s>", user)
+}
+
+func (b *SlackConn) ParseMention(user string) (string, error) {
+	if matches := slackUserLinkRegex.FindStringSubmatch(user); len(matches) > 0 {
+		return matches[1], nil
+	}
+	return "", errors.New("invalid user")
 }
 
 func (b *SlackConn) Unescape(s string) string {

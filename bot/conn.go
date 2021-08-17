@@ -30,7 +30,9 @@ type Conn interface {
 	SendWithID(chat *ChatID, message string, format Format) (string, error)
 	Update(chat *ChatID, id string, message string, format Format) error
 	Archive(chat *ChatID) error
-	Mention() string
+	MentionBot() string
+	Mention(user string) string
+	ParseMention(user string) (string, error)
 	Unescape(s string) string
 	Close() error
 }

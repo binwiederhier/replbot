@@ -56,13 +56,19 @@ var (
 )
 
 const (
-	sessionStartedMessage = "🚀 REPL started. Type `!help` to see a list of available commands, or `!exit` to forcefully " +
-		"exit the REPL. Lines prefixed with `!!` are treated as comments.%s"
+	sessionStartedMessage = "🚀 REPL session started, %s. Type `!help` to see a list of available commands, or `!exit` to forcefully " +
+		"exit the REPL."
 	splitModeThreadMessage         = "Use this thread to enter your commands. Your output will appear in the main channel."
+	onlyMeModeMessage              = "Only you as the session owner can send commands. Use the `!allow` command to let other users control the session."
+	everyoneModeMessage            = "*Everyone in this channel* can send commands. Use the `!deny` command specifically revoke access from users."
 	sessionExitedMessage           = "👋 REPL exited. See you later!"
-	timeoutWarningMessage          = "⏱️ Are you still there? Your session will time out in one minute."
+	timeoutWarningMessage          = "⏱️ Are you still there, %s? Your session will time out in one minute."
 	forceCloseMessage              = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
 	malformatedTerminalSizeMessage = "🙁 You entered an invalid size. Use `tiny`, `small`, `medium` or `large` instead."
+	unknownUserMessage             = "⁉ I'm not sure what you mean. Please only list users."
+	usersAddedToAllowList          = "👍 Okay, I added the user(s) to the allow list."
+	usersAddedToDenyList           = "👍 Okay, I added the user(s) to the deny list."
+	cannotAddOwnerToDenyList       = "🙁 I don't think adding the session owner to the deny list is a good idea. I must protest."
 	helpCommand                    = "!help"
 	helpShortCommand               = "!h"
 	exitCommand                    = "!exit"
@@ -71,8 +77,10 @@ const (
 	screenShortCommand             = "!s"
 	resizePrefix                   = "!resize "
 	commentPrefix                  = "!! "
-	rawPrefix                      = "!n "
+	noNewLinePrefix                = "!n "
 	unquotePrefix                  = "!e "
+	allowPrefix                    = "!allow "
+	denyPrefix                     = "!deny "
 	availableCommandsMessage       = "Available commands:\n" +
 		"  `!ret`, `!r` - Send empty return\n" +
 		"  `!n ...` - Text without a new line\n" +
@@ -81,7 +89,8 @@ const (
 		"  `!t`, `!tt` - Send TAB / double-TAB\n" +
 		"  `!up`, `!down`, `!left`, `!right` - Send cursor keys\n" +
 		"  `!pu`, `!pd` - Send page up / page down\n" +
-		"  `!esc`, `!space` - Send Ctrl-C/Ctrl-D/ESC/Space\n" +
+		"  `!esc`, `!space` - Send ESC/Space\n" +
+		"  `!allow ...`, `!deny ...` - Allow/deny users to interact\n" +
 		"  `!! ...` - Comment\n" +
 		"  `!resize ...` - Resize window\n" +
 		"  `!screen`, `!s` - Re-send a new terminal window\n" +
@@ -106,6 +115,7 @@ const (
 //   Channels, DMs and Threads are all channels with an ID
 type Session struct {
 	id             string
+	user           string
 	config         *config.Config
 	conn           Conn
 	control        *ChatID
@@ -123,6 +133,8 @@ type Session struct {
 	scriptID       string
 	controlMode    config.ControlMode
 	windowMode     config.WindowMode
+	authMode       config.AuthMode
+	authUsers      map[string]bool // true = allow, false = deny, n/a = default
 	tmux           *util.Tmux
 	cursorOn       bool
 	cursorUpdated  time.Time
@@ -133,11 +145,13 @@ type Session struct {
 
 type SessionConfig struct {
 	ID          string
+	User        string
 	Control     *ChatID
 	Terminal    *ChatID
 	Script      string
 	ControlMode config.ControlMode
 	WindowMode  config.WindowMode
+	AuthMode    config.AuthMode
 	Size        *config.Size
 	RelayPort   int
 }
@@ -156,12 +170,15 @@ func NewSession(config *config.Config, conn Conn, sconfig *SessionConfig) *Sessi
 		config:         config,
 		conn:           conn,
 		id:             sconfig.ID,
+		user:           sconfig.User,
 		control:        sconfig.Control,
 		terminal:       sconfig.Terminal,
 		script:         sconfig.Script,
 		scriptID:       fmt.Sprintf("replbot_%s", sconfig.ID),
 		controlMode:    sconfig.ControlMode,
 		windowMode:     sconfig.WindowMode,
+		authMode:       sconfig.AuthMode,
+		authUsers:      make(map[string]bool),
 		relayPort:      sconfig.RelayPort,
 		tmux:           util.NewTmux(sconfig.ID, sconfig.Size.Width, sconfig.Size.Height),
 		userInputChan:  make(chan string, 10), // buffered!
@@ -200,8 +217,8 @@ func (s *Session) Run() error {
 }
 
 // UserInput handles user input by forwarding to the underlying shell
-func (s *Session) UserInput(message string) {
-	if !s.Active() {
+func (s *Session) UserInput(user, message string) {
+	if !s.Active() || !s.allowUser(user) {
 		return
 	}
 	s.mu.Lock()
@@ -211,8 +228,8 @@ func (s *Session) UserInput(message string) {
 	s.warnTimer.Reset(s.config.IdleTimeout - time.Minute)
 	s.closeTimer.Reset(s.config.IdleTimeout)
 
-	// Convert message to raw text and forward to input channel
-	s.userInputChan <- s.conn.Unescape(message)
+	// Forward to input channel
+	s.userInputChan <- message
 }
 
 func (s *Session) Active() bool {
@@ -277,10 +294,14 @@ func (s *Session) handleUserInput(input string) error {
 		atomic.AddInt32(&s.userInputCount, 1)
 		if strings.HasPrefix(input, commentPrefix) {
 			return nil // Ignore comments
-		} else if strings.HasPrefix(input, rawPrefix) {
-			return s.tmux.Paste(strings.TrimPrefix(input, rawPrefix))
+		} else if strings.HasPrefix(input, noNewLinePrefix) {
+			return s.tmux.Paste(s.conn.Unescape(strings.TrimPrefix(input, noNewLinePrefix)))
 		} else if strings.HasPrefix(input, unquotePrefix) {
-			return s.tmux.Paste(unquote(strings.TrimPrefix(input, unquotePrefix)))
+			return s.tmux.Paste(unquote(s.conn.Unescape(strings.TrimPrefix(input, unquotePrefix))))
+		} else if strings.HasPrefix(input, allowPrefix) {
+			return s.handleAllow(strings.TrimPrefix(input, allowPrefix))
+		} else if strings.HasPrefix(input, denyPrefix) {
+			return s.handleDeny(strings.TrimPrefix(input, denyPrefix))
 		} else if matches := ctrlCommandRegex.FindStringSubmatch(input); len(matches) > 0 {
 			return s.tmux.SendKeys("^" + strings.ToUpper(matches[1]))
 		} else if strings.HasPrefix(input, resizePrefix) {
@@ -294,7 +315,7 @@ func (s *Session) handleUserInput(input string) error {
 				return s.tmux.SendKeys(controlChar)
 			}
 		}
-		return s.tmux.Paste(fmt.Sprintf("%s\n", input))
+		return s.tmux.Paste(fmt.Sprintf("%s\n", s.conn.Unescape(input)))
 	}
 }
 
@@ -419,7 +440,7 @@ func (s *Session) activityMonitor() error {
 		case <-s.ctx.Done():
 			return errExit
 		case <-s.warnTimer.C:
-			_ = s.conn.Send(s.control, timeoutWarningMessage, Markdown)
+			_ = s.conn.Send(s.control, fmt.Sprintf(timeoutWarningMessage, s.conn.Mention(s.user)), Markdown)
 			log.Printf("[session %s] Session has been idle for a long time. Warning sent to user.", s.id)
 		case <-s.closeTimer.C:
 			log.Printf("[session %s] Idle timeout reached. Closing session.", s.id)
@@ -429,10 +450,17 @@ func (s *Session) activityMonitor() error {
 }
 
 func (s *Session) sessionStartedMessage() string {
+	message := fmt.Sprintf(sessionStartedMessage, s.conn.Mention(s.user))
 	if s.controlMode == config.Split {
-		return fmt.Sprintf(sessionStartedMessage, " "+splitModeThreadMessage)
+		message += "\n\n" + splitModeThreadMessage
 	}
-	return fmt.Sprintf(sessionStartedMessage, "")
+	switch s.authMode {
+	case config.OnlyMe:
+		message += "\n\n" + onlyMeModeMessage
+	case config.Everyone:
+		message += "\n\n" + everyoneModeMessage
+	}
+	return message
 }
 
 func (s *Session) maybeTrimWindow(window string) string {
@@ -491,4 +519,57 @@ func (s *Session) writeShareClientScript(w io.Writer) error {
 		RelayPort:  s.relayPort,
 	}
 	return shareClientScriptTemplate.Execute(w, sessionInfo)
+}
+
+func (s *Session) handleAllow(allow string) error {
+	users, err := s.parseUsers(allow)
+	if err != nil {
+		return s.conn.Send(s.control, unknownUserMessage, Markdown)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, user := range users {
+		s.authUsers[user] = true
+	}
+	return s.conn.Send(s.control, usersAddedToAllowList, Markdown)
+}
+
+func (s *Session) handleDeny(deny string) error {
+	users, err := s.parseUsers(deny)
+	if err != nil {
+		return s.conn.Send(s.control, unknownUserMessage, Markdown)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, user := range users {
+		if s.user == user {
+			return s.conn.Send(s.control, cannotAddOwnerToDenyList, Markdown)
+		}
+		s.authUsers[user] = false
+	}
+	return s.conn.Send(s.control, usersAddedToDenyList, Markdown)
+}
+
+func (s *Session) parseUsers(usersList string) ([]string, error) {
+	users := make([]string, 0)
+	for _, field := range strings.Fields(usersList) {
+		user, err := s.conn.ParseMention(field)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, nil
+}
+
+func (s *Session) allowUser(user string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if user == s.user {
+		return true // Always allow session owner!
+	}
+	if allow, ok := s.authUsers[user]; ok {
+		return allow
+	}
+	return s.authMode == config.Everyone
 }

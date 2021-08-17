@@ -22,9 +22,10 @@ const (
 	helpMessage    = "I'm a robot for running interactive REPLs and shells from a right here. To start a new session, simply tag me " +
 		"and name one of the available REPLs, like so: %s %s\n\nAvailable REPLs: %s. To run the session in a `thread`, " +
 		"the main `channel`, or in `split` mode, use the respective keywords. To define the terminal size, use the words " +
-		"`tiny`, `small`, `medium` or `large`. Use `full` or `trim` to set the window mode. To start a private REPL " +
-		"session, just DM me."
-	shareMessage          = "Using the word `share` will allow you to share your own terminal here in the chat."
+		"`tiny`, `small`, `medium` or `large`. Use `full` or `trim` to set the window mode, and `everyone` or `only-me` to define " +
+		"who can send commands. To start a private REPL session, just DM me."
+	shareMessage = "Using the word `share` will allow you to share your own terminal here in the chat. Terminal sharing " +
+		"sessions are always started in `only-me` mode, unless overridden."
 	unknownCommandMessage = "I am not quite sure what you mean by _%s_ ⁉"
 	misconfiguredMessage  = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
 	shareCommand          = "share"
@@ -127,7 +128,7 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 		return nil // We forwarded the message
 	} else if ev.ChannelType == Unknown {
 		return nil
-	} else if ev.ChannelType == Channel && !strings.Contains(ev.Message, b.conn.Mention()) {
+	} else if ev.ChannelType == Channel && !strings.Contains(ev.Message, b.conn.MentionBot()) {
 		return nil
 	}
 	conf, err := b.parseSessionConfig(ev)
@@ -203,23 +204,27 @@ func (b *Bot) maybeForwardMessage(ev *messageEvent) bool {
 	defer b.mu.Unlock()
 	sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread)) // Thread may be empty, that's ok
 	if session, ok := b.sessions[sessionID]; ok && session.Active() {
-		session.UserInput(ev.Message)
+		session.UserInput(ev.User, ev.Message)
 		return true
 	}
 	return false
 }
 
 func (b *Bot) parseSessionConfig(ev *messageEvent) (*SessionConfig, error) {
-	conf := &SessionConfig{}
+	conf := &SessionConfig{
+		User: ev.User,
+	}
 	fields := strings.Fields(ev.Message)
 	for _, field := range fields {
 		switch field {
-		case b.conn.Mention():
+		case b.conn.MentionBot():
 			// Ignore
 		case string(config.Thread), string(config.Channel), string(config.Split):
 			conf.ControlMode = config.ControlMode(field)
 		case string(config.Full), string(config.Trim):
 			conf.WindowMode = config.WindowMode(field)
+		case string(config.OnlyMe), string(config.Everyone):
+			conf.AuthMode = config.AuthMode(field)
 		case config.Tiny.Name, config.Small.Name, config.Medium.Name, config.Large.Name:
 			conf.Size = config.Sizes[field]
 		default:
@@ -230,6 +235,9 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*SessionConfig, error) {
 				}
 				conf.Script = shareServerScriptFile
 				conf.RelayPort = relayPort
+				if conf.AuthMode == "" {
+					conf.AuthMode = config.OnlyMe
+				}
 			} else if s := b.config.Script(field); conf.Script == "" && s != "" {
 				conf.Script = s
 			} else {
@@ -256,6 +264,9 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*SessionConfig, error) {
 		} else {
 			conf.WindowMode = b.config.DefaultWindowMode
 		}
+	}
+	if conf.AuthMode == "" {
+		conf.AuthMode = b.config.DefaultAuthMode
 	}
 	if conf.Size == nil {
 		if conf.ControlMode == config.Thread {
@@ -288,7 +299,7 @@ func (b *Bot) handleHelp(channel, thread string, err error) error {
 		scripts = append(scripts, shareCommand)
 	}
 	replList := fmt.Sprintf("`%s`", strings.Join(scripts, "`, `"))
-	return b.conn.Send(target, fmt.Sprintf(messageTemplate, b.conn.Mention(), scripts[0], replList), Markdown)
+	return b.conn.Send(target, fmt.Sprintf(messageTemplate, b.conn.MentionBot(), scripts[0], replList), Markdown)
 }
 
 func (b *Bot) runShareServer(ctx context.Context) error {
