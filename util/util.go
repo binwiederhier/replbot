@@ -1,18 +1,22 @@
 package util
 
 import (
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
+	"time"
 )
 
 var (
 	nonAlphanumericCharsRegex = regexp.MustCompile(`[^A-Za-z0-9]`)
+	random                    = rand.New(rand.NewSource(time.Now().UnixNano()))
+	randomStringCharset       = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
-func SanitizeID(id string) string {
+func SanitizeNonAlphanumeric(id string) string {
 	return nonAlphanumericCharsRegex.ReplaceAllString(id, "_")
 }
 
@@ -36,15 +40,6 @@ func RunAll(commands ...[]string) error {
 	return nil
 }
 
-func StringContains(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
-}
-
 func RandomPort() (int, error) {
 	listener, err := net.Listen("tcp4", ":0")
 	if err != nil {
@@ -60,4 +55,12 @@ func RandomPort() (int, error) {
 		return 0, err
 	}
 	return port, nil
+}
+
+func RandomString(length int) string {
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = randomStringCharset[random.Intn(len(randomStringCharset))]
+	}
+	return string(b)
 }

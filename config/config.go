@@ -69,6 +69,7 @@ const (
 const (
 	TypeSlack   = "slack"
 	TypeDiscord = "discord"
+	TypeSock    = "sock"
 )
 
 // Config is the main config struct for the application. Use New to instantiate a default config struct.
@@ -99,7 +100,9 @@ func New(token string) *Config {
 }
 
 func (c *Config) Type() string {
-	if strings.HasPrefix(c.Token, "xoxb-") {
+	if strings.HasPrefix(c.Token, "sock") {
+		return TypeSock
+	} else if strings.HasPrefix(c.Token, "xoxb-") {
 		return TypeSlack
 	}
 	return TypeDiscord

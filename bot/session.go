@@ -466,10 +466,10 @@ func (s *Session) sessionStartedMessage() string {
 func (s *Session) maybeTrimWindow(window string) string {
 	switch s.windowMode {
 	case config.Full:
-		if s.config.Type() == config.TypeSlack {
-			return window
+		if s.config.Type() == config.TypeDiscord {
+			return expandWindow(window)
 		}
-		return expandWindow(window)
+		return window
 	case config.Trim:
 		return strings.TrimRightFunc(window, unicode.IsSpace)
 	default:

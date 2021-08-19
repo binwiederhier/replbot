@@ -54,6 +54,8 @@ func New(conf *config.Config) (*Bot, error) {
 	}
 	var conn Conn
 	switch conf.Type() {
+	case config.TypeSock:
+		conn = NewFileConn(conf)
 	case config.TypeSlack:
 		conn = NewSlackConn(conf)
 	case config.TypeDiscord:
@@ -148,7 +150,7 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 }
 
 func (b *Bot) startSessionChannel(ev *messageEvent, conf *SessionConfig) error {
-	conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ""))
+	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ""))
 	conf.Control = &ChatID{Channel: ev.Channel, Thread: ""}
 	conf.Terminal = conf.Control
 	return b.startSession(conf)
@@ -156,12 +158,12 @@ func (b *Bot) startSessionChannel(ev *messageEvent, conf *SessionConfig) error {
 
 func (b *Bot) startSessionThread(ev *messageEvent, conf *SessionConfig) error {
 	if ev.Thread == "" {
-		conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
+		conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
 		conf.Control = &ChatID{Channel: ev.Channel, Thread: ev.ID}
 		conf.Terminal = conf.Control
 		return b.startSession(conf)
 	}
-	conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
+	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
 	conf.Control = &ChatID{Channel: ev.Channel, Thread: ev.Thread}
 	conf.Terminal = conf.Control
 	return b.startSession(conf)
@@ -169,12 +171,12 @@ func (b *Bot) startSessionThread(ev *messageEvent, conf *SessionConfig) error {
 
 func (b *Bot) startSessionSplit(ev *messageEvent, conf *SessionConfig) error {
 	if ev.Thread == "" {
-		conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
+		conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
 		conf.Control = &ChatID{Channel: ev.Channel, Thread: ev.ID}
 		conf.Terminal = &ChatID{Channel: ev.Channel, Thread: ""}
 		return b.startSession(conf)
 	}
-	conf.ID = util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
+	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
 	conf.Control = &ChatID{Channel: ev.Channel, Thread: ev.Thread}
 	conf.Terminal = &ChatID{Channel: ev.Channel, Thread: ""}
 	return b.startSession(conf)
@@ -202,7 +204,7 @@ func (b *Bot) startSession(conf *SessionConfig) error {
 func (b *Bot) maybeForwardMessage(ev *messageEvent) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	sessionID := util.SanitizeID(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread)) // Thread may be empty, that's ok
+	sessionID := util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread)) // Thread may be empty, that's ok
 	if session, ok := b.sessions[sessionID]; ok && session.Active() {
 		session.UserInput(ev.User, ev.Message)
 		return true
@@ -257,6 +259,8 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*SessionConfig, error) {
 	}
 	if b.config.Type() == config.TypeDiscord && ev.ChannelType == DM && conf.ControlMode != config.Channel {
 		conf.ControlMode = config.Channel // special case: Discord does not support threads in direct messages
+	} else if b.config.Type() == config.TypeSock {
+		conf.ControlMode = config.Channel // special case: file mode only supports one channel
 	}
 	if conf.WindowMode == "" {
 		if conf.ControlMode == config.Thread {
