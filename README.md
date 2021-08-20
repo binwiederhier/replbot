@@ -137,3 +137,13 @@ I welcome any and all contributions. Just create a PR or an issue, or talk to me
 
 ## License
 Made with ❤️ by [Philipp C. Heckel](https://heckel.io), distributed under the [Apache License 2.0](LICENSE).
+
+Third party libraries:
+* [github.com/urfave/cli/v2](https://github.com/urfave/cli/v2) (MIT) is used to drive the CLI
+* [discord-go](https://github.com/bwmarrin/discordgo) (BSD-3) is used for the Discord communication, specifically this
+  [pull request](https://github.com/bwmarrin/discordgo/pull/922) by [Pedro Pessoa](https://github.com/Pedro-Pessoa) for thread support
+* [slack-go](https://github.com/slack-go/slack) (BSD-2) is used for the Slack communication
+* [gliderlabs/ssh](https://github.com/gliderlabs/ssh) (BSD-3) is used for remote port forwarding for terminal sharing
+
+Code and posts that helped:
+* [tmux sharing across hosts](https://gist.github.com/QuAzI/b6d29fd6239ed72c9c61870e7ee5ff90), thanks to [QuAzI](https://gist.github.com/QuAzI) 

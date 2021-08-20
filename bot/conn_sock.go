@@ -27,7 +27,7 @@ type SockConn struct {
 	mu     sync.RWMutex
 }
 
-func NewFileConn(conf *config.Config) *SockConn {
+func NewSockConn(conf *config.Config) *SockConn {
 	return &SockConn{
 		config: conf,
 		conns:  make(map[string]net.Conn),
