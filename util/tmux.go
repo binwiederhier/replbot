@@ -29,8 +29,9 @@ type Tmux struct {
 
 // Must be more than config.MaxSize to give tmux a little room for the other two panes
 const (
-	terminalWidth  = 200
-	terminalHeight = 80
+	terminalWidth       = 200
+	terminalHeight      = 80
+	checkMainPaneScript = "sh -c \"while true; do sleep 10; if ! tmux has-session -t %s.2 2>/dev/null; then exit; fi; done\""
 )
 
 // NewTmux creates a new Tmux instance, but does not start the tmux
@@ -45,8 +46,8 @@ func NewTmux(id string, width, height int) *Tmux {
 // Start starts the tmux using the given command and arguments
 func (s *Tmux) Start(command ...string) error {
 	return RunAll(
-		[]string{"tmux", "new-session", "-s", s.id, "-d", "-x", strconv.Itoa(terminalWidth), "-y", strconv.Itoa(terminalHeight)},
-		[]string{"tmux", "split-window", "-t", fmt.Sprintf("%s.0", s.id), "-v"},
+		[]string{"tmux", "new-session", "-s", s.id, "-d", "-x", strconv.Itoa(terminalWidth), "-y", strconv.Itoa(terminalHeight), fmt.Sprintf(checkMainPaneScript, s.id)},
+		[]string{"tmux", "split-window", "-t", fmt.Sprintf("%s.0", s.id), "-v", fmt.Sprintf(checkMainPaneScript, s.id)},
 		append([]string{"tmux", "split-window", "-t", fmt.Sprintf("%s.1", s.id), "-h"}, command...),
 		[]string{"tmux", "resize-pane", "-t", fmt.Sprintf("%s.2", s.id), "-x", strconv.Itoa(s.width), "-y", strconv.Itoa(s.height)},
 		[]string{"tmux", "select-pane", "-t", fmt.Sprintf("%s.2", s.id)},
