@@ -199,6 +199,7 @@ func (s *Session) Run() error {
 	if err := s.setEnvVars(); err != nil {
 		return err
 	}
+	time.Sleep(time.Second)
 	if err := s.tmux.Start(s.script, scriptRunCommand, s.scriptID); err != nil {
 		log.Printf("[session %s] Failed to start tmux: %s", s.id, err.Error())
 		return err

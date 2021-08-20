@@ -44,6 +44,48 @@ people using the bot if you give them an entire REPL.
   </tr>
 </table>
 
+## Usage
+After [installing REPLbot](#installation), you may use it by tagging `@replbot` in Slack/Discord. For the most part it 
+should be pretty self-explanatory:
+
+![replbot mention](assets/slack-mention-help.png)
+
+To start a session with the default settings, simply say `@replbot java` to start a Java REPL. There are a few advanced arguments
+you can use when starting a session.
+
+### Control mode
+You can specify if you want the session to be started in the main channel (`channel`), in a thread (`thread`),
+or in split mode (`split`) using both channel and thread. Split mode is the default because it is the cleanest to use: it'll use
+a thread for command input and the main channel to display the terminal.
+
+![replbot split mode](assets/slack-split-mode.png)
+
+### Terminal size
+You can set the terminal window size when you start a session by using the keywords `tiny` (60x15), `small` (80x24), 
+`medium` (100x30), and `large` (120x38). The default is `small`. You may also resize the terminal while the session is
+running using the `!resize` command.
+
+![replbot window size](assets/discord-window-size.png)
+
+### Window mode
+When starting a session, you can choose whether to trim empty space from the terminal session (`trim`), or 
+whether to show the entire terminal window as it would appear in a terminal emulator (`full`). The default is `full`,
+as `trim` mode can get awkward when the terminal is expanded and the collapsed again.
+
+![replbot window mode](assets/discord-window-mode.png)
+
+### Terminal sharing
+You can share your local terminal window in Slack or Discord using the `share` feature. It's quite cool, although it's 
+really got nothing to do with REPLs 🤷. It also has to be specifically configured in the [config.yml](config/config.yml) 
+file using the `share-host` option, since it needs direct communication between the client and REPLbot.
+
+![replbot terminal sharing](assets/slack-terminal-sharing.gif)
+
+### Session commands
+When a session is started, you can get a list of available commands by typing `!help` (or `!h`). To exit a session at any
+point in time, type `!exit` (or `!q`).
+
+![replbot session help](assets/slack-session-help.png)
 
 ## Installation
 First, create a Slack or Discord app and authorize it. After that, you can install REPLbot via packages or binaries.
