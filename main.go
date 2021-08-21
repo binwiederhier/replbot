@@ -15,9 +15,6 @@ var (
 	date    = "unknown"
 )
 
-// TODO add readme
-// TODO say goodbye to sessions when ctrl-c on main program
-
 func main() {
 	cli.AppHelpTemplate += fmt.Sprintf(`
 Try 'replbot COMMAND --help' for more information.

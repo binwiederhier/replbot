@@ -11,7 +11,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -196,11 +195,11 @@ func NewSession(config *config.Config, conn Conn, sconfig *SessionConfig) *Sessi
 func (s *Session) Run() error {
 	log.Printf("[session %s] Started REPL session", s.id)
 	defer log.Printf("[session %s] Closed REPL session", s.id)
-	if err := s.setEnvVars(); err != nil {
+	env, err := s.getEnv()
+	if err != nil {
 		return err
 	}
-	time.Sleep(time.Second)
-	if err := s.tmux.Start(s.script, scriptRunCommand, s.scriptID); err != nil {
+	if err := s.tmux.Start(env, s.script, scriptRunCommand, s.scriptID); err != nil {
 		log.Printf("[session %s] Failed to start tmux: %s", s.id, err.Error())
 		return err
 	}
@@ -478,31 +477,24 @@ func (s *Session) maybeTrimWindow(window string) string {
 	}
 }
 
-func (s *Session) setEnvVars() error {
+func (s *Session) getEnv() (map[string]string, error) {
 	var host, port, relayPort string
 	var err error
 	if s.config.ShareHost != "" {
 		host, port, err = net.SplitHostPort(s.config.ShareHost)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if s.relayPort > 0 {
 		relayPort = strconv.Itoa(s.relayPort)
 	}
-	if err := os.Setenv("REPLBOT_SESSION_ID", s.id); err != nil {
-		return err
-	}
-	if err := os.Setenv("REPLBOT_SSH_HOST", host); err != nil {
-		return err
-	}
-	if err := os.Setenv("REPLBOT_SSH_PORT", port); err != nil {
-		return err
-	}
-	if err := os.Setenv("REPLBOT_RELAY_PORT", relayPort); err != nil {
-		return err
-	}
-	return nil
+	return map[string]string{
+		"REPLBOT_SESSION_ID": s.id,
+		"REPLBOT_SSH_HOST":   host,
+		"REPLBOT_SSH_PORT":   port,
+		"REPLBOT_RELAY_PORT": relayPort,
+	}, nil
 }
 
 func (s *Session) writeShareClientScript(w io.Writer) error {
