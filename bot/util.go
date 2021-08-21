@@ -40,7 +40,7 @@ func addExitedMessage(window string) string {
 		lines[len(lines)-2] = "(REPL exited.)"
 		return strings.Join(lines, "\n")
 	}
-	return window + "\n(REPL exited.)"
+	return window + "\n(REPL exited.)\n"
 }
 
 func expandWindow(window string) string {
