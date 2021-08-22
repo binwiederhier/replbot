@@ -55,8 +55,6 @@ func New(conf *config.Config) (*Bot, error) {
 	}
 	var conn Conn
 	switch conf.Type() {
-	case config.TypeSock:
-		conn = NewSockConn(conf)
 	case config.TypeSlack:
 		conn = NewSlackConn(conf)
 	case config.TypeDiscord:
@@ -264,8 +262,6 @@ func (b *Bot) applySessionConfigDefaults(ev *messageEvent, conf *SessionConfig) 
 	}
 	if b.config.Type() == config.TypeDiscord && ev.ChannelType == DM && conf.ControlMode != config.Channel {
 		conf.ControlMode = config.Channel // special case: Discord does not support threads in direct messages
-	} else if b.config.Type() == config.TypeSock {
-		conf.ControlMode = config.Channel // special case: sock mode only supports one channel
 	}
 	if conf.WindowMode == "" {
 		if conf.ControlMode == config.Thread {
