@@ -28,7 +28,7 @@ func (c *MemConn) Connect(ctx context.Context) (<-chan event, error) {
 	return make(chan event), nil
 }
 
-func (c *MemConn) Send(target *ChatID, message string, format Format) error {
+func (c *MemConn) Send(target *chatID, message string) error {
 	c.currentID++
 	c.messages[strconv.Itoa(c.currentID)] = &messageEvent{
 		Channel: target.Channel,
@@ -38,7 +38,7 @@ func (c *MemConn) Send(target *ChatID, message string, format Format) error {
 	return nil
 }
 
-func (c *MemConn) SendWithID(target *ChatID, message string, format Format) (string, error) {
+func (c *MemConn) SendWithID(target *chatID, message string) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.currentID++
@@ -50,7 +50,7 @@ func (c *MemConn) SendWithID(target *ChatID, message string, format Format) (str
 	return strconv.Itoa(c.currentID), nil
 }
 
-func (c *MemConn) Update(target *ChatID, id string, message string, format Format) error {
+func (c *MemConn) Update(target *chatID, id string, message string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.messages[id] = &messageEvent{
@@ -61,7 +61,7 @@ func (c *MemConn) Update(target *ChatID, id string, message string, format Forma
 	return nil
 }
 
-func (c *MemConn) Archive(target *ChatID) error {
+func (c *MemConn) Archive(target *chatID) error {
 	return nil
 }
 

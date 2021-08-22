@@ -4,32 +4,17 @@ import (
 	"context"
 )
 
-type ChannelType int
-
-const (
-	Unknown ChannelType = iota
-	Channel
-	DM
-)
-
-type Format int
-
-const (
-	Markdown = iota
-	Code
-)
-
-type ChatID struct {
+type chatID struct {
 	Channel string
 	Thread  string
 }
 
-type Conn interface {
+type conn interface {
 	Connect(ctx context.Context) (<-chan event, error)
-	Send(chat *ChatID, message string, format Format) error
-	SendWithID(chat *ChatID, message string, format Format) (string, error)
-	Update(chat *ChatID, id string, message string, format Format) error
-	Archive(chat *ChatID) error
+	Send(chat *chatID, message string) error
+	SendWithID(chat *chatID, message string) (string, error)
+	Update(chat *chatID, id string, message string) error
+	Archive(chat *chatID) error
 	MentionBot() string
 	Mention(user string) string
 	ParseMention(user string) (string, error)

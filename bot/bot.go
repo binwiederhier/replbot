@@ -41,8 +41,8 @@ var (
 
 type Bot struct {
 	config   *config.Config
-	conn     Conn
-	sessions map[string]*Session
+	conn     conn
+	sessions map[string]*session
 	cancelFn context.CancelFunc
 	mu       sync.RWMutex
 }
@@ -53,19 +53,19 @@ func New(conf *config.Config) (*Bot, error) {
 	} else if err := util.Run("tmux", "-V"); err != nil {
 		return nil, fmt.Errorf("tmux check failed: %s", err.Error())
 	}
-	var conn Conn
+	var conn conn
 	switch conf.Type() {
 	case config.TypeSlack:
-		conn = NewSlackConn(conf)
+		conn = newSlackConn(conf)
 	case config.TypeDiscord:
-		conn = NewDiscordConn(conf)
+		conn = newDiscordConn(conf)
 	default:
 		return nil, fmt.Errorf("invalid type: %s", conf.Type())
 	}
 	return &Bot{
 		config:   conf,
 		conn:     conn,
-		sessions: make(map[string]*Session),
+		sessions: make(map[string]*session),
 	}, nil
 }
 
@@ -104,9 +104,9 @@ func (b *Bot) handleEvents(ctx context.Context, eventChan <-chan event) error {
 func (b *Bot) Stop() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	for sessionID, session := range b.sessions {
+	for sessionID, sess := range b.sessions {
 		log.Printf("[session %s] Force-closing session", sessionID)
-		if err := session.ForceClose(); err != nil {
+		if err := sess.ForceClose(); err != nil {
 			log.Printf("[session %s] Force-closing failed: %s", sessionID, err.Error())
 		}
 		delete(b.sessions, sessionID)
@@ -127,9 +127,9 @@ func (b *Bot) handleEvent(e event) error {
 func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 	if b.maybeForwardMessage(ev) {
 		return nil // We forwarded the message
-	} else if ev.ChannelType == Unknown {
+	} else if ev.ChannelType == channelTypeUnknown {
 		return nil
-	} else if ev.ChannelType == Channel && !strings.Contains(ev.Message, b.conn.MentionBot()) {
+	} else if ev.ChannelType == channelTypeChannel && !strings.Contains(ev.Message, b.conn.MentionBot()) {
 		return nil
 	}
 	conf, err := b.parseSessionConfig(ev)
@@ -148,50 +148,50 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 	}
 }
 
-func (b *Bot) startSessionChannel(ev *messageEvent, conf *SessionConfig) error {
+func (b *Bot) startSessionChannel(ev *messageEvent, conf *sessionConfig) error {
 	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ""))
-	conf.Control = &ChatID{Channel: ev.Channel, Thread: ""}
+	conf.Control = &chatID{Channel: ev.Channel, Thread: ""}
 	conf.Terminal = conf.Control
 	return b.startSession(conf)
 }
 
-func (b *Bot) startSessionThread(ev *messageEvent, conf *SessionConfig) error {
+func (b *Bot) startSessionThread(ev *messageEvent, conf *sessionConfig) error {
 	if ev.Thread == "" {
 		conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
-		conf.Control = &ChatID{Channel: ev.Channel, Thread: ev.ID}
+		conf.Control = &chatID{Channel: ev.Channel, Thread: ev.ID}
 		conf.Terminal = conf.Control
 		return b.startSession(conf)
 	}
 	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
-	conf.Control = &ChatID{Channel: ev.Channel, Thread: ev.Thread}
+	conf.Control = &chatID{Channel: ev.Channel, Thread: ev.Thread}
 	conf.Terminal = conf.Control
 	return b.startSession(conf)
 }
 
-func (b *Bot) startSessionSplit(ev *messageEvent, conf *SessionConfig) error {
+func (b *Bot) startSessionSplit(ev *messageEvent, conf *sessionConfig) error {
 	if ev.Thread == "" {
 		conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
-		conf.Control = &ChatID{Channel: ev.Channel, Thread: ev.ID}
-		conf.Terminal = &ChatID{Channel: ev.Channel, Thread: ""}
+		conf.Control = &chatID{Channel: ev.Channel, Thread: ev.ID}
+		conf.Terminal = &chatID{Channel: ev.Channel, Thread: ""}
 		return b.startSession(conf)
 	}
 	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
-	conf.Control = &ChatID{Channel: ev.Channel, Thread: ev.Thread}
-	conf.Terminal = &ChatID{Channel: ev.Channel, Thread: ""}
+	conf.Control = &chatID{Channel: ev.Channel, Thread: ev.Thread}
+	conf.Terminal = &chatID{Channel: ev.Channel, Thread: ""}
 	return b.startSession(conf)
 }
 
-func (b *Bot) startSession(conf *SessionConfig) error {
+func (b *Bot) startSession(conf *sessionConfig) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	session := NewSession(b.config, b.conn, conf)
-	b.sessions[conf.ID] = session
+	sess := newSession(b.config, b.conn, conf)
+	b.sessions[conf.ID] = sess
 	log.Printf("[session %s] Starting session", conf.ID)
 	go func() {
-		if err := session.Run(); err != nil {
-			log.Printf("[session %s] Session exited with error: %s", conf.ID, err.Error())
+		if err := sess.Run(); err != nil {
+			log.Printf("[session %s] session exited with error: %s", conf.ID, err.Error())
 		} else {
-			log.Printf("[session %s] Session exited", conf.ID)
+			log.Printf("[session %s] session exited", conf.ID)
 		}
 		b.mu.Lock()
 		delete(b.sessions, conf.ID)
@@ -204,15 +204,15 @@ func (b *Bot) maybeForwardMessage(ev *messageEvent) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	sessionID := util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread)) // Thread may be empty, that's ok
-	if session, ok := b.sessions[sessionID]; ok && session.Active() {
-		session.UserInput(ev.User, ev.Message)
+	if sess, ok := b.sessions[sessionID]; ok && sess.Active() {
+		sess.UserInput(ev.User, ev.Message)
 		return true
 	}
 	return false
 }
 
-func (b *Bot) parseSessionConfig(ev *messageEvent) (*SessionConfig, error) {
-	conf := &SessionConfig{
+func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
+	conf := &sessionConfig{
 		User: ev.User,
 	}
 	fields := strings.Fields(ev.Message)
@@ -252,7 +252,7 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*SessionConfig, error) {
 	return b.applySessionConfigDefaults(ev, conf)
 }
 
-func (b *Bot) applySessionConfigDefaults(ev *messageEvent, conf *SessionConfig) (*SessionConfig, error) {
+func (b *Bot) applySessionConfigDefaults(ev *messageEvent, conf *sessionConfig) (*sessionConfig, error) {
 	if conf.ControlMode == "" {
 		if ev.Thread != "" {
 			conf.ControlMode = config.Thread // special handling, because it'd be weird otherwise
@@ -260,7 +260,7 @@ func (b *Bot) applySessionConfigDefaults(ev *messageEvent, conf *SessionConfig) 
 			conf.ControlMode = b.config.DefaultControlMode
 		}
 	}
-	if b.config.Type() == config.TypeDiscord && ev.ChannelType == DM && conf.ControlMode != config.Channel {
+	if b.config.Type() == config.TypeDiscord && ev.ChannelType == channelTypeDM && conf.ControlMode != config.Channel {
 		conf.ControlMode = config.Channel // special case: Discord does not support threads in direct messages
 	}
 	if conf.WindowMode == "" {
@@ -288,10 +288,10 @@ func (b *Bot) handleChannelJoinedEvent(ev *messageEvent) error {
 }
 
 func (b *Bot) handleHelp(channel, thread string, err error) error {
-	target := &ChatID{Channel: channel, Thread: thread}
+	target := &chatID{Channel: channel, Thread: thread}
 	scripts := b.config.Scripts()
 	if len(scripts) == 0 {
-		return b.conn.Send(target, misconfiguredMessage, Markdown)
+		return b.conn.Send(target, misconfiguredMessage)
 	}
 	var messageTemplate string
 	if err == nil || err == errNoScript {
@@ -304,7 +304,7 @@ func (b *Bot) handleHelp(channel, thread string, err error) error {
 		scripts = append(scripts, shareCommand)
 	}
 	replList := fmt.Sprintf("`%s`", strings.Join(scripts, "`, `"))
-	return b.conn.Send(target, fmt.Sprintf(messageTemplate, b.conn.MentionBot(), scripts[0], replList), Markdown)
+	return b.conn.Send(target, fmt.Sprintf(messageTemplate, b.conn.MentionBot(), scripts[0], replList))
 }
 
 func (b *Bot) runShareServer(ctx context.Context) error {
@@ -350,12 +350,11 @@ func (b *Bot) runShareServer(ctx context.Context) error {
 func (b *Bot) sshSessionHandler(s ssh.Session) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	session, ok := b.sessions[s.User()]
+	sess, ok := b.sessions[s.User()]
 	if !ok {
-		log.Printf("unknown session: %s", s.User())
 		return
 	}
-	session.WriteShareClientScript(s)
+	sess.WriteShareClientScript(s)
 }
 
 func (b *Bot) sshReversePortForwardingCallback(ctx ssh.Context, host string, port uint32) (allow bool) {
@@ -374,11 +373,11 @@ func (b *Bot) sshReversePortForwardingCallback(ctx ssh.Context, host string, por
 	}
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	session, ok := b.sessions[ctx.User()]
-	if !ok || int(port) != session.relayPort {
+	sess, ok := b.sessions[ctx.User()]
+	if !ok || int(port) != sess.relayPort {
 		return
 	}
-	allow = session.RegisterShareConn(conn)
+	allow = sess.RegisterShareConn(conn)
 	return
 }
 

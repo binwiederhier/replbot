@@ -1,12 +1,14 @@
 package util
 
 import (
+	"fmt"
 	"math/rand"
 	"net"
 	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -68,4 +70,9 @@ func RandomString(length int) string {
 		b[i] = randomStringCharset[random.Intn(len(randomStringCharset))]
 	}
 	return string(b)
+}
+
+// FormatMarkdownCode formats the given string as a markdown code block
+func FormatMarkdownCode(s string) string {
+	return fmt.Sprintf("```%s```", strings.ReplaceAll(s, "```", "` ` `")) // Hack ...
 }

@@ -8,7 +8,6 @@ import (
 	"heckel.io/replbot/config"
 	"log"
 	"regexp"
-	"strings"
 	"sync"
 )
 
@@ -19,28 +18,28 @@ var (
 	discordCodeRegex        = regexp.MustCompile("`([^`]+)`")
 )
 
-type DiscordConn struct {
+type discordConn struct {
 	config   *config.Config
 	session  *discordgo.Session
 	channels map[string]*discordgo.Channel
 	mu       sync.Mutex
 }
 
-func NewDiscordConn(conf *config.Config) *DiscordConn {
-	return &DiscordConn{
+func newDiscordConn(conf *config.Config) *discordConn {
+	return &discordConn{
 		config:   conf,
 		channels: make(map[string]*discordgo.Channel),
 	}
 }
 
-func (b *DiscordConn) Connect(ctx context.Context) (<-chan event, error) {
-	discord, err := discordgo.New(fmt.Sprintf("Bot %s", b.config.Token))
+func (c *discordConn) Connect(ctx context.Context) (<-chan event, error) {
+	discord, err := discordgo.New(fmt.Sprintf("Bot %s", c.config.Token))
 	if err != nil {
 		return nil, err
 	}
 	eventChan := make(chan event)
 	discord.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
-		if ev := b.translateMessageEvent(m); ev != nil {
+		if ev := c.translateMessageEvent(m); ev != nil {
 			eventChan <- ev
 		}
 	})
@@ -48,43 +47,42 @@ func (b *DiscordConn) Connect(ctx context.Context) (<-chan event, error) {
 	if err := discord.Open(); err != nil {
 		return nil, err
 	}
-	b.session = discord
+	c.session = discord
 	log.Printf("Discord connected as user %s/%s", discord.State.User.Username, discord.State.User.ID)
 	return eventChan, nil
 }
 
-func (s *DiscordConn) Send(target *ChatID, message string, format Format) error {
-	_, err := s.SendWithID(target, message, format)
+func (c *discordConn) Send(target *chatID, message string) error {
+	_, err := c.SendWithID(target, message)
 	return err
 }
 
-func (s *DiscordConn) SendWithID(target *ChatID, message string, format Format) (string, error) {
-	switch format {
-	case Markdown:
-		return s.send(target, message)
-	case Code:
-		return s.send(target, s.formatCode(message))
-	default:
-		return "", fmt.Errorf("invalid format: %d", format)
+func (c *discordConn) SendWithID(target *chatID, message string) (string, error) {
+	channel, err := c.maybeCreateThread(target)
+	if err != nil {
+		return "", err
 	}
+	msg, err := c.session.ChannelMessageSend(channel, message)
+	if err != nil {
+		return "", err
+	}
+	return msg.ID, nil
 }
 
-func (s *DiscordConn) Update(target *ChatID, id string, message string, format Format) error {
-	switch format {
-	case Markdown:
-		return s.update(target, id, message)
-	case Code:
-		return s.update(target, id, s.formatCode(message))
-	default:
-		return fmt.Errorf("invalid format: %d", format)
+func (c *discordConn) Update(target *chatID, id string, message string) error {
+	channel := target.Channel
+	if target.Thread != "" {
+		channel = target.Thread
 	}
+	_, err := c.session.ChannelMessageEdit(channel, id, message)
+	return err
 }
 
-func (s *DiscordConn) Archive(target *ChatID) error {
+func (c *discordConn) Archive(target *chatID) error {
 	if target.Thread == "" {
 		return nil
 	}
-	_, err := s.session.ThreadEditComplex(target.Thread, &discordgo.ThreadEditData{
+	_, err := c.session.ThreadEditComplex(target.Thread, &discordgo.ThreadEditData{
 		Name:                "REPLbot session",
 		Archived:            true,
 		Locked:              false,
@@ -93,26 +91,26 @@ func (s *DiscordConn) Archive(target *ChatID) error {
 	return err
 }
 
-func (b *DiscordConn) Close() error {
-	return b.session.Close()
+func (c *discordConn) Close() error {
+	return c.session.Close()
 }
 
-func (b *DiscordConn) MentionBot() string {
-	return fmt.Sprintf("<@!%s>", b.session.State.User.ID)
+func (c *discordConn) MentionBot() string {
+	return fmt.Sprintf("<@!%s>", c.session.State.User.ID)
 }
 
-func (b *DiscordConn) Mention(user string) string {
+func (c *discordConn) Mention(user string) string {
 	return fmt.Sprintf("<@!%s>", user)
 }
 
-func (b *DiscordConn) ParseMention(user string) (string, error) {
+func (c *discordConn) ParseMention(user string) (string, error) {
 	if matches := discordUserLinkRegex.FindStringSubmatch(user); len(matches) > 0 {
 		return matches[1], nil
 	}
 	return "", errors.New("invalid user")
 }
 
-func (b *DiscordConn) Unescape(s string) string {
+func (c *discordConn) Unescape(s string) string {
 	s = discordCodeBlockRegex.ReplaceAllString(s, "$1")
 	s = discordCodeRegex.ReplaceAllString(s, "$1")
 	s = discordUserLinkRegex.ReplaceAllString(s, "")    // Remove entirely!
@@ -120,11 +118,11 @@ func (b *DiscordConn) Unescape(s string) string {
 	return s
 }
 
-func (b *DiscordConn) translateMessageEvent(m *discordgo.MessageCreate) event {
-	if m.Author.ID == b.session.State.User.ID {
+func (c *discordConn) translateMessageEvent(m *discordgo.MessageCreate) event {
+	if m.Author.ID == c.session.State.User.ID {
 		return nil
 	}
-	channel, err := b.channel(m.ChannelID)
+	channel, err := c.channel(m.ChannelID)
 	if err != nil {
 		return &errorEvent{err}
 	}
@@ -138,80 +136,55 @@ func (b *DiscordConn) translateMessageEvent(m *discordgo.MessageCreate) event {
 	return &messageEvent{
 		ID:          m.ID,
 		Channel:     channelID,
-		ChannelType: b.channelType(channel),
+		ChannelType: c.channelType(channel),
 		Thread:      thread,
 		User:        m.Author.ID,
 		Message:     m.Content,
 	}
 }
 
-func (b *DiscordConn) channel(channel string) (*discordgo.Channel, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if c, ok := b.channels[channel]; ok {
-		return c, nil
+func (c *discordConn) channel(channel string) (*discordgo.Channel, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ch, ok := c.channels[channel]; ok {
+		return ch, nil
 	}
-	c, err := b.session.Channel(channel)
+	ch, err := c.session.Channel(channel)
 	if err != nil {
 		return nil, err
 	}
-	b.channels[channel] = c
-	return c, nil
+	c.channels[channel] = ch
+	return ch, nil
 }
 
-func (b *DiscordConn) channelType(channel *discordgo.Channel) ChannelType {
-	switch channel.Type {
+func (c *discordConn) channelType(ch *discordgo.Channel) channelType {
+	switch ch.Type {
 	case discordgo.ChannelTypeGuildText, discordgo.ChannelTypeGuildPrivateThread, discordgo.ChannelTypeGuildPublicThread:
-		return Channel
+		return channelTypeChannel
 	case discordgo.ChannelTypeDM:
-		return DM
+		return channelTypeDM
 	default:
-		return Unknown
+		return channelTypeUnknown
 	}
 }
 
-func (s *DiscordConn) formatCode(message string) string {
-	return fmt.Sprintf("```%s```", strings.ReplaceAll(message, "```", "` ` `")) // Hack ...
-}
-
-func (s *DiscordConn) send(target *ChatID, content string) (string, error) {
-	channel, err := s.maybeCreateThread(target)
-	if err != nil {
-		return "", err
-	}
-	msg, err := s.session.ChannelMessageSend(channel, content)
-	if err != nil {
-		return "", err
-	}
-	return msg.ID, nil
-}
-
-func (s *DiscordConn) update(target *ChatID, messageID string, content string) error {
-	channel := target.Channel
-	if target.Thread != "" {
-		channel = target.Thread
-	}
-	_, err := s.session.ChannelMessageEdit(channel, messageID, content)
-	return err
-}
-
-func (s *DiscordConn) maybeCreateThread(target *ChatID) (string, error) {
+func (c *discordConn) maybeCreateThread(target *chatID) (string, error) {
 	channel := target.Channel
 	if target.Thread == "" {
 		return channel, nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.channels[target.Thread]; ok {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.channels[target.Thread]; ok {
 		return target.Thread, nil
 	}
-	c, err := s.session.StartThreadWithMessage(target.Channel, target.Thread, &discordgo.ThreadCreateData{
+	ch, err := c.session.StartThreadWithMessage(target.Channel, target.Thread, &discordgo.ThreadCreateData{
 		Name:                "REPLbot session",
 		AutoArchiveDuration: discordgo.ArchiveDurationOneHour,
 	})
 	if err != nil {
 		return "", err
 	}
-	s.channels[target.Thread] = c
+	c.channels[target.Thread] = ch
 	return target.Thread, nil
 }
