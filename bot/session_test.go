@@ -81,7 +81,7 @@ func TestBashShell(t *testing.T) {
 	assert.False(t, sess.Active())
 }
 
-func createSession(t *testing.T, script string) (*session, *MemConn) {
+func createSession(t *testing.T, script string) (*session, *memConn) {
 	tempDir := t.TempDir()
 	scriptFile := filepath.Join(tempDir, "repl.sh")
 	if err := os.WriteFile(scriptFile, []byte(script), 0700); err != nil {
@@ -89,7 +89,7 @@ func createSession(t *testing.T, script string) (*session, *MemConn) {
 	}
 	conf := config.New("")
 	conf.RefreshInterval = 50 * time.Millisecond
-	conn := NewMemConn(conf)
+	conn := newMemConn(conf)
 	sconfig := &sessionConfig{
 		ID:          "sess_" + util.RandomString(5),
 		User:        "phil",

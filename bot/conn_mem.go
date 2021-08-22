@@ -9,26 +9,26 @@ import (
 	"sync"
 )
 
-type MemConn struct {
+type memConn struct {
 	config    *config.Config
 	messages  map[string]*messageEvent
 	currentID int
 	mu        sync.RWMutex
 }
 
-func NewMemConn(conf *config.Config) *MemConn {
-	return &MemConn{
+func newMemConn(conf *config.Config) *memConn {
+	return &memConn{
 		config:    conf,
 		messages:  make(map[string]*messageEvent),
 		currentID: 0,
 	}
 }
 
-func (c *MemConn) Connect(ctx context.Context) (<-chan event, error) {
+func (c *memConn) Connect(ctx context.Context) (<-chan event, error) {
 	return make(chan event), nil
 }
 
-func (c *MemConn) Send(target *chatID, message string) error {
+func (c *memConn) Send(target *chatID, message string) error {
 	c.currentID++
 	c.messages[strconv.Itoa(c.currentID)] = &messageEvent{
 		Channel: target.Channel,
@@ -38,7 +38,7 @@ func (c *MemConn) Send(target *chatID, message string) error {
 	return nil
 }
 
-func (c *MemConn) SendWithID(target *chatID, message string) (string, error) {
+func (c *memConn) SendWithID(target *chatID, message string) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.currentID++
@@ -50,7 +50,7 @@ func (c *MemConn) SendWithID(target *chatID, message string) (string, error) {
 	return strconv.Itoa(c.currentID), nil
 }
 
-func (c *MemConn) Update(target *chatID, id string, message string) error {
+func (c *memConn) Update(target *chatID, id string, message string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.messages[id] = &messageEvent{
@@ -61,37 +61,37 @@ func (c *MemConn) Update(target *chatID, id string, message string) error {
 	return nil
 }
 
-func (c *MemConn) Archive(target *chatID) error {
+func (c *memConn) Archive(target *chatID) error {
 	return nil
 }
 
-func (c *MemConn) Close() error {
+func (c *memConn) Close() error {
 	return nil
 }
 
-func (c *MemConn) MentionBot() string {
+func (c *memConn) MentionBot() string {
 	return ""
 }
 
-func (c *MemConn) Mention(user string) string {
+func (c *memConn) Mention(user string) string {
 	return "@" + user
 }
 
-func (c *MemConn) ParseMention(user string) (string, error) {
+func (c *memConn) ParseMention(user string) (string, error) {
 	return "", errors.New("invalid user")
 }
 
-func (c *MemConn) Unescape(s string) string {
+func (c *memConn) Unescape(s string) string {
 	return s
 }
 
-func (c *MemConn) Message(id string) messageEvent {
+func (c *memConn) Message(id string) messageEvent {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return *c.messages[id] // copy!
 }
 
-func (c *MemConn) LogMessages() {
+func (c *memConn) LogMessages() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	log.Printf("Messages:")

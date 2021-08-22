@@ -39,6 +39,7 @@ var (
 	errNoScript             = errors.New("no script defined")
 )
 
+// Bot is the main struct that provides REPLbot
 type Bot struct {
 	config   *config.Config
 	conn     conn
@@ -47,6 +48,7 @@ type Bot struct {
 	mu       sync.RWMutex
 }
 
+// New creates a new REPLbot instance using the given configuration
 func New(conf *config.Config) (*Bot, error) {
 	if len(conf.Scripts()) == 0 {
 		return nil, errors.New("no REPL scripts found in script dir")
@@ -69,6 +71,8 @@ func New(conf *config.Config) (*Bot, error) {
 	}, nil
 }
 
+// Run runs the bot in the foreground indefinitely or until Stop is called.
+// This method does not return unless there is an error, or if gracefully shut down via Stop.
 func (b *Bot) Run() error {
 	var ctx context.Context
 	ctx, b.cancelFn = context.WithCancel(context.Background())
@@ -88,19 +92,7 @@ func (b *Bot) Run() error {
 	return g.Wait()
 }
 
-func (b *Bot) handleEvents(ctx context.Context, eventChan <-chan event) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case ev := <-eventChan:
-			if err := b.handleEvent(ev); err != nil {
-				return err
-			}
-		}
-	}
-}
-
+// Stop gracefully shuts down the bot, closing all active sessions gracefully
 func (b *Bot) Stop() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -112,6 +104,19 @@ func (b *Bot) Stop() {
 		delete(b.sessions, sessionID)
 	}
 	b.cancelFn() // This must be at the end, see app.go
+}
+
+func (b *Bot) handleEvents(ctx context.Context, eventChan <-chan event) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case ev := <-eventChan:
+			if err := b.handleEvent(ev); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (b *Bot) handleEvent(e event) error {
@@ -146,58 +151,6 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 	default:
 		return fmt.Errorf("unexpected mode: %s", conf.ControlMode)
 	}
-}
-
-func (b *Bot) startSessionChannel(ev *messageEvent, conf *sessionConfig) error {
-	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ""))
-	conf.Control = &chatID{Channel: ev.Channel, Thread: ""}
-	conf.Terminal = conf.Control
-	return b.startSession(conf)
-}
-
-func (b *Bot) startSessionThread(ev *messageEvent, conf *sessionConfig) error {
-	if ev.Thread == "" {
-		conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
-		conf.Control = &chatID{Channel: ev.Channel, Thread: ev.ID}
-		conf.Terminal = conf.Control
-		return b.startSession(conf)
-	}
-	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
-	conf.Control = &chatID{Channel: ev.Channel, Thread: ev.Thread}
-	conf.Terminal = conf.Control
-	return b.startSession(conf)
-}
-
-func (b *Bot) startSessionSplit(ev *messageEvent, conf *sessionConfig) error {
-	if ev.Thread == "" {
-		conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
-		conf.Control = &chatID{Channel: ev.Channel, Thread: ev.ID}
-		conf.Terminal = &chatID{Channel: ev.Channel, Thread: ""}
-		return b.startSession(conf)
-	}
-	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
-	conf.Control = &chatID{Channel: ev.Channel, Thread: ev.Thread}
-	conf.Terminal = &chatID{Channel: ev.Channel, Thread: ""}
-	return b.startSession(conf)
-}
-
-func (b *Bot) startSession(conf *sessionConfig) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	sess := newSession(b.config, b.conn, conf)
-	b.sessions[conf.ID] = sess
-	log.Printf("[session %s] Starting session", conf.ID)
-	go func() {
-		if err := sess.Run(); err != nil {
-			log.Printf("[session %s] session exited with error: %s", conf.ID, err.Error())
-		} else {
-			log.Printf("[session %s] session exited", conf.ID)
-		}
-		b.mu.Lock()
-		delete(b.sessions, conf.ID)
-		b.mu.Unlock()
-	}()
-	return nil
 }
 
 func (b *Bot) maybeForwardMessage(ev *messageEvent) bool {
@@ -281,6 +234,58 @@ func (b *Bot) applySessionConfigDefaults(ev *messageEvent, conf *sessionConfig) 
 		}
 	}
 	return conf, nil
+}
+
+func (b *Bot) startSessionChannel(ev *messageEvent, conf *sessionConfig) error {
+	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ""))
+	conf.Control = &chatID{Channel: ev.Channel, Thread: ""}
+	conf.Terminal = conf.Control
+	return b.startSession(conf)
+}
+
+func (b *Bot) startSessionThread(ev *messageEvent, conf *sessionConfig) error {
+	if ev.Thread == "" {
+		conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
+		conf.Control = &chatID{Channel: ev.Channel, Thread: ev.ID}
+		conf.Terminal = conf.Control
+		return b.startSession(conf)
+	}
+	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
+	conf.Control = &chatID{Channel: ev.Channel, Thread: ev.Thread}
+	conf.Terminal = conf.Control
+	return b.startSession(conf)
+}
+
+func (b *Bot) startSessionSplit(ev *messageEvent, conf *sessionConfig) error {
+	if ev.Thread == "" {
+		conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
+		conf.Control = &chatID{Channel: ev.Channel, Thread: ev.ID}
+		conf.Terminal = &chatID{Channel: ev.Channel, Thread: ""}
+		return b.startSession(conf)
+	}
+	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
+	conf.Control = &chatID{Channel: ev.Channel, Thread: ev.Thread}
+	conf.Terminal = &chatID{Channel: ev.Channel, Thread: ""}
+	return b.startSession(conf)
+}
+
+func (b *Bot) startSession(conf *sessionConfig) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	sess := newSession(b.config, b.conn, conf)
+	b.sessions[conf.ID] = sess
+	log.Printf("[session %s] Starting session", conf.ID)
+	go func() {
+		if err := sess.Run(); err != nil {
+			log.Printf("[session %s] session exited with error: %s", conf.ID, err.Error())
+		} else {
+			log.Printf("[session %s] session exited", conf.ID)
+		}
+		b.mu.Lock()
+		delete(b.sessions, conf.ID)
+		b.mu.Unlock()
+	}()
+	return nil
 }
 
 func (b *Bot) handleChannelJoinedEvent(ev *messageEvent) error {
