@@ -373,8 +373,7 @@ func (b *Bot) sshReversePortForwardingCallback(ctx ssh.Context, host string, por
 	}
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	sessionID := ctx.User() // FIXME make this a session token
-	session, ok := b.sessions[sessionID]
+	session, ok := b.sessions[ctx.User()]
 	if !ok || int(port) != session.relayPort {
 		return
 	}

@@ -99,8 +99,6 @@ const (
 	// updateMessageUserInputCountLimit is the max number of input messages before re-sending a new screen
 	updateMessageUserInputCountLimit = 5
 
-	updateScreenInterval = 200 * time.Millisecond
-
 	scriptRunCommand  = "run"
 	scriptKillCommand = "kill"
 )
@@ -336,7 +334,7 @@ func (s *Session) commandOutputLoop() error {
 			if err != nil {
 				return err
 			}
-		case <-time.After(updateScreenInterval):
+		case <-time.After(s.config.RefreshInterval):
 			last, lastID, err = s.maybeRefreshTerminal(last, lastID)
 			if err != nil {
 				return err

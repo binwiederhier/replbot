@@ -10,6 +10,8 @@ import (
 const (
 	// DefaultIdleTimeout defines the default time after which a session is terminated
 	DefaultIdleTimeout = 10 * time.Minute
+
+	DefaultRefreshInterval = 200 * time.Millisecond
 )
 
 // ControlMode defines where the control channel and where the terminal will be
@@ -84,6 +86,7 @@ type Config struct {
 	Cursor             time.Duration
 	ShareHost          string
 	ShareKeyFile       string
+	RefreshInterval    time.Duration
 	Debug              bool
 }
 
@@ -96,6 +99,7 @@ func New(token string) *Config {
 		DefaultWindowMode:  DefaultWindowMode,
 		DefaultAuthMode:    DefaultAuthMode,
 		DefaultSize:        DefaultSize,
+		RefreshInterval:    DefaultRefreshInterval,
 	}
 }
 
