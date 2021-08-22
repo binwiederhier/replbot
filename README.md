@@ -1,7 +1,14 @@
 # 🤖 REPLbot
+[![Release](https://img.shields.io/github/release/binwiederhier/replbot.svg?color=success&style=flat-square)](https://github.com/binwiederhier/replbot/releases/latest)
+[![Go Reference](https://pkg.go.dev/badge/heckel.io/replbot.svg)](https://pkg.go.dev/heckel.io/replbot)
+[![Tests](https://github.com/binwiederhier/replbot/workflows/test/badge.svg)](https://github.com/binwiederhier/replbot/actions)
+[![Go Report Card](https://goreportcard.com/badge/github.com/binwiederhier/replbot)](https://goreportcard.com/report/github.com/binwiederhier/replbot)
+[![codecov](https://codecov.io/gh/binwiederhier/replbot/branch/master/graph/badge.svg?token=bdrFZttMsk)](https://codecov.io/gh/binwiederhier/replbot)
+[![Slack channel](https://img.shields.io/badge/slack-@gophers/replbot-success.svg?logo=slack)](https://gophers.slack.com/archives/C02ABHKDCN7)
+
 REPLbot is a bot for Slack and Discord that allows you to control a [REPL](https://en.m.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop) 
 or shell from a chat. It comes with a few REPLs (Go 🥳, Java, NodeJS, PHP, Python, Ruby, Scala, Kotlin, C++ and Ubuntu/Bash), 
-but you can easily make/bring your own.
+but you can [easily make or bring your own](config/script.d).
 
 ![replbot demo](assets/slack-php-count.gif)
 
@@ -168,7 +175,7 @@ Building replbot is simple. Here's how you do it:
 
 ```
 make build-simple
-# Builds to dist/replbot_linux_amd64/pcopy
+# Builds to dist/replbot_linux_amd64/replbot
 ``` 
 
 To build releases, I use [GoReleaser](https://goreleaser.com/). If you have that installed, you can run `make build` or

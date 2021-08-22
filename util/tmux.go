@@ -130,7 +130,3 @@ func (s *Tmux) Stop() error {
 func (s *Tmux) bufferFile() string {
 	return fmt.Sprintf("/dev/shm/%s.buffer", s.id)
 }
-
-func TmuxInstalled() error {
-	return Run("tmux", "-V")
-}

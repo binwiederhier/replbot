@@ -3,7 +3,6 @@ package bot
 import (
 	"encoding/hex"
 	"fmt"
-	"heckel.io/replbot/config"
 	"regexp"
 	"strings"
 )
@@ -51,17 +50,8 @@ func expandWindow(window string) string {
 	if strings.TrimSpace(lines[len(lines)-1]) != "" || strings.TrimSpace(lines[len(lines)-2]) != "" {
 		return window
 	}
-	lines[len(lines)-1] = "."
+	lines[len(lines)-1] = ".\n"
 	return strings.Join(lines, "\n")
-}
-
-func convertSize(size string) (*config.Size, error) {
-	switch size {
-	case config.Tiny.Name, config.Small.Name, config.Medium.Name, config.Large.Name:
-		return config.Sizes[size], nil
-	default:
-		return nil, fmt.Errorf(malformatedTerminalSizeMessage)
-	}
 }
 
 func unquote(s string) string {

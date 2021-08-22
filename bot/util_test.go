@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"heckel.io/replbot/config"
 	"testing"
 )
 import "github.com/stretchr/testify/assert"
@@ -67,17 +66,39 @@ root@89cee82bafd5:/# ls -al
 	assert.Equal(t, expected, actual)
 }
 
-func TestConvertSize(t *testing.T) {
-	tiny, _ := convertSize("tiny")
-	small, _ := convertSize("small")
-	medium, _ := convertSize("medium")
-	large, _ := convertSize("large")
-	assert.Equal(t, config.Tiny, tiny)
-	assert.Equal(t, config.Small, small)
-	assert.Equal(t, config.Medium, medium)
-	assert.Equal(t, config.Large, large)
+func TestExpandWindow(t *testing.T) {
+	before := `root@89cee82bafd5:/# ls
+bin   dev  home  lib32  libx32  mnt  proc  run   srv  tmp  var
+boot  etc  lib   lib64  media   opt  root  sbin  sys  usr
+root@89cee82bafd5:/# ls -al
 
-	nothing, err := convertSize("invalid")
-	assert.Error(t, err)
-	assert.Nil(t, nothing)
+
+
+
+
+`
+	expected := `root@89cee82bafd5:/# ls
+bin   dev  home  lib32  libx32  mnt  proc  run   srv  tmp  var
+boot  etc  lib   lib64  media   opt  root  sbin  sys  usr
+root@89cee82bafd5:/# ls -al
+
+
+
+
+
+.
+`
+	actual := expandWindow(before)
+	assert.Equal(t, expected, actual)
+}
+
+func TestExpandWindowDontExpand(t *testing.T) {
+	before := `This window
+does not need to be expanded.
+`
+	expected := `This window
+does not need to be expanded.
+`
+	actual := expandWindow(before)
+	assert.Equal(t, expected, actual)
 }

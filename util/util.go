@@ -16,8 +16,9 @@ var (
 	randomStringCharset       = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
-func SanitizeNonAlphanumeric(id string) string {
-	return nonAlphanumericCharsRegex.ReplaceAllString(id, "_")
+// SanitizeNonAlphanumeric replaces all non-alphanumeric characters with an underscore
+func SanitizeNonAlphanumeric(s string) string {
+	return nonAlphanumericCharsRegex.ReplaceAllString(s, "_")
 }
 
 // FileExists returns true if a file with the given filename exists
@@ -26,11 +27,13 @@ func FileExists(filename string) bool {
 	return err == nil
 }
 
+// Run is a shortcut running an exec.Command
 func Run(command ...string) error {
 	cmd := exec.Command(command[0], command[1:]...)
 	return cmd.Run()
 }
 
+// RunAll runs all the given commands
 func RunAll(commands ...[]string) error {
 	for _, command := range commands {
 		if err := Run(command...); err != nil {
@@ -40,6 +43,7 @@ func RunAll(commands ...[]string) error {
 	return nil
 }
 
+// RandomPort finds a free random, operating system chosen port
 func RandomPort() (int, error) {
 	listener, err := net.Listen("tcp4", ":0")
 	if err != nil {
@@ -57,6 +61,7 @@ func RandomPort() (int, error) {
 	return port, nil
 }
 
+// RandomString returns a random alphanumeric string of the given length
 func RandomString(length int) string {
 	b := make([]byte, length)
 	for i := range b {

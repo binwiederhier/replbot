@@ -87,7 +87,6 @@ func createSession(t *testing.T, script string) (*Session, *MemConn) {
 	if err := os.WriteFile(scriptFile, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
-
 	conf := config.New("")
 	conf.RefreshInterval = 50 * time.Millisecond
 	conn := NewMemConn(conf)
@@ -106,10 +105,4 @@ func createSession(t *testing.T, script string) (*Session, *MemConn) {
 	session := NewSession(conf, conn, sconfig)
 	go session.Run()
 	return session, conn
-}
-
-func inputAndAssert(t *testing.T, sess *Session, input string, expected string) {
-	sess.UserInput("phil", input)
-	time.Sleep(100 * time.Millisecond)
-
 }

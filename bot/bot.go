@@ -1,8 +1,9 @@
+// Package bot provides the replbot main functionality
 package bot
 
 import (
 	"context"
-	_ "embed"
+	_ "embed" // go:embed requires this
 	"errors"
 	"fmt"
 	"github.com/gliderlabs/ssh"
@@ -49,7 +50,7 @@ type Bot struct {
 func New(conf *config.Config) (*Bot, error) {
 	if len(conf.Scripts()) == 0 {
 		return nil, errors.New("no REPL scripts found in script dir")
-	} else if err := util.TmuxInstalled(); err != nil {
+	} else if err := util.Run("tmux", "-V"); err != nil {
 		return nil, fmt.Errorf("tmux check failed: %s", err.Error())
 	}
 	var conn Conn
@@ -250,6 +251,10 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*SessionConfig, error) {
 	if conf.Script == "" {
 		return nil, errNoScript
 	}
+	return b.applySessionConfigDefaults(ev, conf)
+}
+
+func (b *Bot) applySessionConfigDefaults(ev *messageEvent, conf *SessionConfig) (*SessionConfig, error) {
 	if conf.ControlMode == "" {
 		if ev.Thread != "" {
 			conf.ControlMode = config.Thread // special handling, because it'd be weird otherwise
