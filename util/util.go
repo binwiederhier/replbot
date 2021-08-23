@@ -76,3 +76,23 @@ func RandomString(length int) string {
 func FormatMarkdownCode(s string) string {
 	return fmt.Sprintf("```%s```", strings.ReplaceAll(s, "```", "` ` `")) // Hack ...
 }
+
+// StringContainsWait is a helper function for tests to check if a string is contained within a haystack
+// within a reasonable amount of time
+func StringContainsWait(haystackFn func() string, needle string, maxWait time.Duration) (contains bool) {
+	fn := func() bool {
+		return strings.Contains(haystackFn(), needle)
+	}
+	return WaitUntil(fn, maxWait)
+}
+
+// WaitUntil waits for fn to turn true within a reasonable amount of time
+func WaitUntil(fn func() bool, maxWait time.Duration) bool {
+	for start := time.Now(); time.Since(start) < maxWait; {
+		if fn() {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}

@@ -35,50 +35,42 @@ esac
 func TestSessionCustomShell(t *testing.T) {
 	sess, conn := createSession(t, testREPL)
 	defer sess.ForceClose()
-
-	time.Sleep(200 * time.Millisecond)
-	assert.Contains(t, conn.Message("1").Message, "REPL session started, @phil")
-	assert.Contains(t, conn.Message("2").Message, `Enter name:`)
+	assert.True(t, conn.MessageContainsWait("1", "REPL session started, @phil"))
+	assert.True(t, conn.MessageContainsWait("2", "Enter name:"))
 
 	sess.UserInput("phil", "Phil")
-	time.Sleep(100 * time.Millisecond)
-	assert.Contains(t, conn.Message("2").Message, `Hello Phil!`)
+	assert.True(t, conn.MessageContainsWait("2", "Hello Phil!"))
 
 	sess.UserInput("phil", "!help")
-	time.Sleep(100 * time.Millisecond)
-	assert.Contains(t, conn.Message("3").Message, `Send empty return`)
+	assert.True(t, conn.MessageContainsWait("3", "Send empty return"))
 
 	sess.UserInput("phil", "!c")
-	time.Sleep(100 * time.Millisecond)
-	assert.False(t, sess.Active())
+	assert.True(t, util.WaitUntil(func() bool { return !sess.Active() }, time.Second))
 }
 
 func TestBashShell(t *testing.T) {
 	sess, conn := createSession(t, testBashREPL)
 	defer sess.ForceClose()
-	time.Sleep(100 * time.Millisecond)
 
 	dir := t.TempDir()
 	sess.UserInput("phil", "cd "+dir)
 	sess.UserInput("phil", "vi hi.txt")
-	time.Sleep(100 * time.Millisecond)
-	assert.Contains(t, conn.Message("2").Message, "~\n~\n~\n~")
+	assert.True(t, conn.MessageContainsWait("2", "~\n~\n~\n~"))
 
 	sess.UserInput("phil", "!n i")
-	time.Sleep(100 * time.Millisecond)
-	assert.Contains(t, conn.Message("2").Message, "-- INSERT --")
+	assert.True(t, conn.MessageContainsWait("2", "-- INSERT --"))
 
 	sess.UserInput("phil", "!n I'm writing this in vim.")
 	sess.UserInput("phil", "!esc")
 	sess.UserInput("phil", "!n yyp")
 	sess.UserInput("phil", ":wq\n")
-	time.Sleep(100 * time.Millisecond)
-	b, _ := os.ReadFile(filepath.Join(dir, "hi.txt"))
-	assert.Equal(t, "I'm writing this in vim.\nI'm writing this in vim.\n", string(b))
+	assert.True(t, util.WaitUntil(func() bool {
+		b, _ := os.ReadFile(filepath.Join(dir, "hi.txt"))
+		return b != nil && string(b) == "I'm writing this in vim.\nI'm writing this in vim.\n"
+	}, time.Second))
 
 	sess.UserInput("phil", "!q")
-	time.Sleep(100 * time.Millisecond)
-	assert.False(t, sess.Active())
+	assert.True(t, util.WaitUntil(func() bool { return !sess.Active() }, time.Second))
 }
 
 func createSession(t *testing.T, script string) (*session, *memConn) {
@@ -88,17 +80,17 @@ func createSession(t *testing.T, script string) (*session, *memConn) {
 		t.Fatal(err)
 	}
 	conf := config.New("")
-	conf.RefreshInterval = 50 * time.Millisecond
+	conf.RefreshInterval = 30 * time.Millisecond
 	conn := newMemConn(conf)
 	sconfig := &sessionConfig{
 		ID:          "sess_" + util.RandomString(5),
 		User:        "phil",
-		Control:     &chatID{"main", ""},
-		Terminal:    &chatID{"main", ""},
+		Control:     &chatID{"channel", "thread"},
+		Terminal:    &chatID{"channel", ""},
 		Script:      scriptFile,
-		ControlMode: config.Channel,
+		ControlMode: config.Split,
 		WindowMode:  config.Full,
-		AuthMode:    config.OnlyMe,
+		AuthMode:    config.Everyone,
 		Size:        config.Small,
 		RelayPort:   0,
 	}

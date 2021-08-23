@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"heckel.io/replbot/config"
+	"heckel.io/replbot/util"
 	"log"
 	"strconv"
 	"sync"
+	"time"
 )
 
 type memConn struct {
@@ -89,6 +91,19 @@ func (c *memConn) Message(id string) messageEvent {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return *c.messages[id] // copy!
+}
+
+func (c *memConn) MessageContainsWait(id string, needle string) (contains bool) {
+	haystackFn := func() string {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		m, ok := c.messages[id]
+		if !ok {
+			return ""
+		}
+		return m.Message
+	}
+	return util.StringContainsWait(haystackFn, needle, time.Second)
 }
 
 func (c *memConn) LogMessages() {
