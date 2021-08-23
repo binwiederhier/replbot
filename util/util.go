@@ -1,3 +1,4 @@
+// Package util is a general utility package for REPLbot
 package util
 
 import (
