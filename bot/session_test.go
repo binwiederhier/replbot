@@ -101,22 +101,24 @@ func TestSessionCommands(t *testing.T) {
 }
 
 func TestSessionResize(t *testing.T) {
-	return // stty size reports 39 99, why??
+	// FIXME stty size reports 39 99, why??
 
-	sess, conn := createSession(t, testBashREPL)
-	defer sess.ForceClose()
+	/*
+		sess, conn := createSession(t, testBashREPL)
+		defer sess.ForceClose()
 
-	sess.UserInput("phil", "stty size")
-	assert.True(t, conn.MessageContainsWait("3", "24 80"))
-	conn.LogMessages()
+		sess.UserInput("phil", "stty size")
+		assert.True(t, conn.MessageContainsWait("3", "24 80"))
+		conn.LogMessages()
 
-	time.Sleep(time.Second)
-	sess.UserInput("phil", "!resize large")
-	sess.UserInput("phil", "stty size")
-	assert.True(t, conn.MessageContainsWait("3", "100 30"))
+		time.Sleep(time.Second)
+		sess.UserInput("phil", "!resize large")
+		sess.UserInput("phil", "stty size")
+		assert.True(t, conn.MessageContainsWait("3", "100 30"))
 
-	sess.UserInput("phil", "!d")
-	assert.True(t, util.WaitUntilNot(sess.Active, time.Second))
+		sess.UserInput("phil", "!d")
+		assert.True(t, util.WaitUntilNot(sess.Active, time.Second))
+	*/
 }
 
 func createSession(t *testing.T, script string) (*session, *memConn) {
