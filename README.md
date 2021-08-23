@@ -60,6 +60,46 @@ should be pretty self-explanatory:
 To start a session with the default settings, simply say `@replbot java` to start a Java REPL. There are a few advanced arguments
 you can use when starting a session.
 
+### REPL scripts
+REPLbot can run more or less arbitrary scripts and interact with them -- they don't really have to be REPLs. Any interactive
+script is perfectly fine, whether it's a REPL or a Shell or even a game. By default, REPLbot ships with a [few REPLs](config/script.d). 
+To extend the REPLs you can run, simple add more scripts in the `script-dir` folder (see [config.yml](config/config.yml)).
+
+Here's a super simple example script:
+```bash
+#!/bin/sh
+# Scripts are executed as "./script run <id>" to start the REPL, and as "./script kill <id>"
+# to stop it. Not all scripts need the "kill" behavior, if they exit properly on SIGTERM.
+case "$1" in
+  run)
+    while true; do
+      echo -n "Enter name: "
+      read name
+      echo "Hello $name!"
+    done 
+    ;;
+  *) ;;
+esac
+```
+
+In all likelihood, you'll want more isolation by running REPLs as Docker containers. Here's the [PHP REPL script](https://github.com/binwiederhier/replbot/blob/1460ddba1adbfd450465d5d37b0b9b340e8a4f79/config/script.d/php)
+that REPLbot ships with (not shortened):
+
+```bash
+#!/bin/sh
+# REPLbot script to run a PHP REPL.
+#
+# Scripts are executed as "./script run <id>" to start the REPL,
+# and as "./script kill <id>" to stop it.
+
+DIR="$(cd -- "$(dirname "$0")" >/dev/null 2>&1 && pwd -P)"
+case "$1" in
+  run) docker run --rm --name "$2" -it php ;;
+  kill) "$DIR"/helpers/docker-kill "$2" ;;
+  *) echo "Syntax: $0 (run|kill) ID"; exit 1 ;;
+esac
+```
+
 ### Control mode
 You can specify if you want the session to be started in the main channel (`channel`), in a thread (`thread`),
 or in split mode (`split`) using both channel and thread. Split mode is the default because it is the cleanest to use: it'll use
