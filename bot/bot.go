@@ -35,12 +35,12 @@ const (
 
 // Key exchange algorithms, ciphers,and MACs (see `ssh-audit` output)
 const (
-	kexAlgoCurve25519Sha256 = "curve25519-sha256@libssh.org"
-	macHmacSha256Etm        = "hmac-sha2-256-etm@openssh.com"
-	cipherAes128Gcm         = "aes128-gcm@openssh.com"
-	cipherSshRsa            = "ssh-rsa"
-	cipherEd25519           = "ssh-ed25519"
-	sshVersion              = "OpenSSH_7.6p1" // fake!
+	kexCurve25519SHA256 = "curve25519-sha256@libssh.org"
+	macHMACSHA256ETM    = "hmac-sha2-256-etm@openssh.com"
+	cipherAES128GCM     = "aes128-gcm@openssh.com"
+	cipherSSHRSA        = "ssh-rsa"
+	cipherED25519       = "ssh-ed25519"
+	sshVersion          = "OpenSSH_7.6p1" // fake!
 )
 
 var (
@@ -416,8 +416,8 @@ func (b *Bot) sshPtyCallback(ctx ssh.Context, pty ssh.Pty) bool {
 // sshServerConfigCallback configures the SSH server algorithms to be more secure (see `ssh-audit` output)
 func (b *Bot) sshServerConfigCallback(ctx ssh.Context) *gossh.ServerConfig {
 	conf := &gossh.ServerConfig{}
-	conf.KeyExchanges = []string{kexAlgoCurve25519Sha256}
-	conf.Ciphers = []string{cipherAes128Gcm, cipherEd25519, cipherSshRsa}
-	conf.MACs = []string{macHmacSha256Etm}
+	conf.KeyExchanges = []string{kexCurve25519SHA256}
+	conf.Ciphers = []string{cipherAES128GCM, cipherED25519, cipherSSHRSA}
+	conf.MACs = []string{macHMACSHA256ETM}
 	return conf
 }
