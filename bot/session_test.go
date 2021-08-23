@@ -32,6 +32,8 @@ case "$1" in
 esac
 `
 
+const maxWaitTime = 5 * time.Second
+
 func TestSessionCustomShell(t *testing.T) {
 	sess, conn := createSession(t, testREPL)
 	defer sess.ForceClose()
@@ -45,7 +47,7 @@ func TestSessionCustomShell(t *testing.T) {
 	assert.True(t, conn.MessageContainsWait("3", "Send empty return"))
 
 	sess.UserInput("phil", "!c")
-	assert.True(t, util.WaitUntilNot(sess.Active, time.Second))
+	assert.True(t, util.WaitUntilNot(sess.Active, maxWaitTime))
 }
 
 func TestBashShell(t *testing.T) {
@@ -70,7 +72,7 @@ func TestBashShell(t *testing.T) {
 	}, time.Second))
 
 	sess.UserInput("phil", "!q")
-	assert.True(t, util.WaitUntilNot(sess.Active, time.Second))
+	assert.True(t, util.WaitUntilNot(sess.Active, maxWaitTime))
 }
 
 func TestSessionCommands(t *testing.T) {
@@ -97,7 +99,7 @@ func TestSessionCommands(t *testing.T) {
 
 	sess.UserInput("phil", "!c")
 	sess.UserInput("phil", "!d")
-	assert.True(t, util.WaitUntilNot(sess.Active, time.Second))
+	assert.True(t, util.WaitUntilNot(sess.Active, maxWaitTime))
 }
 
 func TestSessionResize(t *testing.T) {

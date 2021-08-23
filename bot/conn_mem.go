@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+const maxMessageWaitTime = 5 * time.Second
+
+// memConn is an implementation of conn specifically used for testing
 type memConn struct {
 	config    *config.Config
 	messages  map[string]*messageEvent
@@ -105,7 +108,7 @@ func (c *memConn) MessageContainsWait(id string, needle string) (contains bool) 
 		}
 		return m.Message
 	}
-	if !util.StringContainsWait(haystackFn, needle, time.Second) {
+	if !util.StringContainsWait(haystackFn, needle, maxMessageWaitTime) {
 		c.LogMessages()
 		return false
 	}
