@@ -20,6 +20,7 @@ func TestNew(t *testing.T) {
 	conf := New("xoxb-slack-token")
 	conf.ScriptDir = dir
 	assert.Equal(t, Slack, conf.Platform())
+	assert.Equal(t, []string{"script1", "script2"}, conf.Scripts())
 	assert.False(t, conf.ShareEnabled())
 	assert.Empty(t, conf.Script("does-not-exist"))
 	assert.Equal(t, script1, conf.Script("script1"))
@@ -29,6 +30,8 @@ func TestNew(t *testing.T) {
 func TestNewDiscordShareHost(t *testing.T) {
 	conf := New("not-slack")
 	conf.ShareHost = "localhost:2586"
+	conf.ScriptDir = "/does-not-exist"
 	assert.Equal(t, Discord, conf.Platform())
+	assert.Empty(t, conf.Scripts())
 	assert.True(t, conf.ShareEnabled())
 }

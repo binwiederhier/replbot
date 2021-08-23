@@ -33,6 +33,16 @@ const (
 	shareServerScriptFile = "/tmp/replbot_share_server.sh"
 )
 
+// Key exchange algorithms, ciphers,and MACs (see `ssh-audit` output)
+const (
+	kexAlgoCurve25519Sha256 = "curve25519-sha256@libssh.org"
+	macHmacSha256Etm        = "hmac-sha2-256-etm@openssh.com"
+	cipherAes128Gcm         = "aes128-gcm@openssh.com"
+	cipherSshRsa            = "ssh-rsa"
+	cipherEd25519           = "ssh-ed25519"
+	sshVersion              = "OpenSSH_7.6p1" // fake!
+)
+
 var (
 	//go:embed share_server.sh
 	shareServerScriptSource string
@@ -129,6 +139,7 @@ func (b *Bot) handleEvent(e event) error {
 		return nil // Ignore other events
 	}
 }
+
 func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 	if b.maybeForwardMessage(ev) {
 		return nil // We forwarded the message
@@ -316,24 +327,8 @@ func (b *Bot) runShareServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	forwardHandler := &ssh.ForwardedTCPHandler{}
-	server := ssh.Server{
-		Addr:                          fmt.Sprintf(":%s", port),
-		PasswordHandler:               nil,
-		PublicKeyHandler:              nil,
-		KeyboardInteractiveHandler:    nil,
-		PtyCallback:                   b.sshPtyCallback,
-		ReversePortForwardingCallback: b.sshReversePortForwardingCallback,
-		Handler:                       b.sshSessionHandler,
-		RequestHandlers: map[string]ssh.RequestHandler{
-			"tcpip-forward":        forwardHandler.HandleSSHRequest,
-			"cancel-tcpip-forward": forwardHandler.HandleSSHRequest,
-		},
-		ChannelHandlers: map[string]ssh.ChannelHandler{
-			"session": ssh.DefaultSessionHandler,
-		},
-	}
-	if err := server.SetOption(ssh.HostKeyFile(b.config.ShareKeyFile)); err != nil {
+	server, err := b.sshServer(port)
+	if err != nil {
 		return err
 	}
 	errChan := make(chan error)
@@ -348,6 +343,35 @@ func (b *Bot) runShareServer(ctx context.Context) error {
 	}
 }
 
+func (b *Bot) sshServer(port string) (*ssh.Server, error) {
+	forwardHandler := &ssh.ForwardedTCPHandler{}
+	server := &ssh.Server{
+		Addr:                          fmt.Sprintf(":%s", port),
+		Version:                       sshVersion,
+		PasswordHandler:               nil,
+		PublicKeyHandler:              nil,
+		KeyboardInteractiveHandler:    nil,
+		PtyCallback:                   b.sshPtyCallback,
+		ReversePortForwardingCallback: b.sshReversePortForwardingCallback,
+		Handler:                       b.sshSessionHandler,
+		ServerConfigCallback:          b.sshServerConfigCallback,
+		RequestHandlers: map[string]ssh.RequestHandler{
+			"tcpip-forward":        forwardHandler.HandleSSHRequest,
+			"cancel-tcpip-forward": forwardHandler.HandleSSHRequest,
+		},
+		ChannelHandlers: map[string]ssh.ChannelHandler{
+			"session": ssh.DefaultSessionHandler,
+		},
+	}
+	if err := server.SetOption(ssh.HostKeyFile(b.config.ShareKeyFile)); err != nil {
+		return nil, err
+	}
+	return server, nil
+}
+
+// sshSessionHandler is the main SSH session handler. It returns the share script which creates a local tmux session
+// and opens the reverse tunnel. The session is identified by the SSH user name. If the session is not found, the
+// handler exits immediately.
 func (b *Bot) sshSessionHandler(s ssh.Session) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -358,6 +382,8 @@ func (b *Bot) sshSessionHandler(s ssh.Session) {
 	sess.WriteShareClientScript(s)
 }
 
+// sshReversePortForwardingCallback checks if the requested reverse tunnel host/port (ssh -R) matches the one
+// that was assigned in the REPL share session and rejects/closes the connection if it doesn't
 func (b *Bot) sshReversePortForwardingCallback(ctx ssh.Context, host string, port uint32) (allow bool) {
 	conn, ok := ctx.Value(ssh.ContextKeyConn).(*gossh.ServerConn)
 	if !ok {
@@ -382,6 +408,16 @@ func (b *Bot) sshReversePortForwardingCallback(ctx ssh.Context, host string, por
 	return
 }
 
+// sshPtyCallback always returns false, thereby refusing any SSH client attempt to request a TTY
 func (b *Bot) sshPtyCallback(ctx ssh.Context, pty ssh.Pty) bool {
 	return false
+}
+
+// sshServerConfigCallback configures the SSH server algorithms to be more secure (see `ssh-audit` output)
+func (b *Bot) sshServerConfigCallback(ctx ssh.Context) *gossh.ServerConfig {
+	conf := &gossh.ServerConfig{}
+	conf.KeyExchanges = []string{kexAlgoCurve25519Sha256}
+	conf.Ciphers = []string{cipherAes128Gcm, cipherEd25519, cipherSshRsa}
+	conf.MACs = []string{macHmacSha256Etm}
+	return conf
 }

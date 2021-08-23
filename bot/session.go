@@ -22,38 +22,6 @@ import (
 	"unicode"
 )
 
-var (
-	// consoleCodeRegex is a regex describing console escape sequences that we're stripping out. This regex
-	// only matches ECMA-48 CSI sequences (ESC [ ... <char>), which is enough since, we're using tmux's capture-pane.
-	// See https://man7.org/linux/man-pages/man4/console_codes.4.html
-	consoleCodeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-
-	// sendKeysTable is a translation table that translates input commands "!<command>" to something that can be
-	// send via tmux's send-keys command, see https://man7.org/linux/man-pages/man1/tmux.1.html#KEY_BINDINGS
-	sendKeysTable = map[string]string{
-		"c":     "^C",
-		"d":     "^D",
-		"ret":   "^M",
-		"r":     "^M",
-		"t":     "\t",
-		"tt":    "\t\t",
-		"esc":   "escape", // ESC
-		"up":    "up",     // Cursor up
-		"down":  "down",   // Cursor down
-		"right": "right",  // Cursor right
-		"left":  "left",   // Cursor left
-		"space": "space",  // Space
-		"pd":    "ppage",  // Page up
-		"pu":    "npage",  // Page down
-	}
-	ctrlCommandRegex = regexp.MustCompile(`^!c-([a-z])$`)
-	errExit          = errors.New("exited REPL")
-
-	//go:embed share_client.sh.gotmpl
-	shareClientScriptSource   string
-	shareClientScriptTemplate = template.Must(template.New("share_client").Parse(shareClientScriptSource))
-)
-
 const (
 	sessionStartedMessage = "🚀 REPL session started, %s. Type `!help` to see a list of available commands, or `!exit` to forcefully " +
 		"exit the REPL."
@@ -101,6 +69,38 @@ const (
 
 	scriptRunCommand  = "run"
 	scriptKillCommand = "kill"
+)
+
+var (
+	// consoleCodeRegex is a regex describing console escape sequences that we're stripping out. This regex
+	// only matches ECMA-48 CSI sequences (ESC [ ... <char>), which is enough since, we're using tmux's capture-pane.
+	// See https://man7.org/linux/man-pages/man4/console_codes.4.html
+	consoleCodeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+	// sendKeysTable is a translation table that translates input commands "!<command>" to something that can be
+	// send via tmux's send-keys command, see https://man7.org/linux/man-pages/man1/tmux.1.html#KEY_BINDINGS
+	sendKeysTable = map[string]string{
+		"c":     "^C",
+		"d":     "^D",
+		"ret":   "^M",
+		"r":     "^M",
+		"t":     "\t",
+		"tt":    "\t\t",
+		"esc":   "escape", // ESC
+		"up":    "up",     // Cursor up
+		"down":  "down",   // Cursor down
+		"right": "right",  // Cursor right
+		"left":  "left",   // Cursor left
+		"space": "space",  // Space
+		"pd":    "ppage",  // Page up
+		"pu":    "npage",  // Page down
+	}
+	ctrlCommandRegex = regexp.MustCompile(`^!c-([a-z])$`)
+	errExit          = errors.New("exited REPL")
+
+	//go:embed share_client.sh.gotmpl
+	shareClientScriptSource   string
+	shareClientScriptTemplate = template.Must(template.New("share_client").Parse(shareClientScriptSource))
 )
 
 // session represents a REPL session
@@ -190,6 +190,7 @@ func newSession(config *config.Config, conn conn, sconfig *sessionConfig) *sessi
 	}
 }
 
+// Run executes a REPL session. This function only returns on error or when gracefully exiting the session.
 func (s *session) Run() error {
 	log.Printf("[session %s] Started REPL session", s.id)
 	defer log.Printf("[session %s] Closed REPL session", s.id)
@@ -263,8 +264,6 @@ func (s *session) RegisterShareConn(conn io.Closer) bool {
 }
 
 func (s *session) userInputLoop() error {
-	log.Printf("[session %s] Started user input loop", s.id)
-	defer log.Printf("[session %s] Exiting user input loop", s.id)
 	for {
 		select {
 		case line := <-s.userInputChan:
@@ -318,8 +317,6 @@ func (s *session) handleUserInput(input string) error {
 }
 
 func (s *session) commandOutputLoop() error {
-	log.Printf("[session %s] Started command output loop", s.id)
-	defer log.Printf("[session %s] Exiting command output loop", s.id)
 	var last, lastID string
 	var err error
 	for {
@@ -401,8 +398,6 @@ func (s *session) maybeAddCursor(window string) string {
 }
 
 func (s *session) shutdownHandler() error {
-	log.Printf("[session %s] Starting shutdown handler", s.id)
-	defer log.Printf("[session %s] Exiting shutdown handler", s.id)
 	<-s.ctx.Done()
 	if err := s.tmux.Stop(); err != nil {
 		log.Printf("[session %s] Warning: unable to stop tmux: %s", s.id, err.Error())
@@ -427,11 +422,9 @@ func (s *session) shutdownHandler() error {
 }
 
 func (s *session) activityMonitor() error {
-	log.Printf("[session %s] Started activity monitor", s.id)
 	defer func() {
 		s.warnTimer.Stop()
 		s.closeTimer.Stop()
-		log.Printf("[session %s] Exiting activity monitor", s.id)
 	}()
 	for {
 		select {
