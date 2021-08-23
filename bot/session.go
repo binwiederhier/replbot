@@ -2,7 +2,7 @@ package bot
 
 import (
 	"context"
-	_ "embed"
+	_ "embed" // go:embed requires this
 	"errors"
 	"fmt"
 	"golang.org/x/sync/errgroup"
@@ -464,7 +464,7 @@ func (s *session) sessionStartedMessage() string {
 func (s *session) maybeTrimWindow(window string) string {
 	switch s.windowMode {
 	case config.Full:
-		if s.config.Type() == config.TypeDiscord {
+		if s.config.Platform() == config.Discord {
 			return expandWindow(window)
 		}
 		return window

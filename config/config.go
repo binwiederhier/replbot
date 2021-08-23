@@ -1,3 +1,4 @@
+// Package config provides the main configuration for REPLbot
 package config
 
 import (
@@ -11,66 +12,8 @@ const (
 	// DefaultIdleTimeout defines the default time after which a session is terminated
 	DefaultIdleTimeout = 10 * time.Minute
 
-	DefaultRefreshInterval = 200 * time.Millisecond
-)
-
-// ControlMode defines where the control channel and where the terminal will be
-// opened, see config.yml for details
-type ControlMode string
-
-const (
-	DefaultControlMode = Split
-	Thread             = ControlMode("thread")
-	Channel            = ControlMode("channel")
-	Split              = ControlMode("split")
-)
-
-type WindowMode string
-
-const (
-	DefaultWindowMode = Full
-	Full              = WindowMode("full")
-	Trim              = WindowMode("trim")
-)
-
-type AuthMode string
-
-const (
-	DefaultAuthMode = Everyone
-	OnlyMe          = AuthMode("only-me")
-	Everyone        = AuthMode("everyone")
-)
-
-// Size defines the dimensions of the terminal
-type Size struct {
-	Name   string
-	Width  int
-	Height int
-}
-
-var (
-	Tiny   = &Size{"tiny", 60, 15}
-	Small  = &Size{"small", 80, 24}
-	Medium = &Size{"medium", 100, 30}
-	Large  = &Size{"large", 120, 38}
-
-	DefaultSize = Small
-	Sizes       = map[string]*Size{
-		Tiny.Name:   Tiny,
-		Small.Name:  Small,
-		Medium.Name: Medium,
-		Large.Name:  Large,
-	}
-)
-
-const (
-	CursorOff = time.Duration(0)
-	CursorOn  = time.Duration(1)
-)
-
-const (
-	TypeSlack   = "slack"
-	TypeDiscord = "discord"
+	// defaultRefreshInterval defines the interval at which the terminal refreshed
+	defaultRefreshInterval = 200 * time.Millisecond
 )
 
 // Config is the main config struct for the application. Use New to instantiate a default config struct.
@@ -98,17 +41,19 @@ func New(token string) *Config {
 		DefaultWindowMode:  DefaultWindowMode,
 		DefaultAuthMode:    DefaultAuthMode,
 		DefaultSize:        DefaultSize,
-		RefreshInterval:    DefaultRefreshInterval,
+		RefreshInterval:    defaultRefreshInterval,
 	}
 }
 
-func (c *Config) Type() string {
+// Platform returns the target connection type, based on the token
+func (c *Config) Platform() Platform {
 	if strings.HasPrefix(c.Token, "xoxb-") {
-		return TypeSlack
+		return Slack
 	}
-	return TypeDiscord
+	return Discord
 }
 
+// ShareEnabled returns true if the share features is enabled
 func (c *Config) ShareEnabled() bool {
 	return c.ShareHost != ""
 }

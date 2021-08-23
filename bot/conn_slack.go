@@ -59,15 +59,15 @@ func (c *slackConn) Connect(ctx context.Context) (<-chan event, error) {
 	return eventChan, nil
 }
 
-func (c *slackConn) Send(target *chatID, message string) error {
-	_, err := c.SendWithID(target, message)
+func (c *slackConn) Send(chat *chatID, message string) error {
+	_, err := c.SendWithID(chat, message)
 	return err
 }
 
-func (c *slackConn) SendWithID(target *chatID, message string) (string, error) {
-	options := c.postOptions(target, slack.MsgOptionText(message, false))
+func (c *slackConn) SendWithID(chat *chatID, message string) (string, error) {
+	options := c.postOptions(chat, slack.MsgOptionText(message, false))
 	for {
-		_, responseTS, err := c.rtm.PostMessage(target.Channel, options...)
+		_, responseTS, err := c.rtm.PostMessage(chat.Channel, options...)
 		if err == nil {
 			return responseTS, nil
 		}
@@ -80,10 +80,10 @@ func (c *slackConn) SendWithID(target *chatID, message string) (string, error) {
 	}
 }
 
-func (c *slackConn) Update(target *chatID, id string, message string) error {
-	options := c.postOptions(target, slack.MsgOptionText(message, false))
+func (c *slackConn) Update(chat *chatID, id string, message string) error {
+	options := c.postOptions(chat, slack.MsgOptionText(message, false))
 	for {
-		_, _, _, err := c.rtm.UpdateMessage(target.Channel, id, options...)
+		_, _, _, err := c.rtm.UpdateMessage(chat.Channel, id, options...)
 		if err == nil {
 			return nil
 		}
@@ -96,7 +96,7 @@ func (c *slackConn) Update(target *chatID, id string, message string) error {
 	}
 }
 
-func (c *slackConn) Archive(target *chatID) error {
+func (c *slackConn) Archive(_ *chatID) error {
 	return nil
 }
 
@@ -140,8 +140,6 @@ func (c *slackConn) translateEvent(event slack.RTMEvent) event {
 		return c.handleChannelJoinedEvent(ev)
 	case *slack.MessageEvent:
 		return c.handleMessageEvent(ev)
-	case *slack.LatencyReport:
-		return c.handleLatencyReportEvent(ev)
 	case *slack.RTMError:
 		return c.handleErrorEvent(ev)
 	case *slack.ConnectionErrorEvent:
@@ -184,11 +182,6 @@ func (c *slackConn) handleChannelJoinedEvent(ev *slack.ChannelJoinedEvent) event
 
 func (c *slackConn) handleErrorEvent(err error) event {
 	log.Printf("Error: %s\n", err.Error())
-	return nil
-}
-
-func (c *slackConn) handleLatencyReportEvent(ev *slack.LatencyReport) event {
-	log.Printf("Current latency: %v\n", ev.Value)
 	return nil
 }
 

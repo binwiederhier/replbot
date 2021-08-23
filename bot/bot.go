@@ -56,13 +56,13 @@ func New(conf *config.Config) (*Bot, error) {
 		return nil, fmt.Errorf("tmux check failed: %s", err.Error())
 	}
 	var conn conn
-	switch conf.Type() {
-	case config.TypeSlack:
+	switch conf.Platform() {
+	case config.Slack:
 		conn = newSlackConn(conf)
-	case config.TypeDiscord:
+	case config.Discord:
 		conn = newDiscordConn(conf)
 	default:
-		return nil, fmt.Errorf("invalid type: %s", conf.Type())
+		return nil, fmt.Errorf("invalid type: %s", conf.Platform())
 	}
 	return &Bot{
 		config:   conf,
@@ -195,7 +195,7 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 			} else if s := b.config.Script(field); conf.Script == "" && s != "" {
 				conf.Script = s
 			} else {
-				return nil, fmt.Errorf(unknownCommandMessage, field)
+				return nil, fmt.Errorf(unknownCommandMessage, field) //lint:ignore ST1005 we'll pass this to the client
 			}
 		}
 	}
@@ -213,7 +213,7 @@ func (b *Bot) applySessionConfigDefaults(ev *messageEvent, conf *sessionConfig) 
 			conf.ControlMode = b.config.DefaultControlMode
 		}
 	}
-	if b.config.Type() == config.TypeDiscord && ev.ChannelType == channelTypeDM && conf.ControlMode != config.Channel {
+	if b.config.Platform() == config.Discord && ev.ChannelType == channelTypeDM && conf.ControlMode != config.Channel {
 		conf.ControlMode = config.Channel // special case: Discord does not support threads in direct messages
 	}
 	if conf.WindowMode == "" {
@@ -286,10 +286,6 @@ func (b *Bot) startSession(conf *sessionConfig) error {
 		b.mu.Unlock()
 	}()
 	return nil
-}
-
-func (b *Bot) handleChannelJoinedEvent(ev *messageEvent) error {
-	return b.handleHelp(ev.Channel, "", nil)
 }
 
 func (b *Bot) handleHelp(channel, thread string, err error) error {
