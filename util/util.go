@@ -96,3 +96,8 @@ func WaitUntil(fn func() bool, maxWait time.Duration) bool {
 	}
 	return false
 }
+
+// WaitUntilNot waits for fn to turn false within a reasonable amount of time
+func WaitUntilNot(fn func() bool, maxWait time.Duration) bool {
+	return WaitUntil(func() bool { return !fn() }, maxWait)
+}
