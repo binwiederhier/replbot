@@ -105,7 +105,11 @@ func (c *memConn) MessageContainsWait(id string, needle string) (contains bool) 
 		}
 		return m.Message
 	}
-	return util.StringContainsWait(haystackFn, needle, time.Second)
+	if !util.StringContainsWait(haystackFn, needle, time.Second) {
+		c.LogMessages()
+		return false
+	}
+	return true
 }
 
 func (c *memConn) LogMessages() {
