@@ -31,6 +31,8 @@ func (c *memConn) Connect(ctx context.Context) (<-chan event, error) {
 }
 
 func (c *memConn) Send(target *chatID, message string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.currentID++
 	c.messages[strconv.Itoa(c.currentID)] = &messageEvent{
 		Channel: target.Channel,

@@ -10,6 +10,7 @@ help:
 	@echo
 	@echo "Test/check:"
 	@echo "  make test                        - Run tests"
+	@echo "  make race                        - Run tests with -race flag"
 	@echo "  make coverage                    - Run tests and show coverage"
 	@echo "  make coverage-html               - Run tests and show coverage (as HTML)"
 	@echo "  make coverage-upload             - Upload coverage results to codecov.io"
@@ -43,6 +44,9 @@ check: test fmt-check vet lint staticcheck
 
 test: .PHONY
 	$(GO) test ./...
+
+race: .PHONY
+	$(GO) test -race ./...
 
 coverage:
 	mkdir -p build/coverage
