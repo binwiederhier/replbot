@@ -229,8 +229,9 @@ Made with ❤️ by [Philipp C. Heckel](https://heckel.io), distributed under th
 
 Third party libraries:
 * [github.com/urfave/cli/v2](https://github.com/urfave/cli/v2) (MIT) is used to drive the CLI
-* [discord-go](https://github.com/bwmarrin/discordgo) (BSD-3) is used for the Discord communication, specifically this
-  [pull request](https://github.com/bwmarrin/discordgo/pull/922) by [Pedro Pessoa](https://github.com/Pedro-Pessoa) for thread support
+* [discord-go](https://github.com/bwmarrin/discordgo) (BSD-3) is used for the Discord communication, specifically these two
+  [these](https://github.com/bwmarrin/discordgo/pull/922) [two](https://github.com/bwmarrin/discordgo/pull/982) pull requests
+  for thread support
 * [slack-go](https://github.com/slack-go/slack) (BSD-2) is used for the Slack communication
 * [gliderlabs/ssh](https://github.com/gliderlabs/ssh) (BSD-3) is used for remote port forwarding for terminal sharing
 
