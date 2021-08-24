@@ -290,9 +290,9 @@ func (b *Bot) startSession(conf *sessionConfig) error {
 	log.Printf("[session %s] Starting session", conf.ID)
 	go func() {
 		if err := sess.Run(); err != nil {
-			log.Printf("[session %s] session exited with error: %s", conf.ID, err.Error())
+			log.Printf("[session %s] Session exited with error: %s", conf.ID, err.Error())
 		} else {
-			log.Printf("[session %s] session exited", conf.ID)
+			log.Printf("[session %s] Session exited successfully", conf.ID)
 		}
 		b.mu.Lock()
 		delete(b.sessions, conf.ID)
