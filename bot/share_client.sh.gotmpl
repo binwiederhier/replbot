@@ -4,7 +4,7 @@
 # See https://heckel.io/replbot for details.
 #
 # This script will create a local tmux session, and a reverse SSH tunnel (ssh -R) to the REPLbot server,
-# connecting the local tmux session to a remote tmux session.
+# connecting the local tmux session to a TTY.
 #
 # This script is customized for one session only. It'll only work once.
 #
@@ -16,9 +16,10 @@ ssh_user={{.SessionID}}
 relay_port={{.RelayPort}}
 tmux_session=replbot_{{.SessionID}}_client
 
-[ -f /usr/bin/ssh ] || { echo "error: ssh is required."; exit 1; }
-[ -f /usr/bin/tmux ] || { echo "error: tmux is required."; exit 1; }
-[ -f /usr/bin/socat ] || { echo "error: socat is required."; exit 1; }
+# Check dependencies
+for dep in ssh tmux socat; do
+  command -v $dep >/dev/null 2>&1 || { echo "error: please install 'ssh', 'socat' and 'tmux'."; exit 1; }
+done
 tmux has-session -t ${tmux_session} 2>/dev/null && { echo "error: tmux session ${tmux_session} already exists"; exit 1; }
 
 # Set up cleanup hooks
