@@ -82,12 +82,7 @@ func (c *discordConn) Archive(target *chatID) error {
 	if target.Thread == "" {
 		return nil
 	}
-	_, err := c.session.ThreadEditComplex(target.Thread, &discordgo.ThreadEditData{
-		Name:                "REPLbot session",
-		Archived:            true,
-		Locked:              false,
-		AutoArchiveDuration: discordgo.ArchiveDurationOneHour,
-	})
+	_, err := c.session.ThreadEdit(target.Thread, "REPLbot session", true, false, discordgo.ArchiveDurationOneHour)
 	return err
 }
 
@@ -127,7 +122,7 @@ func (c *discordConn) translateMessageEvent(m *discordgo.MessageCreate) event {
 		return &errorEvent{err}
 	}
 	var thread, channelID string
-	if channel.IsThread() {
+	if channel.ThreadMetadata != nil {
 		channelID = channel.ParentID
 		thread = m.ChannelID
 	} else {
@@ -178,10 +173,7 @@ func (c *discordConn) maybeCreateThread(target *chatID) (string, error) {
 	if _, ok := c.channels[target.Thread]; ok {
 		return target.Thread, nil
 	}
-	ch, err := c.session.StartThreadWithMessage(target.Channel, target.Thread, &discordgo.ThreadCreateData{
-		Name:                "REPLbot session",
-		AutoArchiveDuration: discordgo.ArchiveDurationOneHour,
-	})
+	ch, err := c.session.ThreadStartWithMessage(target.Channel, target.Thread, "REPLbot session", discordgo.ArchiveDurationOneHour)
 	if err != nil {
 		return "", err
 	}
