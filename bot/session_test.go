@@ -10,32 +10,8 @@ import (
 	"time"
 )
 
-const testREPL = `
-#!/bin/bash
-case "$1" in
-  run)
-    while true; do
-      echo -n "Enter name: "
-      read name
-      echo "Hello $name!"
-    done 
-    ;;
-  *) ;;
-esac
-`
-
-const testBashREPL = `
-#!/bin/bash
-case "$1" in
-  run) bash -i ;;
-  *) ;;
-esac
-`
-
-const maxWaitTime = 5 * time.Second
-
 func TestSessionCustomShell(t *testing.T) {
-	sess, conn := createSession(t, testREPL)
+	sess, conn := createSession(t, "enter-name")
 	defer sess.ForceClose()
 	assert.True(t, conn.MessageContainsWait("1", "REPL session started, @phil"))
 	assert.True(t, conn.MessageContainsWait("2", "Enter name:"))
@@ -51,7 +27,7 @@ func TestSessionCustomShell(t *testing.T) {
 }
 
 func TestBashShell(t *testing.T) {
-	sess, conn := createSession(t, testBashREPL)
+	sess, conn := createSession(t, "bash")
 	defer sess.ForceClose()
 
 	dir := t.TempDir()
@@ -76,7 +52,7 @@ func TestBashShell(t *testing.T) {
 }
 
 func TestSessionCommands(t *testing.T) {
-	sess, conn := createSession(t, testBashREPL)
+	sess, conn := createSession(t, "bash")
 	defer sess.ForceClose()
 
 	dir := t.TempDir()
@@ -124,20 +100,14 @@ func TestSessionResize(t *testing.T) {
 }
 
 func createSession(t *testing.T, script string) (*session, *memConn) {
-	tempDir := t.TempDir()
-	scriptFile := filepath.Join(tempDir, "repl.sh")
-	if err := os.WriteFile(scriptFile, []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
-	conf := config.New("")
-	conf.RefreshInterval = 30 * time.Millisecond
+	conf := createConfig(t)
 	conn := newMemConn(conf)
 	sconfig := &sessionConfig{
 		ID:          "sess_" + util.RandomString(5),
 		User:        "phil",
 		Control:     &chatID{"channel", "thread"},
 		Terminal:    &chatID{"channel", ""},
-		Script:      scriptFile,
+		Script:      conf.Script(script),
 		ControlMode: config.Split,
 		WindowMode:  config.Full,
 		AuthMode:    config.Everyone,

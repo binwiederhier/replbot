@@ -71,6 +71,8 @@ func New(conf *config.Config) (*Bot, error) {
 		conn = newSlackConn(conf)
 	case config.Discord:
 		conn = newDiscordConn(conf)
+	case config.Mem:
+		conn = newMemConn(conf)
 	default:
 		return nil, fmt.Errorf("invalid type: %s", conf.Platform())
 	}

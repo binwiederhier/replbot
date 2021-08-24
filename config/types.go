@@ -11,6 +11,7 @@ type Platform string
 const (
 	Slack   = Platform("slack")
 	Discord = Platform("discord")
+	Mem     = Platform("mem")
 )
 
 // ControlMode defines where the control channel and where the terminal will be

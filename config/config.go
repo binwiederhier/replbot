@@ -47,7 +47,9 @@ func New(token string) *Config {
 
 // Platform returns the target connection type, based on the token
 func (c *Config) Platform() Platform {
-	if strings.HasPrefix(c.Token, "xoxb-") {
+	if strings.HasPrefix(c.Token, "mem") {
+		return Mem
+	} else if strings.HasPrefix(c.Token, "xoxb-") {
 		return Slack
 	}
 	return Discord
