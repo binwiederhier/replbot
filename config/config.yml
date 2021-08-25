@@ -75,6 +75,16 @@ bot-token: MUST_BE_SET
 #
 # default-auth-mode: everyone
 
+# Record sessions by default. If turned on, a ZIP archive containing a recording of the session, including
+# all output will be attached to the session exit message. This option defines the default behavior. It can
+# be changed using the "record" or "norecord" settings.
+#
+# Format:    true or false
+# Default:   false
+# Required:  No
+#
+# default-record: false
+
 # Timeout after which REPL sessions are terminated if there is no user input.
 #
 # Format:    <number>(hms), must be >1m

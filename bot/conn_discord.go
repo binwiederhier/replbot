@@ -34,6 +34,8 @@ func newDiscordConn(conf *config.Config) *discordConn {
 }
 
 func (c *discordConn) Connect(ctx context.Context) (<-chan event, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	discord, err := discordgo.New(fmt.Sprintf("Bot %s", c.config.Token))
 	if err != nil {
 		return nil, err
@@ -49,6 +51,9 @@ func (c *discordConn) Connect(ctx context.Context) (<-chan event, error) {
 		return nil, err
 	}
 	c.session = discord
+	if discord.State == nil || discord.State.User == nil {
+		return nil, errors.New("unexpected internal state")
+	}
 	log.Printf("Discord connected as user %s/%s", discord.State.User.Username, discord.State.User.ID)
 	return eventChan, nil
 }
@@ -71,7 +76,19 @@ func (c *discordConn) SendWithID(target *chatID, message string) (string, error)
 }
 
 func (c *discordConn) UploadFile(chat *chatID, message string, filename string, filetype string, file io.Reader) error {
-	return nil
+	channel := chat.Channel
+	if chat.Thread != "" {
+		channel = chat.Thread
+	}
+	_, err := c.session.ChannelMessageSendComplex(channel, &discordgo.MessageSend{
+		Content: message,
+		File: &discordgo.File{
+			Name:        filename,
+			ContentType: filetype,
+			Reader:      file,
+		},
+	})
+	return err
 }
 
 func (c *discordConn) Update(target *chatID, id string, message string) error {

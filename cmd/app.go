@@ -27,6 +27,8 @@ func New() *cli.App {
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-control-mode", Aliases: []string{"m"}, EnvVars: []string{"REPLBOT_DEFAULT_CONTROL_MODE"}, Value: string(config.DefaultControlMode), DefaultText: string(config.DefaultControlMode), Usage: "default control mode [channel, thread or split]"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-window-mode", Aliases: []string{"w"}, EnvVars: []string{"REPLBOT_DEFAULT_WINDOW_MODE"}, Value: string(config.DefaultWindowMode), DefaultText: string(config.DefaultWindowMode), Usage: "default window mode [full or trim]"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-auth-mode", Aliases: []string{"a"}, EnvVars: []string{"REPLBOT_DEFAULT_AUTH_MODE"}, Value: string(config.DefaultAuthMode), DefaultText: string(config.DefaultAuthMode), Usage: "default auth mode [only-me or everyone]"}),
+		altsrc.NewBoolFlag(&cli.BoolFlag{Name: "default-record", Aliases: []string{"r"}, EnvVars: []string{"REPLBOT_DEFAULT_RECORD"}, Usage: "record sessions by default"}),
+		altsrc.NewBoolFlag(&cli.BoolFlag{Name: "no-default-record", Aliases: []string{"R"}, EnvVars: []string{"REPLBOT_NO_DEFAULT_RECORD"}, Usage: "do not record sessions by default"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "cursor", Aliases: []string{"C"}, EnvVars: []string{"REPLBOT_CURSOR"}, Value: "on", Usage: "cursor blink rate (on, off or duration)"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "share-host", Aliases: []string{"H"}, EnvVars: []string{"REPLBOT_SHARE_HOST"}, Usage: "SSH hostname:port, used for terminal sharing"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "share-key-file", Aliases: []string{"K"}, EnvVars: []string{"REPLBOT_SHARE_KEY_FILE"}, Value: "/etc/replbot/hostkey", Usage: "SSH host key file, used for terminal sharing"}),
@@ -80,6 +82,14 @@ func execRun(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	var defaultRecord bool
+	if c.IsSet("no-default-record") {
+		defaultRecord = false
+	} else if c.IsSet("default-record") {
+		defaultRecord = true
+	} else {
+		defaultRecord = config.DefaultRecord
+	}
 
 	// Create main bot
 	conf := config.New(token)
@@ -88,6 +98,7 @@ func execRun(c *cli.Context) error {
 	conf.DefaultControlMode = defaultControlMode
 	conf.DefaultWindowMode = defaultWindowMode
 	conf.DefaultAuthMode = defaultAuthMode
+	conf.DefaultRecord = defaultRecord
 	conf.Cursor = cursorRate
 	conf.ShareHost = shareHost
 	conf.ShareKeyFile = shareKeyFile

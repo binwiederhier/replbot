@@ -67,8 +67,8 @@ func (c *memConn) SendWithID(target *chatID, message string) (string, error) {
 	return strconv.Itoa(c.currentID), nil
 }
 
-func (c *memConn) UploadFile(chat *chatID, message string, filename string, filetype string, file io.Reader) error {
-	return nil
+func (c *memConn) UploadFile(target *chatID, message string, filename string, filetype string, file io.Reader) error {
+	return c.Send(target, message)
 }
 
 func (c *memConn) Update(target *chatID, id string, message string) error {

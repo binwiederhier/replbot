@@ -13,7 +13,7 @@ const (
 	DefaultIdleTimeout = 10 * time.Minute
 
 	// DefaultRecord defines if sessions are recorded by default
-	DefaultRecord = true
+	DefaultRecord = false
 
 	// defaultRefreshInterval defines the interval at which the terminal refreshed
 	defaultRefreshInterval = 200 * time.Millisecond

@@ -585,6 +585,7 @@ func (s *session) createCommand() []string {
 			return []string{"script", "--flush", "--quiet", "--timing=" + timingFile, "--command", command, scriptFile}
 		}
 		log.Printf("[session %s] Cannot record session, 'script' command is missing.")
+		s.record = false
 	}
 	return []string{s.script, scriptRunCommand, s.scriptID}
 }

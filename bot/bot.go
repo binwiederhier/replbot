@@ -20,11 +20,12 @@ import (
 
 const (
 	welcomeMessage = "Hi there 👋! "
-	helpMessage    = "I'm a robot for running interactive REPLs and shells from a right here. To start a new session, simply tag me " +
+	mentionMessage = "I'm a robot for running interactive REPLs and shells from a right here. To start a new session, simply tag me " +
 		"and name one of the available REPLs, like so: %s %s\n\nAvailable REPLs: %s. To run the session in a `thread`, " +
 		"the main `channel`, or in `split` mode, use the respective keywords. To define the terminal size, use the words " +
 		"`tiny`, `small`, `medium` or `large`. Use `full` or `trim` to set the window mode, and `everyone` or `only-me` to define " +
-		"who can send commands. To start a private REPL session, just DM me."
+		"who can send commands. Send `record` or `norecord` to define if your session should be recorded. To start a private REPL " +
+		"session, just DM me."
 	shareMessage = "Using the word `share` will allow you to share your own terminal here in the chat. Terminal sharing " +
 		"sessions are always started in `only-me` mode, unless overridden."
 	unknownCommandMessage = "I am not quite sure what you mean by _%s_ ⁉"
@@ -314,9 +315,9 @@ func (b *Bot) handleHelp(channel, thread string, err error) error {
 	}
 	var messageTemplate string
 	if err == nil || err == errNoScript {
-		messageTemplate = welcomeMessage + helpMessage
+		messageTemplate = welcomeMessage + mentionMessage
 	} else {
-		messageTemplate = err.Error() + "\n\n" + helpMessage
+		messageTemplate = err.Error() + "\n\n" + mentionMessage
 	}
 	if b.config.ShareEnabled() {
 		messageTemplate += "\n\n" + shareMessage
