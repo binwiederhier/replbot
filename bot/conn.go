@@ -5,18 +5,18 @@ import (
 	"io"
 )
 
-type chatID struct {
+type channelID struct {
 	Channel string
 	Thread  string
 }
 
 type conn interface {
 	Connect(ctx context.Context) (<-chan event, error)
-	Send(chat *chatID, message string) error
-	SendWithID(chat *chatID, message string) (string, error)
-	UploadFile(chat *chatID, message string, filename string, filetype string, file io.Reader) error
-	Update(chat *chatID, id string, message string) error
-	Archive(chat *chatID) error
+	Send(channel *channelID, message string) error
+	SendWithID(channel *channelID, message string) (string, error)
+	UploadFile(channel *channelID, message string, filename string, filetype string, file io.Reader) error
+	Update(channel *channelID, id string, message string) error
+	Archive(channel *channelID) error
 	MentionBot() string
 	Mention(user string) string
 	ParseMention(user string) (string, error)

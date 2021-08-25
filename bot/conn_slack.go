@@ -60,15 +60,15 @@ func (c *slackConn) Connect(ctx context.Context) (<-chan event, error) {
 	return eventChan, nil
 }
 
-func (c *slackConn) Send(chat *chatID, message string) error {
-	_, err := c.SendWithID(chat, message)
+func (c *slackConn) Send(channel *channelID, message string) error {
+	_, err := c.SendWithID(channel, message)
 	return err
 }
 
-func (c *slackConn) SendWithID(chat *chatID, message string) (string, error) {
-	options := c.postOptions(chat, slack.MsgOptionText(message, false))
+func (c *slackConn) SendWithID(channel *channelID, message string) (string, error) {
+	options := c.postOptions(channel, slack.MsgOptionText(message, false))
 	for {
-		_, responseTS, err := c.rtm.PostMessage(chat.Channel, options...)
+		_, responseTS, err := c.rtm.PostMessage(channel.Channel, options...)
 		if err == nil {
 			return responseTS, nil
 		}
@@ -81,22 +81,22 @@ func (c *slackConn) SendWithID(chat *chatID, message string) (string, error) {
 	}
 }
 
-func (c *slackConn) UploadFile(chat *chatID, message string, filename string, filetype string, file io.Reader) error {
+func (c *slackConn) UploadFile(channel *channelID, message string, filename string, filetype string, file io.Reader) error {
 	_, err := c.rtm.UploadFile(slack.FileUploadParameters{
 		InitialComment:  message,
 		Filename:        filename,
 		Filetype:        filetype,
 		Reader:          file,
-		Channels:        []string{chat.Channel},
-		ThreadTimestamp: chat.Thread,
+		Channels:        []string{channel.Channel},
+		ThreadTimestamp: channel.Thread,
 	})
 	return err
 }
 
-func (c *slackConn) Update(chat *chatID, id string, message string) error {
-	options := c.postOptions(chat, slack.MsgOptionText(message, false))
+func (c *slackConn) Update(channel *channelID, id string, message string) error {
+	options := c.postOptions(channel, slack.MsgOptionText(message, false))
 	for {
-		_, _, _, err := c.rtm.UpdateMessage(chat.Channel, id, options...)
+		_, _, _, err := c.rtm.UpdateMessage(channel.Channel, id, options...)
 		if err == nil {
 			return nil
 		}
@@ -109,7 +109,7 @@ func (c *slackConn) Update(chat *chatID, id string, message string) error {
 	}
 }
 
-func (c *slackConn) Archive(_ *chatID) error {
+func (c *slackConn) Archive(_ *channelID) error {
 	return nil
 }
 
@@ -207,10 +207,10 @@ func (c *slackConn) channelType(ch string) channelType {
 	return channelTypeUnknown
 }
 
-func (c *slackConn) postOptions(target *chatID, msg slack.MsgOption) []slack.MsgOption {
+func (c *slackConn) postOptions(channel *channelID, msg slack.MsgOption) []slack.MsgOption {
 	options := []slack.MsgOption{msg, slack.MsgOptionDisableLinkUnfurl(), slack.MsgOptionDisableMediaUnfurl()}
-	if target.Thread != "" {
-		options = append(options, slack.MsgOptionTS(target.Thread))
+	if channel.Thread != "" {
+		options = append(options, slack.MsgOptionTS(channel.Thread))
 	}
 	return options
 }

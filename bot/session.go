@@ -127,8 +127,8 @@ type session struct {
 	user           string
 	config         *config.Config
 	conn           conn
-	control        *chatID
-	terminal       *chatID
+	control        *channelID
+	terminal       *channelID
 	userInputChan  chan string
 	userInputCount int32
 	forceResend    chan bool
@@ -156,8 +156,8 @@ type session struct {
 type sessionConfig struct {
 	ID          string
 	User        string
-	Control     *chatID
-	Terminal    *chatID
+	Control     *channelID
+	Terminal    *channelID
 	Script      string
 	ControlMode config.ControlMode
 	WindowMode  config.WindowMode
@@ -584,7 +584,7 @@ func (s *session) createCommand() []string {
 			command := fmt.Sprintf("%s %s %s", s.script, scriptRunCommand, s.scriptID) // a little icky, but fine, since we trust all arguments
 			return []string{"script", "--flush", "--quiet", "--timing=" + timingFile, "--command", command, scriptFile}
 		}
-		log.Printf("[session %s] Cannot record session, 'script' command is missing.")
+		log.Printf("[session %s] Cannot record session, 'script' command is missing.", s.id)
 		s.record = false
 	}
 	return []string{s.script, scriptRunCommand, s.scriptID}

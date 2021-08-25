@@ -105,8 +105,8 @@ func createSession(t *testing.T, script string) (*session, *memConn) {
 	sconfig := &sessionConfig{
 		ID:          "sess_" + util.RandomString(5),
 		User:        "phil",
-		Control:     &chatID{"channel", "thread"},
-		Terminal:    &chatID{"channel", ""},
+		Control:     &channelID{"channel", "thread"},
+		Terminal:    &channelID{"channel", ""},
 		Script:      conf.Script(script),
 		ControlMode: config.Split,
 		WindowMode:  config.Full,

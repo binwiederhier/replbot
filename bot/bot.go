@@ -21,11 +21,11 @@ import (
 const (
 	welcomeMessage = "Hi there 👋! "
 	mentionMessage = "I'm a robot for running interactive REPLs and shells from a right here. To start a new session, simply tag me " +
-		"and name one of the available REPLs, like so: %s %s\n\nAvailable REPLs: %s. To run the session in a `thread`, " +
-		"the main `channel`, or in `split` mode, use the respective keywords. To define the terminal size, use the words " +
-		"`tiny`, `small`, `medium` or `large`. Use `full` or `trim` to set the window mode, and `everyone` or `only-me` to define " +
-		"who can send commands. Send `record` or `norecord` to define if your session should be recorded. To start a private REPL " +
-		"session, just DM me."
+		"and name one of the available REPLs, like so: %s %s\n\nAvailable REPLs: %s.\n\nTo run the session in a `thread`, " +
+		"the main `channel`, or in `split` mode, use the respective keywords (default: `%s`). To define the terminal size, use the words " +
+		"`tiny`, `small`, `medium` or `large` (default: `%s`). Use `full` or `trim` to set the window mode (default: `%s`), and `everyone` " +
+		"or `only-me` to define who can send commands (default: `%s`). Send `record` or `norecord` to define if your session should be " +
+		"recorded (default: `%s`). To start a private REPL session, just DM me."
 	shareMessage = "Using the word `share` will allow you to share your own terminal here in the chat. Terminal sharing " +
 		"sessions are always started in `only-me` mode, unless overridden."
 	unknownCommandMessage = "I am not quite sure what you mean by _%s_ ⁉"
@@ -257,7 +257,7 @@ func (b *Bot) applySessionConfigDefaults(ev *messageEvent, conf *sessionConfig) 
 
 func (b *Bot) startSessionChannel(ev *messageEvent, conf *sessionConfig) error {
 	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ""))
-	conf.Control = &chatID{Channel: ev.Channel, Thread: ""}
+	conf.Control = &channelID{Channel: ev.Channel, Thread: ""}
 	conf.Terminal = conf.Control
 	return b.startSession(conf)
 }
@@ -265,12 +265,12 @@ func (b *Bot) startSessionChannel(ev *messageEvent, conf *sessionConfig) error {
 func (b *Bot) startSessionThread(ev *messageEvent, conf *sessionConfig) error {
 	if ev.Thread == "" {
 		conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
-		conf.Control = &chatID{Channel: ev.Channel, Thread: ev.ID}
+		conf.Control = &channelID{Channel: ev.Channel, Thread: ev.ID}
 		conf.Terminal = conf.Control
 		return b.startSession(conf)
 	}
 	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
-	conf.Control = &chatID{Channel: ev.Channel, Thread: ev.Thread}
+	conf.Control = &channelID{Channel: ev.Channel, Thread: ev.Thread}
 	conf.Terminal = conf.Control
 	return b.startSession(conf)
 }
@@ -278,13 +278,13 @@ func (b *Bot) startSessionThread(ev *messageEvent, conf *sessionConfig) error {
 func (b *Bot) startSessionSplit(ev *messageEvent, conf *sessionConfig) error {
 	if ev.Thread == "" {
 		conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
-		conf.Control = &chatID{Channel: ev.Channel, Thread: ev.ID}
-		conf.Terminal = &chatID{Channel: ev.Channel, Thread: ""}
+		conf.Control = &channelID{Channel: ev.Channel, Thread: ev.ID}
+		conf.Terminal = &channelID{Channel: ev.Channel, Thread: ""}
 		return b.startSession(conf)
 	}
 	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
-	conf.Control = &chatID{Channel: ev.Channel, Thread: ev.Thread}
-	conf.Terminal = &chatID{Channel: ev.Channel, Thread: ""}
+	conf.Control = &channelID{Channel: ev.Channel, Thread: ev.Thread}
+	conf.Terminal = &channelID{Channel: ev.Channel, Thread: ""}
 	return b.startSession(conf)
 }
 
@@ -308,7 +308,7 @@ func (b *Bot) startSession(conf *sessionConfig) error {
 }
 
 func (b *Bot) handleHelp(channel, thread string, err error) error {
-	target := &chatID{Channel: channel, Thread: thread}
+	target := &channelID{Channel: channel, Thread: thread}
 	scripts := b.config.Scripts()
 	if len(scripts) == 0 {
 		return b.conn.Send(target, misconfiguredMessage)
@@ -324,7 +324,12 @@ func (b *Bot) handleHelp(channel, thread string, err error) error {
 		scripts = append(scripts, shareCommand)
 	}
 	replList := fmt.Sprintf("`%s`", strings.Join(scripts, "`, `"))
-	return b.conn.Send(target, fmt.Sprintf(messageTemplate, b.conn.MentionBot(), scripts[0], replList))
+	defaultRecordCommand := recordCommand
+	if !b.config.DefaultRecord {
+		defaultRecordCommand = noRecordCommand
+	}
+	message := fmt.Sprintf(messageTemplate, b.conn.MentionBot(), scripts[0], replList, b.config.DefaultControlMode, b.config.DefaultSize.Name, b.config.DefaultWindowMode, b.config.DefaultAuthMode, defaultRecordCommand)
+	return b.conn.Send(target, message)
 }
 
 func (b *Bot) runShareServer(ctx context.Context) error {

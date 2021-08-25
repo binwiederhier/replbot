@@ -58,29 +58,29 @@ func (c *discordConn) Connect(ctx context.Context) (<-chan event, error) {
 	return eventChan, nil
 }
 
-func (c *discordConn) Send(target *chatID, message string) error {
-	_, err := c.SendWithID(target, message)
+func (c *discordConn) Send(channel *channelID, message string) error {
+	_, err := c.SendWithID(channel, message)
 	return err
 }
 
-func (c *discordConn) SendWithID(target *chatID, message string) (string, error) {
-	channel, err := c.maybeCreateThread(target)
+func (c *discordConn) SendWithID(channel *channelID, message string) (string, error) {
+	ch, err := c.maybeCreateThread(channel)
 	if err != nil {
 		return "", err
 	}
-	msg, err := c.session.ChannelMessageSend(channel, message)
+	msg, err := c.session.ChannelMessageSend(ch, message)
 	if err != nil {
 		return "", err
 	}
 	return msg.ID, nil
 }
 
-func (c *discordConn) UploadFile(chat *chatID, message string, filename string, filetype string, file io.Reader) error {
-	channel := chat.Channel
-	if chat.Thread != "" {
-		channel = chat.Thread
+func (c *discordConn) UploadFile(channel *channelID, message string, filename string, filetype string, file io.Reader) error {
+	ch := channel.Channel
+	if channel.Thread != "" {
+		ch = channel.Thread
 	}
-	_, err := c.session.ChannelMessageSendComplex(channel, &discordgo.MessageSend{
+	_, err := c.session.ChannelMessageSendComplex(ch, &discordgo.MessageSend{
 		Content: message,
 		File: &discordgo.File{
 			Name:        filename,
@@ -91,20 +91,20 @@ func (c *discordConn) UploadFile(chat *chatID, message string, filename string, 
 	return err
 }
 
-func (c *discordConn) Update(target *chatID, id string, message string) error {
-	channel := target.Channel
-	if target.Thread != "" {
-		channel = target.Thread
+func (c *discordConn) Update(channel *channelID, id string, message string) error {
+	ch := channel.Channel
+	if channel.Thread != "" {
+		ch = channel.Thread
 	}
-	_, err := c.session.ChannelMessageEdit(channel, id, message)
+	_, err := c.session.ChannelMessageEdit(ch, id, message)
 	return err
 }
 
-func (c *discordConn) Archive(target *chatID) error {
-	if target.Thread == "" {
+func (c *discordConn) Archive(channel *channelID) error {
+	if channel.Thread == "" {
 		return nil
 	}
-	_, err := c.session.ThreadEdit(target.Thread, "REPLbot session", true, false, discordgo.ArchiveDurationOneHour)
+	_, err := c.session.ThreadEdit(channel.Thread, "REPLbot session", true, false, discordgo.ArchiveDurationOneHour)
 	return err
 }
 
@@ -185,7 +185,7 @@ func (c *discordConn) channelType(ch *discordgo.Channel) channelType {
 	}
 }
 
-func (c *discordConn) maybeCreateThread(target *chatID) (string, error) {
+func (c *discordConn) maybeCreateThread(target *channelID) (string, error) {
 	channel := target.Channel
 	if target.Thread == "" {
 		return channel, nil

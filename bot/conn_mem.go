@@ -41,49 +41,49 @@ func (c *memConn) Connect(ctx context.Context) (<-chan event, error) {
 	return c.eventChan, nil
 }
 
-func (c *memConn) Send(target *chatID, message string) error {
+func (c *memConn) Send(channel *channelID, message string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.currentID++
 	c.messages[strconv.Itoa(c.currentID)] = &messageEvent{
 		ID:      strconv.Itoa(c.currentID),
-		Channel: target.Channel,
-		Thread:  target.Thread,
+		Channel: channel.Channel,
+		Thread:  channel.Thread,
 		Message: message,
 	}
 	return nil
 }
 
-func (c *memConn) SendWithID(target *chatID, message string) (string, error) {
+func (c *memConn) SendWithID(channel *channelID, message string) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.currentID++
 	c.messages[strconv.Itoa(c.currentID)] = &messageEvent{
 		ID:      strconv.Itoa(c.currentID),
-		Channel: target.Channel,
-		Thread:  target.Thread,
+		Channel: channel.Channel,
+		Thread:  channel.Thread,
 		Message: message,
 	}
 	return strconv.Itoa(c.currentID), nil
 }
 
-func (c *memConn) UploadFile(target *chatID, message string, filename string, filetype string, file io.Reader) error {
-	return c.Send(target, message)
+func (c *memConn) UploadFile(channel *channelID, message string, filename string, filetype string, file io.Reader) error {
+	return c.Send(channel, message)
 }
 
-func (c *memConn) Update(target *chatID, id string, message string) error {
+func (c *memConn) Update(channel *channelID, id string, message string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.messages[id] = &messageEvent{
 		ID:      id,
-		Channel: target.Channel,
-		Thread:  target.Thread,
+		Channel: channel.Channel,
+		Thread:  channel.Thread,
 		Message: message,
 	}
 	return nil
 }
 
-func (c *memConn) Archive(target *chatID) error {
+func (c *memConn) Archive(channel *channelID) error {
 	return nil
 }
 
