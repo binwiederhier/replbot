@@ -12,6 +12,9 @@ const (
 	// DefaultIdleTimeout defines the default time after which a session is terminated
 	DefaultIdleTimeout = 10 * time.Minute
 
+	// DefaultRecord defines if sessions are recorded by default
+	DefaultRecord = true
+
 	// defaultRefreshInterval defines the interval at which the terminal refreshed
 	defaultRefreshInterval = 200 * time.Millisecond
 )
@@ -28,6 +31,7 @@ type Config struct {
 	Cursor             time.Duration
 	ShareHost          string
 	ShareKeyFile       string
+	DefaultRecord      bool
 	RefreshInterval    time.Duration
 	Debug              bool
 }
@@ -41,6 +45,7 @@ func New(token string) *Config {
 		DefaultWindowMode:  DefaultWindowMode,
 		DefaultAuthMode:    DefaultAuthMode,
 		DefaultSize:        DefaultSize,
+		DefaultRecord:      DefaultRecord,
 		RefreshInterval:    defaultRefreshInterval,
 	}
 }

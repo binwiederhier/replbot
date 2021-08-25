@@ -81,7 +81,7 @@ func (c *slackConn) SendWithID(chat *chatID, message string) (string, error) {
 	}
 }
 
-func (c *slackConn) SendWithAttachment(chat *chatID, message string, filename string, filetype string, file io.Reader) error {
+func (c *slackConn) UploadFile(chat *chatID, message string, filename string, filetype string, file io.Reader) error {
 	_, err := c.rtm.UploadFile(slack.FileUploadParameters{
 		InitialComment:  message,
 		Filename:        filename,

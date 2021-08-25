@@ -54,12 +54,12 @@ func (s *Tmux) Start(env map[string]string, command ...string) error {
 	for k, v := range env {
 		c = append(c, []string{"tmux", "set-environment", "-t", s.id, k, v})
 	}
+	c = append(c, []string{"tmux", "set-option", "-t", s.id, "history-limit", "500000"}) // before split-window!
 	c = append(c, append([]string{"tmux", "split-window", "-h", "-t", pane1}, command...))
 	c = append(c, []string{"tmux", "resize-pane", "-t", pane2, "-x", strconv.Itoa(s.width), "-y", strconv.Itoa(s.height)})
 	c = append(c, []string{"tmux", "select-pane", "-t", pane2})
 	c = append(c, []string{"tmux", "set-hook", "-t", pane2, "pane-died", fmt.Sprintf("capture-pane -S- -E-; save-buffer \"%s\"; kill-pane", s.recordingFile())})
 	c = append(c, []string{"tmux", "set-option", "-t", pane2, "remain-on-exit"})
-	c = append(c, []string{"tmux", "set-option", "-t", pane2, "history-limit", "100000"})
 	return RunAll(c...)
 }
 
@@ -101,14 +101,10 @@ func (s *Tmux) Capture() (string, error) {
 	return buf.String(), nil
 }
 
-// Recording returns a string representation of the entire terminal session.
-// This method can only be called after the session has exited.
-func (s *Tmux) Recording() (string, error) {
-	b, err := os.ReadFile(s.recordingFile())
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
+// RecordingFile returns the file name of the recording file. This method can only be called
+// after the session has exited. Before that, the file will not exist.
+func (s *Tmux) RecordingFile() string {
+	return s.recordingFile()
 }
 
 // Cursor returns the X and Y position of the cursor

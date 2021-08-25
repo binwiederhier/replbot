@@ -181,7 +181,8 @@ func (b *Bot) maybeForwardMessage(ev *messageEvent) bool {
 
 func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 	conf := &sessionConfig{
-		User: ev.User,
+		User:   ev.User,
+		Record: b.config.DefaultRecord,
 	}
 	fields := strings.Fields(ev.Message)
 	for _, field := range fields {

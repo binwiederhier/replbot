@@ -2,7 +2,6 @@ package bot
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	_ "embed" // go:embed requires this
 	"errors"
@@ -41,6 +40,7 @@ const (
 	usersAddedToAllowList             = "👍 Okay, I added the user(s) to the allow list."
 	usersAddedToDenyList              = "👍 Okay, I added the user(s) to the deny list."
 	cannotAddOwnerToDenyList          = "🙁 I don't think adding the session owner to the deny list is a good idea. I must protest."
+	recordingTooLargeMessage          = "🙁 I'm sorry, but you've produced too much output in this session. You may want to run a session with `norecord` to avoid this problem."
 	helpCommand                       = "!help"
 	helpShortCommand                  = "!h"
 	exitCommand                       = "!exit"
@@ -72,8 +72,9 @@ const (
 	// updateMessageUserInputCountLimit is the max number of input messages before re-sending a new screen
 	updateMessageUserInputCountLimit = 5
 
-	recordingFilename = "REPLbot session.zip"
-	recordingFiletype = "application/zip"
+	recordingFileName    = "REPLbot session.zip"
+	recordingFileType    = "application/zip"
+	recordingFileSizeMax = 50 * 1024 * 1024
 
 	scriptRunCommand  = "run"
 	scriptKillCommand = "kill"
@@ -224,6 +225,9 @@ func (s *session) Run() error {
 	s.g.Go(s.commandOutputLoop)
 	s.g.Go(s.activityMonitor)
 	s.g.Go(s.shutdownHandler)
+	if s.record {
+		s.g.Go(s.monitorRecording)
+	}
 	if err := s.g.Wait(); err != nil && err != errExit {
 		return err
 	}
@@ -421,18 +425,8 @@ func (s *session) shutdownHandler() error {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("[session %s] Warning: unable to kill command: %s; command output: %s", s.id, err.Error(), string(output))
 	}
-	if s.record {
-		archive, err := s.createRecordingArchive()
-		if err != nil {
-			log.Printf("[session %s] Warning: unable to create recording archive: %s", s.id, err.Error())
-		}
-		if err := s.conn.SendWithAttachment(s.control, sessionExitedWithRecordingMessage, recordingFilename, recordingFiletype, bytes.NewReader(archive)); err != nil {
-			log.Printf("[session %s] Warning: unable to send message with recording: %s", s.id, err.Error())
-		}
-	} else {
-		if err := s.conn.Send(s.control, sessionExitedMessage); err != nil {
-			log.Printf("[session %s] Warning: unable to send exited message: %s", s.id, err.Error())
-		}
+	if err := s.sendExitedMessage(); err != nil {
+		log.Printf("[session %s] Warning: unable to exit message: %s", s.id, err.Error())
 	}
 	if err := s.conn.Archive(s.control); err != nil {
 		log.Printf("[session %s] Warning: unable to archive thread: %s", s.id, err.Error())
@@ -599,20 +593,25 @@ func (s *session) replayFiles() (replayFile string, timingFile string) {
 	return filepath.Join(os.TempDir(), "replbot_"+s.id+".replay-script"), filepath.Join(os.TempDir(), "replbot_"+s.id+".replay-timing")
 }
 
-func (s *session) createRecordingArchive() ([]byte, error) {
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
-	recording, err := s.tmux.Recording()
+func (s *session) createRecordingArchive(filename string) (*os.File, error) {
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
 	}
+	zw := zip.NewWriter(file)
 	if err := zipAppendEntry(zw, "REPLbot session/README.md", recordingReadmeSource); err != nil {
 		return nil, err
 	}
-	if err := zipAppendEntry(zw, "REPLbot session/recording.txt", recording); err != nil {
+	recordingFile := s.tmux.RecordingFile()
+	defer os.Remove(recordingFile)
+	if err := zipAppendFile(zw, "REPLbot session/terminal.txt", recordingFile); err != nil {
 		return nil, err
 	}
 	replayFile, timingFile := s.replayFiles()
+	defer func() {
+		os.Remove(replayFile)
+		os.Remove(timingFile)
+	}()
 	if err := zipAppendFile(zw, "REPLbot session/replay.script", replayFile); err != nil {
 		return nil, err
 	}
@@ -622,15 +621,72 @@ func (s *session) createRecordingArchive() ([]byte, error) {
 	if err := zw.Close(); err != nil {
 		return nil, err
 	}
-	return buf.Bytes(), nil
+	if _, err := file.Seek(0, 0); err != nil {
+		return nil, err
+	}
+	return file, nil
 }
 
-func zipAppendFile(zw *zip.Writer, name string, file string) error {
-	b, err := os.ReadFile(file)
+func (s *session) monitorRecording() error {
+	for {
+		select {
+		case <-s.ctx.Done():
+			return nil
+		case <-time.After(time.Second):
+			scriptFile, _ := s.replayFiles()
+			stat, err := os.Stat(scriptFile)
+			if err != nil {
+				continue
+			} else if stat.Size() > recordingFileSizeMax {
+				if err := s.conn.Send(s.control, recordingTooLargeMessage); err != nil {
+					return err
+				}
+				return errExit
+			}
+		}
+	}
+}
+
+func (s *session) sendExitedMessage() error {
+	if s.record {
+		if err := s.sendExitedMessageWithRecording(); err != nil {
+			log.Printf("[session %s] Warning: unable to upload recording: %s", s.id, err.Error())
+			return s.sendExitedMessageWithoutRecording()
+		}
+		return nil
+	}
+	return s.sendExitedMessageWithoutRecording()
+}
+
+func (s *session) sendExitedMessageWithoutRecording() error {
+	return s.conn.Send(s.control, sessionExitedMessage)
+}
+
+func (s *session) sendExitedMessageWithRecording() error {
+	filename := filepath.Join(os.TempDir(), "replbot_"+s.id+".recording.zip")
+	file, err := s.createRecordingArchive(filename)
 	if err != nil {
 		return err
 	}
-	return zipAppendEntry(zw, name, string(b))
+	defer func() {
+		file.Close()
+		os.Remove(filename)
+	}()
+	return s.conn.UploadFile(s.control, sessionExitedWithRecordingMessage, recordingFileName, recordingFileType, file)
+}
+
+func zipAppendFile(zw *zip.Writer, name string, filename string) error {
+	f, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	w, err := zw.Create(name)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(w, f)
+	return err
 }
 
 func zipAppendEntry(zw *zip.Writer, name string, content string) error {

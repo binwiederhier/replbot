@@ -3,11 +3,11 @@
 This ZIP archive contains a recording of your REPLbot session.
 It contains the following files:
 
-## `recording.txt`
+## terminal.txt
 The entire terminal output as you'd see it in your own terminal window. 
 Depending on how much output you produced, this output may be cut off.
 
-## `replay.script` / `replay.timing`
+## replay.script / replay.timing
 These two files can be used to replay the terminal session in realtime using
 the `scriptreplay` tool. Simply run this command and be amazed:
 

@@ -70,7 +70,7 @@ func (c *discordConn) SendWithID(target *chatID, message string) (string, error)
 	return msg.ID, nil
 }
 
-func (c *discordConn) SendWithAttachment(chat *chatID, message string, filename string, filetype string, file io.Reader) error {
+func (c *discordConn) UploadFile(chat *chatID, message string, filename string, filetype string, file io.Reader) error {
 	return nil
 }
 
