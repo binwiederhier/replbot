@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	_ "embed" // go:embed requires this
 	"errors"
@@ -11,7 +13,9 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,30 +29,31 @@ import (
 const (
 	sessionStartedMessage = "🚀 REPL session started, %s. Type `!help` to see a list of available commands, or `!exit` to forcefully " +
 		"exit the REPL."
-	splitModeThreadMessage         = "Use this thread to enter your commands. Your output will appear in the main channel."
-	onlyMeModeMessage              = "Only you as the session owner can send commands. Use the `!allow` command to let other users control the session."
-	everyoneModeMessage            = "*Everyone in this channel* can send commands. Use the `!deny` command specifically revoke access from users."
-	sessionExitedMessage           = "👋 REPL exited. See you later!"
-	timeoutWarningMessage          = "⏱️ Are you still there, %s? Your session will time out in one minute."
-	forceCloseMessage              = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
-	malformatedTerminalSizeMessage = "🙁 You entered an invalid size. Use `tiny`, `small`, `medium` or `large` instead."
-	unknownUserMessage             = "⁉ I'm not sure what you mean. Please only list users."
-	usersAddedToAllowList          = "👍 Okay, I added the user(s) to the allow list."
-	usersAddedToDenyList           = "👍 Okay, I added the user(s) to the deny list."
-	cannotAddOwnerToDenyList       = "🙁 I don't think adding the session owner to the deny list is a good idea. I must protest."
-	helpCommand                    = "!help"
-	helpShortCommand               = "!h"
-	exitCommand                    = "!exit"
-	exitShortCommand               = "!q"
-	screenCommand                  = "!screen"
-	screenShortCommand             = "!s"
-	resizePrefix                   = "!resize "
-	commentPrefix                  = "!! "
-	noNewLinePrefix                = "!n "
-	unquotePrefix                  = "!e "
-	allowPrefix                    = "!allow "
-	denyPrefix                     = "!deny "
-	availableCommandsMessage       = "Available commands:\n" +
+	splitModeThreadMessage            = "Use this thread to enter your commands. Your output will appear in the main channel."
+	onlyMeModeMessage                 = "Only you as the session owner can send commands. Use the `!allow` command to let other users control the session."
+	everyoneModeMessage               = "*Everyone in this channel* can send commands. Use the `!deny` command specifically revoke access from users."
+	sessionExitedMessage              = "👋 REPL exited. See you later!"
+	sessionExitedWithRecordingMessage = "👋 REPL exited. You can find a recording of the session in the file below. See you later!"
+	timeoutWarningMessage             = "⏱️ Are you still there, %s? Your session will time out in one minute."
+	forceCloseMessage                 = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
+	malformatedTerminalSizeMessage    = "🙁 You entered an invalid size. Use `tiny`, `small`, `medium` or `large` instead."
+	unknownUserMessage                = "⁉ I'm not sure what you mean. Please only list users."
+	usersAddedToAllowList             = "👍 Okay, I added the user(s) to the allow list."
+	usersAddedToDenyList              = "👍 Okay, I added the user(s) to the deny list."
+	cannotAddOwnerToDenyList          = "🙁 I don't think adding the session owner to the deny list is a good idea. I must protest."
+	helpCommand                       = "!help"
+	helpShortCommand                  = "!h"
+	exitCommand                       = "!exit"
+	exitShortCommand                  = "!q"
+	screenCommand                     = "!screen"
+	screenShortCommand                = "!s"
+	resizePrefix                      = "!resize "
+	commentPrefix                     = "!! "
+	noNewLinePrefix                   = "!n "
+	unquotePrefix                     = "!e "
+	allowPrefix                       = "!allow "
+	denyPrefix                        = "!deny "
+	availableCommandsMessage          = "Available commands:\n" +
 		"  `!ret`, `!r` - Send empty return\n" +
 		"  `!n ...` - Text without a new line\n" +
 		"  `!e ...` - Text with escape sequences (`\\n`, `\\t`, ...)\n" +
@@ -66,6 +71,9 @@ const (
 
 	// updateMessageUserInputCountLimit is the max number of input messages before re-sending a new screen
 	updateMessageUserInputCountLimit = 5
+
+	recordingFilename = "REPLbot session.zip"
+	recordingFiletype = "application/zip"
 
 	scriptRunCommand  = "run"
 	scriptKillCommand = "kill"
@@ -101,6 +109,9 @@ var (
 	//go:embed share_client.sh.gotmpl
 	shareClientScriptSource   string
 	shareClientScriptTemplate = template.Must(template.New("share_client").Parse(shareClientScriptSource))
+
+	//go:embed recording.md
+	recordingReadmeSource string
 )
 
 // session represents a REPL session
@@ -136,6 +147,7 @@ type session struct {
 	cursorOn       bool
 	cursorUpdated  time.Time
 	relayPort      int
+	record         bool
 	shareConn      io.Closer
 	mu             sync.RWMutex
 }
@@ -151,6 +163,7 @@ type sessionConfig struct {
 	AuthMode    config.AuthMode
 	Size        *config.Size
 	RelayPort   int
+	Record      bool
 }
 
 type sshSession struct {
@@ -177,6 +190,7 @@ func newSession(config *config.Config, conn conn, sconfig *sessionConfig) *sessi
 		authMode:       sconfig.AuthMode,
 		authUsers:      make(map[string]bool),
 		relayPort:      sconfig.RelayPort,
+		record:         sconfig.Record,
 		tmux:           util.NewTmux(sconfig.ID, sconfig.Size.Width, sconfig.Size.Height),
 		userInputChan:  make(chan string, 10), // buffered!
 		userInputCount: 0,
@@ -198,7 +212,8 @@ func (s *session) Run() error {
 	if err != nil {
 		return err
 	}
-	if err := s.tmux.Start(env, s.script, scriptRunCommand, s.scriptID); err != nil {
+	command := s.createCommand()
+	if err := s.tmux.Start(env, command...); err != nil {
 		log.Printf("[session %s] Failed to start tmux: %s", s.id, err.Error())
 		return err
 	}
@@ -406,8 +421,18 @@ func (s *session) shutdownHandler() error {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("[session %s] Warning: unable to kill command: %s; command output: %s", s.id, err.Error(), string(output))
 	}
-	if err := s.conn.Send(s.control, sessionExitedMessage); err != nil {
-		log.Printf("[session %s] Warning: unable to send exited message: %s", s.id, err.Error())
+	if s.record {
+		archive, err := s.createRecordingArchive()
+		if err != nil {
+			log.Printf("[session %s] Warning: unable to create recording archive: %s", s.id, err.Error())
+		}
+		if err := s.conn.SendWithAttachment(s.control, sessionExitedWithRecordingMessage, recordingFilename, recordingFiletype, bytes.NewReader(archive)); err != nil {
+			log.Printf("[session %s] Warning: unable to send message with recording: %s", s.id, err.Error())
+		}
+	} else {
+		if err := s.conn.Send(s.control, sessionExitedMessage); err != nil {
+			log.Printf("[session %s] Warning: unable to send exited message: %s", s.id, err.Error())
+		}
 	}
 	if err := s.conn.Archive(s.control); err != nil {
 		log.Printf("[session %s] Warning: unable to archive thread: %s", s.id, err.Error())
@@ -556,4 +581,65 @@ func (s *session) allowUser(user string) bool {
 		return allow
 	}
 	return s.authMode == config.Everyone
+}
+
+func (s *session) createCommand() []string {
+	if s.record {
+		if err := util.Run("script", "-V"); err == nil {
+			scriptFile, timingFile := s.replayFiles()
+			command := fmt.Sprintf("%s %s %s", s.script, scriptRunCommand, s.scriptID) // a little icky, but fine, since we trust all arguments
+			return []string{"script", "--flush", "--quiet", "--timing=" + timingFile, "--command", command, scriptFile}
+		}
+		log.Printf("[session %s] Cannot record session, 'script' command is missing.")
+	}
+	return []string{s.script, scriptRunCommand, s.scriptID}
+}
+
+func (s *session) replayFiles() (replayFile string, timingFile string) {
+	return filepath.Join(os.TempDir(), "replbot_"+s.id+".replay-script"), filepath.Join(os.TempDir(), "replbot_"+s.id+".replay-timing")
+}
+
+func (s *session) createRecordingArchive() ([]byte, error) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	recording, err := s.tmux.Recording()
+	if err != nil {
+		return nil, err
+	}
+	if err := zipAppendEntry(zw, "REPLbot session/README.md", recordingReadmeSource); err != nil {
+		return nil, err
+	}
+	if err := zipAppendEntry(zw, "REPLbot session/recording.txt", recording); err != nil {
+		return nil, err
+	}
+	replayFile, timingFile := s.replayFiles()
+	if err := zipAppendFile(zw, "REPLbot session/replay.script", replayFile); err != nil {
+		return nil, err
+	}
+	if err := zipAppendFile(zw, "REPLbot session/replay.timing", timingFile); err != nil {
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func zipAppendFile(zw *zip.Writer, name string, file string) error {
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	return zipAppendEntry(zw, name, string(b))
+}
+
+func zipAppendEntry(zw *zip.Writer, name string, content string) error {
+	w, err := zw.Create(name)
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write([]byte(content)); err != nil {
+		return err
+	}
+	return nil
 }

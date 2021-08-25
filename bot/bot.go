@@ -29,6 +29,8 @@ const (
 		"sessions are always started in `only-me` mode, unless overridden."
 	unknownCommandMessage = "I am not quite sure what you mean by _%s_ ⁉"
 	misconfiguredMessage  = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
+	recordCommand         = "record"
+	noRecordCommand       = "norecord"
 	shareCommand          = "share"
 	shareServerScriptFile = "/tmp/replbot_share_server.sh"
 )
@@ -194,6 +196,8 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 			conf.AuthMode = config.AuthMode(field)
 		case config.Tiny.Name, config.Small.Name, config.Medium.Name, config.Large.Name:
 			conf.Size = config.Sizes[field]
+		case recordCommand, noRecordCommand:
+			conf.Record = field == recordCommand
 		default:
 			if b.config.ShareEnabled() && field == shareCommand {
 				relayPort, err := util.RandomPort()

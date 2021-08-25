@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"heckel.io/replbot/config"
+	"io"
 	"log"
 	"regexp"
 	"sync"
@@ -67,6 +68,10 @@ func (c *discordConn) SendWithID(target *chatID, message string) (string, error)
 		return "", err
 	}
 	return msg.ID, nil
+}
+
+func (c *discordConn) SendWithAttachment(chat *chatID, message string, filename string, filetype string, file io.Reader) error {
+	return nil
 }
 
 func (c *discordConn) Update(target *chatID, id string, message string) error {

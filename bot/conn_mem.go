@@ -5,6 +5,7 @@ import (
 	"errors"
 	"heckel.io/replbot/config"
 	"heckel.io/replbot/util"
+	"io"
 	"log"
 	"regexp"
 	"strconv"
@@ -64,6 +65,10 @@ func (c *memConn) SendWithID(target *chatID, message string) (string, error) {
 		Message: message,
 	}
 	return strconv.Itoa(c.currentID), nil
+}
+
+func (c *memConn) SendWithAttachment(chat *chatID, message string, filename string, filetype string, file io.Reader) error {
+	return nil
 }
 
 func (c *memConn) Update(target *chatID, id string, message string) error {
