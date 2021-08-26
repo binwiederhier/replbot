@@ -206,10 +206,23 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 				if err != nil {
 					return nil, err
 				}
+				hostKeyPair, err := util.GenerateSSHKeyPair()
+				if err != nil {
+					return nil, err
+				}
+				clientKeyPair, err := util.GenerateSSHKeyPair()
+				if err != nil {
+					return nil, err
+				}
 				conf.Script = shareServerScriptFile
 				conf.RelayPort = relayPort
+				conf.HostKeyPair = hostKeyPair
+				conf.ClientKeyPair = clientKeyPair
 				if conf.AuthMode == "" {
 					conf.AuthMode = config.OnlyMe
+				}
+				if conf.Size == nil {
+					conf.Size = config.Medium
 				}
 			} else if s := b.config.Script(field); conf.Script == "" && s != "" {
 				conf.Script = s
@@ -392,8 +405,18 @@ func (b *Bot) sshSessionHandler(s ssh.Session) {
 	if !ok {
 		return
 	}
-	log.Printf("read: %v", s.Command())
-	sess.WriteShareClientScript(s)
+	if len(s.Command()) != 1 {
+		return
+	}
+	clientUser := s.Command()[0]
+	if err := sess.SetShareUser(clientUser); err != nil {
+		log.Printf("cannot write share user file: %s", err.Error())
+		return
+	}
+	if err := sess.WriteShareClientScript(s); err != nil {
+		log.Printf("cannot write session script: %s", err.Error())
+		return
+	}
 }
 
 // sshReversePortForwardingCallback checks if the requested reverse tunnel host/port (ssh -R) matches the one

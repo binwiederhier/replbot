@@ -147,6 +147,8 @@ type session struct {
 	tmux           *util.Tmux
 	cursorOn       bool
 	cursorUpdated  time.Time
+	hostKeyPair    *util.SSHKeyPair
+	clientKeyPair  *util.SSHKeyPair
 	relayPort      int
 	record         bool
 	shareConn      io.Closer
@@ -154,24 +156,28 @@ type session struct {
 }
 
 type sessionConfig struct {
-	ID          string
-	User        string
-	Control     *channelID
-	Terminal    *channelID
-	Script      string
-	ControlMode config.ControlMode
-	WindowMode  config.WindowMode
-	AuthMode    config.AuthMode
-	Size        *config.Size
-	RelayPort   int
-	Record      bool
+	ID            string
+	User          string
+	Control       *channelID
+	Terminal      *channelID
+	Script        string
+	ControlMode   config.ControlMode
+	WindowMode    config.WindowMode
+	AuthMode      config.AuthMode
+	Size          *config.Size
+	RelayPort     int
+	HostKeyPair   *util.SSHKeyPair
+	ClientKeyPair *util.SSHKeyPair
+	Record        bool
 }
 
 type sshSession struct {
-	SessionID  string
-	ServerHost string
-	ServerPort string
-	RelayPort  int
+	SessionID     string
+	ServerHost    string
+	ServerPort    string
+	HostKeyPair   *util.SSHKeyPair
+	ClientKeyPair *util.SSHKeyPair
+	RelayPort     int
 }
 
 func newSession(config *config.Config, conn conn, sconfig *sessionConfig) *session {
@@ -191,6 +197,8 @@ func newSession(config *config.Config, conn conn, sconfig *sessionConfig) *sessi
 		authMode:       sconfig.AuthMode,
 		authUsers:      make(map[string]bool),
 		relayPort:      sconfig.RelayPort,
+		hostKeyPair:    sconfig.HostKeyPair,
+		clientKeyPair:  sconfig.ClientKeyPair,
 		record:         sconfig.Record,
 		tmux:           util.NewTmux(sconfig.ID, sconfig.Size.Width, sconfig.Size.Height),
 		userInputChan:  make(chan string, 10), // buffered!
@@ -265,11 +273,27 @@ func (s *session) ForceClose() error {
 	return nil
 }
 
-func (s *session) WriteShareClientScript(w io.Writer) {
-	if err := s.writeShareClientScript(w); err != nil {
-		log.Printf("cannot write share script: %s", err.Error())
-		io.WriteString(w, "echo 'Oh my, something went wrong ...'")
+func (s *session) WriteShareClientScript(w io.Writer) error {
+	if s.relayPort == 0 {
+		return errors.New("not a share session")
 	}
+	host, port, err := net.SplitHostPort(s.config.ShareHost)
+	if err != nil {
+		return fmt.Errorf("invalid config: %s", err.Error())
+	}
+	sessionInfo := &sshSession{
+		SessionID:     s.id,
+		ServerHost:    host,
+		ServerPort:    port,
+		RelayPort:     s.relayPort,
+		HostKeyPair:   s.hostKeyPair,
+		ClientKeyPair: s.clientKeyPair,
+	}
+	return shareClientScriptTemplate.Execute(w, sessionInfo)
+}
+
+func (s *session) SetShareUser(user string) error {
+	return os.WriteFile(s.sshUserFile(), []byte(user), 0600)
 }
 
 func (s *session) RegisterShareConn(conn io.Closer) bool {
@@ -431,6 +455,9 @@ func (s *session) shutdownHandler() error {
 	if err := s.conn.Archive(s.control); err != nil {
 		log.Printf("[session %s] Warning: unable to archive thread: %s", s.id, err.Error())
 	}
+	os.Remove(s.sshUserFile())
+	os.Remove(s.sshClientKeyFile())
+	os.Remove(s.tmux.RecordingFile())
 	s.mu.Lock()
 	s.active = false
 	if s.shareConn != nil {
@@ -488,7 +515,7 @@ func (s *session) maybeTrimWindow(window string) string {
 }
 
 func (s *session) getEnv() (map[string]string, error) {
-	var host, port, relayPort string
+	var host, port, sshUserFile, sshClientKeyFile, relayPort string
 	var err error
 	if s.config.ShareHost != "" {
 		host, port, err = net.SplitHostPort(s.config.ShareHost)
@@ -499,29 +526,21 @@ func (s *session) getEnv() (map[string]string, error) {
 	if s.relayPort > 0 {
 		relayPort = strconv.Itoa(s.relayPort)
 	}
+	if s.clientKeyPair != nil {
+		sshUserFile = s.sshUserFile()
+		sshClientKeyFile = s.sshClientKeyFile()
+		if err := os.WriteFile(sshClientKeyFile, []byte(s.clientKeyPair.PrivateKey), 0600); err != nil {
+			return nil, err
+		}
+	}
 	return map[string]string{
-		"REPLBOT_SESSION_ID": s.id,
-		"REPLBOT_SSH_HOST":   host,
-		"REPLBOT_SSH_PORT":   port,
-		"REPLBOT_RELAY_PORT": relayPort,
+		"REPLBOT_SESSION_ID":    s.id,
+		"REPLBOT_SSH_HOST":      host,
+		"REPLBOT_SSH_PORT":      port,
+		"REPLBOT_SSH_KEY_FILE":  sshClientKeyFile,
+		"REPLBOT_SSH_USER_FILE": sshUserFile,
+		"REPLBOT_RELAY_PORT":    relayPort,
 	}, nil
-}
-
-func (s *session) writeShareClientScript(w io.Writer) error {
-	if s.relayPort == 0 {
-		return errors.New("not a share session")
-	}
-	host, port, err := net.SplitHostPort(s.config.ShareHost)
-	if err != nil {
-		return fmt.Errorf("invalid config: %s", err.Error())
-	}
-	sessionInfo := &sshSession{
-		SessionID:  s.id,
-		ServerHost: host,
-		ServerPort: port,
-		RelayPort:  s.relayPort,
-	}
-	return shareClientScriptTemplate.Execute(w, sessionInfo)
 }
 
 func (s *session) handleAllow(allow string) error {
@@ -592,6 +611,14 @@ func (s *session) createCommand() []string {
 
 func (s *session) replayFiles() (replayFile string, timingFile string) {
 	return filepath.Join(os.TempDir(), "replbot_"+s.id+".replay-script"), filepath.Join(os.TempDir(), "replbot_"+s.id+".replay-timing")
+}
+
+func (s *session) sshClientKeyFile() string {
+	return filepath.Join(os.TempDir(), "replbot_"+s.id+".ssh-client-key")
+}
+
+func (s *session) sshUserFile() string {
+	return filepath.Join(os.TempDir(), "replbot_"+s.id+".ssh-user")
 }
 
 func (s *session) createRecordingArchive(filename string) (*os.File, error) {
