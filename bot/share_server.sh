@@ -24,7 +24,7 @@ case "$1" in
       sleep 1
     done
     while true; do
-      if ssh -t -p "${REPLBOT_RELAY_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o "IdentityFile=${REPLBOT_SSH_KEY_FILE}" "${ssh_user}@127.0.0.1"; then
+      if ssh -t -p "${REPLBOT_RELAY_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o "IdentityFile=${REPLBOT_SSH_KEY_FILE}" "${ssh_user}@127.0.0.1" 2>/dev/null; then
         exit
       fi
       sleep 1

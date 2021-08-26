@@ -38,6 +38,9 @@ cleanup() {
   if [ -n "${ssh_pid}" ]; then
     kill "${ssh_pid}" 2>/dev/null
   fi
+  if [ -n "${check_pid}" ]; then
+    kill "${check_pid}" 2>/dev/null
+  fi
   rm -f "${sshd_config_file}" "${sshd_hostkey_file}" "${sshd_authorized_keys_file}"
   clear
   echo "REPLbot terminal sharing session ended."
@@ -89,6 +92,20 @@ ssh \
   "${remote_ssh_user}@${remote_ssh_server}" &
 export ssh_pid=$! ssh_code=$?
 [ $ssh_code -eq 0 ] || { echo "error: cannot start reverse tunnel"; exit 1; }
+
+# Monitor SSH tunnel and kill tmux if it dies (e.g. if it is remotely killed)
+check_loop() {
+  set +e
+  while true; do
+    if ! kill -0 "${ssh_pid}"; then
+      tmux kill-session -t "${tmux_session}" 2>/dev/null
+      exit
+    fi
+    sleep 1
+  done
+}
+check_loop &
+export check_pid=$!
 
 # Attach client
 tmux attach -t "${tmux_session}"
