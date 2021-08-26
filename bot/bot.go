@@ -392,6 +392,7 @@ func (b *Bot) sshSessionHandler(s ssh.Session) {
 	if !ok {
 		return
 	}
+	log.Printf("read: %v", s.Command())
 	sess.WriteShareClientScript(s)
 }
 

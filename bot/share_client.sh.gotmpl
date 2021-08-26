@@ -9,49 +9,108 @@
 # This script is customized for one session only. It'll only work once.
 #
 
-local_socket=/tmp/replbot_{{.SessionID}}.sock
-ssh_server={{.ServerHost}}
-ssh_port={{.ServerPort}}
-ssh_user={{.SessionID}}
-relay_port={{.RelayPort}}
-tmux_session=replbot_{{.SessionID}}_client
+set -e
+
+session_dir="/tmp/replbot_{{.SessionID}}"
+remote_ssh_server="{{.ServerHost}}"
+remote_ssh_port="{{.ServerPort}}"
+remote_ssh_user="{{.SessionID}}"
+remote_ssh_relay_port="{{.RelayPort}}"
+tmux_session="replbot_{{.SessionID}}_client"
+sshd_config_file="${session_dir}/sshd_config"
+sshd_hostkey_file="${session_dir}/hostkey"
+sshd_authorized_keys_file="${session_dir}/authorized_keys"
+sshd_port="$(shuf -i 32000-65000 -n 1)"
 
 # Check dependencies
-for dep in ssh tmux socat; do
-  command -v $dep >/dev/null 2>&1 || { echo "error: please install 'ssh', 'socat' and 'tmux'."; exit 1; }
+for dep in sshd ssh tmux; do
+  command -v "${dep}" >/dev/null 2>&1 || { echo "error: please install 'ssh', 'socat' and 'tmux'."; exit 1; }
 done
-tmux has-session -t ${tmux_session} 2>/dev/null && { echo "error: tmux session ${tmux_session} already exists"; exit 1; }
+tmux has-session -t "${tmux_session}" 2>/dev/null && { echo "error: tmux session ${tmux_session} already exists"; exit 1; }
 
 # Set up cleanup hooks
 cleanup() {
-  tmux kill-session -t ${tmux_session} 2>/dev/null
-  kill ${SOCAT_PID} ${SSH_PID} 2>/dev/null
+  tmux kill-session -t "${tmux_session}" 2>/dev/null || true
+  kill "${sshd_pid}" "${ssh_pid}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
-# Start new tmux session, and redirect TTY to relay port, attach tmux client and forward traffic to local socket
-tmux new-session -d -s ${tmux_session}
-tmux set-option -g -t ${tmux_session} status off
-socat exec:"tmux attach -t ${tmux_session}",pty,raw,echo=0,stderr,setsid,sigint,sane \
-    unix-listen:${local_socket} &
-export SOCAT_PID=$!
+# Start new tmux session
+tmux new-session -d -s "${tmux_session}"
+tmux set-option -g -t "${tmux_session}" status off
+
+# Set up SSHd
+mkdir -p "${session_dir}"
+cat > "${sshd_hostkey_file}" <<SSHDHOSTKEY
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpQIBAAKCAQEAqIXn6FTb4h3VUyCXebg4v40xjVOBC/lzqlSRSKXB0oxaSiQq
+ntkudcHdfZpeOErDqCW1Mu+dsjDArc1shZ53nlm1WoSTer/aYUsGrZXo1qMqptFO
+WlloidEA2xddnjWokoJRGa0YYrRK7yAWh2SYGCUvZvqZ0l9D7OqaJT6w2CXHgRJO
+c9elGlPgpoCPpZLCoA9m8YY0svNXu8lAMy8wAW0lk+9LmYOmy9YjqUUeu3uI0UH6
+LCRtk00bqAszhKrNWNDyOh+POV1uY0vMfkNYmqnMPySZQszP0SbWTJn8eeMg/fY1
+OodV8z1uWimixcJi8Aq/e/SveYS2Ea3c9WPLSQIDAQABAoIBAQCPvA5NabtVQ67E
+ROMNbSPxtOKTsKo7ZVrS52g29zG2fAEyhWBYtdJbm6tnSreb+aChlO/Ubu0oo05j
+rvcljEBoLglxF+yV4HbJTu12NosuLmLdf139z45LJZk+RNKTcx7BPyce6DUJUs8q
+30p31kOnLGgexBVYiepscrhglfTNlSCrERKMnTY2KZ53R5YZbDT8U1NnbvVOsY++
+D24yK3CLYGc+g8NU8XCzx9WTvmIvJDFWO7tWLnnCCftGYRxA8YWvJun68SpZZqIB
+VEBqgAQrbUMP5ju8LfiWUxduKeyast1D9ndIJ7TRvNCyIcbOXxvO6Wv7c/bkSmZH
+pFb3CcAlAoGBANqPoSjHiAC/rijGIlXiJDvGRjZOg7J6CjwV+EBtgQ87iSfTMK8+
+45k8GFf1lPUKnDJzMOAVMXLJAZK9rczNovx4wuyKdJp/1EzUhbOjlcGHCuIS56N+
+1uMR3fBJr5m0YLroZ79nEe8ys8QdETf7c+VP+AGo4UKV3Ajn7wyhV9fLAoGBAMVk
+AOttjx6bYTbsCF/kAJONhCU3OKhPWQ5QG7axfUH6T9NZMtt2DOdpCgfBPqNHbJZE
+pyPMoM7nWdA43cffJ9gzK/lNjY56GafW0qf9Tesln0dlHAAgtpF0pfwvlMxxtazJ
+6+SILM+S36wxykankHHBFEMzFWSinnvPdbwhIj67AoGBANZaNVG8V2t8kn9Uywn2
+D1k8fVH3sPwS6wTA+0ec3g2lcz/GxaGqCSgZIzrpFV06ObTU+qNaxbNw5gUX2GPb
+bjU07t90byWzpvBvIm3rSw2Rtx/AMMRNuszakhN/ASS7Hn9RPacfnBw/WsVFSMTh
+7WmCA5cFHV/jf/iQGAgIGRH/AoGAZuU5gYAsEgVnSM0DlJDzJ/emQgwmMb6jKs3h
+lHuzUthcEk02MKa6FUtxGhfHQjAyT6bcBdJepVx+OgfavJz8VTxfmOaveuz1QMPA
+LifiHUkQXZQ8Y2iqIurOt8ZJ58UCsl7T496ElXP3uvh9fBVPO60tldYkOcB3owzD
+T91pz48CgYEAm+FLui6FfqEVI9Avi1grK051iW2K6wmTq9/D35Vi93zETgk4/09r
+6cyhZXp3QuqErc/peLCcds605vf1GGY/Bw3hgYNki3ZrcFFdkLf5jkVwZLclhCdw
+iZ5QOP/SIRXu9ZCJNPzWdWqyPjMQlUeRb1LN4DBDmRS2P7JudJw+uh8=
+-----END RSA PRIVATE KEY-----
+SSHDHOSTKEY
+chmod 600 "${sshd_hostkey_file}"
+# .SSHDHostKey
+cat > "${sshd_authorized_keys_file}" <<SSHDAUTHORIZEDKEYS
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDB1tN5Q1pFxqMooK4zNjbNAp8w+gzPQV+egWf8ZNrgsiAn6/PgMkg9OAKWX6rLoNvOvJRK0KaLcYQ0sWK5ilcZLDtfw/TwbzcrnNCbIMwFGleHnbB2x9B6a4HHy+b0ZVgUH1ysKD67QbqBsxCpfFReTxthz8Up+9xuA32xZd2w1iYxQ2eS0bVdb5g5eSuJAy/KSpYoYAOyNJJpmKiwTXW9tMp2o5yG25cQagiOsOB//ICqeblVJZgjGPJ4W2JRKZB6EB/cw+n0dtA6YGwHRuhpJYMdBfrJ5yFpZsC459VsPdSquP+fJgg2oig904NVmAdcQD3DZmRCQpdqzHGWruvS2dzsQOLqw/1frpZrN6VSGHa8R7mZkoiA1O8WiD0r7yOtqPgtXdPfma0S+c8yS2U8YuPolCDVWc5e85ekjGMl8ZMSiB56bF3wk51KoCizyRam8iLofa+gj6UtYYzAx5j20M/h4EYqix41wZvuLNjMfsSxNQln3NWcxEAC4RnoFTs= root@fdac4b1214b3
+SSHDAUTHORIZEDKEYS
+chmod 600 "${sshd_authorized_keys_file}"
+# .SSHDAuthorizedKeys
+cat > "${sshd_config_file}" <<SSHDCONF
+Port ${sshd_port}
+HostKey ${sshd_hostkey_file}
+PermitRootLogin yes
+AuthorizedKeysFile ${sshd_authorized_keys_file}
+StrictModes no
+PasswordAuthentication no
+AcceptEnv LANG LC_*
+AuthenticationMethods publickey
+AllowUsers $USER
+Match User $USER
+  ForceCommand tmux attach -t ${tmux_session}
+SSHDCONF
+
+$(which sshd) -f "${sshd_config_file}" -D &
+export sshd_pid=$! sshd_code=$?
+[ $sshd_code -eq 0 ] || { echo "error: cannot start sshd"; exit 1; }
 
 # Open reverse tunnel and redirect incoming traffic to local port
 ssh \
   -fN \
-  -R ${relay_port}:${local_socket} \
-  -p ${ssh_port} \
+  -R "${remote_ssh_relay_port}:127.0.0.1:${sshd_port}" \
+  -p "${remote_ssh_port}" \
   -o ExitOnForwardFailure=yes \
   -o UserKnownHostsFile=/dev/null \
   -o ExitOnForwardFailure=yes \
   -o StrictHostKeyChecking=no \
   -o PasswordAuthentication=no \
-  ${ssh_user}@${ssh_server}
-export SSH_PID=$! SSH_CODE=$?
-[ $SSH_CODE -eq 0 ] || { echo "error: cannot start reverse tunnel"; exit 1; }
+  "${remote_ssh_user}@${remote_ssh_server}"
+export ssh_pid=$! ssh_code=$?
+[ $ssh_code -eq 0 ] || { echo "error: cannot start reverse tunnel"; exit 1; }
 
-# Attach another client
-tmux attach -t ${tmux_session}
+# Attach client
+tmux attach -t "${tmux_session}"
 
 clear
 echo "Session ended."
