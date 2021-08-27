@@ -221,12 +221,6 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 					hostKeyPair:   hostKeyPair,
 					clientKeyPair: clientKeyPair,
 				}
-				if conf.authMode == "" {
-					conf.authMode = config.OnlyMe
-				}
-				if conf.size == nil && b.config.Platform() == config.Slack { // Discord has a 2000 char limit, sigh ..
-					conf.size = config.Medium
-				}
 			} else if s := b.config.Script(field); conf.script == "" && s != "" {
 				conf.script = s
 			} else {
@@ -241,6 +235,17 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 }
 
 func (b *Bot) applySessionConfigDefaults(ev *messageEvent, conf *sessionConfig) (*sessionConfig, error) {
+	if conf.share != nil { // sane defaults for terminal sharing
+		if conf.authMode == "" {
+			conf.authMode = config.OnlyMe
+		}
+		if conf.size == nil && b.config.Platform() != config.Discord {
+			conf.size = config.Medium // Discord has a 2000 char limit, so we can only do this for Slack
+		}
+		if conf.controlMode == "" {
+			conf.controlMode = config.Channel // avoid tagging the owner twice, since we send the start command as a DM already
+		}
+	}
 	if conf.controlMode == "" {
 		if ev.Thread != "" {
 			conf.controlMode = config.Thread // special handling, because it'd be weird otherwise
