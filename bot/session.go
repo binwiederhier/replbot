@@ -203,15 +203,8 @@ func (s *session) Run() error {
 	if err != nil {
 		return err
 	}
-	if s.conf.share != nil {
-		host, port, err := net.SplitHostPort(s.conf.global.ShareHost)
-		if err != nil {
-			return err
-		}
-		shareStartMessage := fmt.Sprintf(shareStartCommandMessage, port, s.conf.id, host)
-		if err := s.conn.SendDM(s.conf.user, shareStartMessage); err != nil {
-			return err
-		}
+	if err := s.maybeSendStartShareMessage(); err != nil {
+		return err
 	}
 	command := s.createCommand()
 	if err := s.tmux.Start(env, command...); err != nil {
@@ -507,28 +500,19 @@ func (s *session) maybeTrimWindow(window string) string {
 }
 
 func (s *session) getEnv() (map[string]string, error) {
-	var host, port, sshUserFile, sshClientKeyFile, relayPort string
-	var err error
-	if s.conf.global.ShareHost != "" {
-		host, port, err = net.SplitHostPort(s.conf.global.ShareHost)
-		if err != nil {
-			return nil, err
-		}
-	}
+	var sshUserFile, sshKeyFile, relayPort string
 	if s.conf.share != nil {
 		shareConf := s.conf.share
 		relayPort = strconv.Itoa(shareConf.relayPort)
 		sshUserFile = s.sshUserFile()
-		sshClientKeyFile = s.sshClientKeyFile()
-		if err := os.WriteFile(sshClientKeyFile, []byte(shareConf.clientKeyPair.PrivateKey), 0600); err != nil {
+		sshKeyFile = s.sshClientKeyFile()
+		if err := os.WriteFile(sshKeyFile, []byte(shareConf.clientKeyPair.PrivateKey), 0600); err != nil {
 			return nil, err
 		}
 	}
 	return map[string]string{
 		"REPLBOT_SESSION_ID":     s.conf.id,
-		"REPLBOT_SSH_HOST":       host,
-		"REPLBOT_SSH_PORT":       port,
-		"REPLBOT_SSH_KEY_FILE":   sshClientKeyFile,
+		"REPLBOT_SSH_KEY_FILE":   sshKeyFile,
 		"REPLBOT_SSH_USER_FILE":  sshUserFile,
 		"REPLBOT_SSH_RELAY_PORT": relayPort,
 	}, nil
@@ -692,6 +676,21 @@ func (s *session) sendExitedMessageWithRecording() error {
 		os.Remove(filename)
 	}()
 	return s.conn.UploadFile(s.conf.control, sessionExitedWithRecordingMessage, recordingFileName, recordingFileType, file)
+}
+
+func (s *session) maybeSendStartShareMessage() error {
+	if s.conf.share == nil {
+		return nil
+	}
+	host, port, err := net.SplitHostPort(s.conf.global.ShareHost)
+	if err != nil {
+		return err
+	}
+	message := fmt.Sprintf(shareStartCommandMessage, port, s.conf.id, host)
+	if err := s.conn.SendDM(s.conf.user, message); err != nil {
+		return err
+	}
+	return nil
 }
 
 func zipAppendFile(zw *zip.Writer, name string, filename string) error {

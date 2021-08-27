@@ -103,6 +103,7 @@ func createSession(t *testing.T, script string) (*session, *memConn) {
 	conf := createConfig(t)
 	conn := newMemConn(conf)
 	sconfig := &sessionConfig{
+		global:      conf,
 		id:          "sess_" + util.RandomString(5),
 		user:        "phil",
 		control:     &channelID{"channel", "thread"},
@@ -112,9 +113,8 @@ func createSession(t *testing.T, script string) (*session, *memConn) {
 		windowMode:  config.Full,
 		authMode:    config.Everyone,
 		size:        config.Small,
-		RelayPort:   0,
 	}
-	sess := newSession(conf, conn, sconfig)
+	sess := newSession(sconfig, conn)
 	go sess.Run()
 	return sess, conn
 }
