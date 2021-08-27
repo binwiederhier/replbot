@@ -30,6 +30,7 @@ const (
 		"sessions are always started in `only-me` mode, unless overridden."
 	unknownCommandMessage = "I am not quite sure what you mean by _%s_ ⁉"
 	misconfiguredMessage  = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
+	helpRequestedCommand  = "help"
 	recordCommand         = "record"
 	noRecordCommand       = "norecord"
 	shareCommand          = "share"
@@ -50,6 +51,7 @@ var (
 	//go:embed share_server.sh
 	shareServerScriptSource string
 	errNoScript             = errors.New("no script defined")
+	errHelpRequested        = errors.New("help requested")
 )
 
 // Bot is the main struct that provides REPLbot
@@ -196,6 +198,8 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 		switch field {
 		case b.conn.MentionBot():
 			// Ignore
+		case helpRequestedCommand:
+			return nil, errHelpRequested
 		case string(config.Thread), string(config.Channel), string(config.Split):
 			conf.controlMode = config.ControlMode(field)
 		case string(config.Full), string(config.Trim):
@@ -344,7 +348,7 @@ func (b *Bot) handleHelp(channel, thread string, err error) error {
 		return b.conn.Send(target, misconfiguredMessage)
 	}
 	var messageTemplate string
-	if err == nil || err == errNoScript {
+	if err == nil || err == errNoScript || err == errHelpRequested {
 		messageTemplate = welcomeMessage + mentionMessage
 	} else {
 		messageTemplate = err.Error() + "\n\n" + mentionMessage
