@@ -21,6 +21,7 @@ var (
 	randomStringCharset       = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
+// SSHKeyPair represents an SSH key pair
 type SSHKeyPair struct {
 	PrivateKey string
 	PublicKey  string
@@ -110,10 +111,12 @@ func WaitUntilNot(fn func() bool, maxWait time.Duration) bool {
 	return WaitUntil(func() bool { return !fn() }, maxWait)
 }
 
+// TempFileName generates a random file name for a file in the temp folder
 func TempFileName() string {
 	return filepath.Join(os.TempDir(), "replbot_"+RandomString(10))
 }
 
+// GenerateSSHKeyPair generates an SSH key pair
 func GenerateSSHKeyPair() (pair *SSHKeyPair, err error) {
 	privKeyFile := TempFileName()
 	pubKeyFile := privKeyFile + ".pub"
