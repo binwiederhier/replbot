@@ -20,7 +20,7 @@ import (
 
 const (
 	welcomeMessage = "Hi there 👋! "
-	mentionMessage = "I'm a robot for running interactive REPLs and shells from a right here. To start a new session, simply tag me " +
+	mentionMessage = "I'm a robot for running interactive REPLs and shells from right here. To start a new session, simply tag me " +
 		"and name one of the available REPLs, like so: %s %s\n\nAvailable REPLs: %s.\n\nTo run the session in a `thread`, " +
 		"the main `channel`, or in `split` mode, use the respective keywords (default: `%s`). To define the terminal size, use the words " +
 		"`tiny`, `small`, `medium` or `large` (default: `%s`). Use `full` or `trim` to set the window mode (default: `%s`), and `everyone` " +
