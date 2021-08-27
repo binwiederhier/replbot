@@ -75,6 +75,15 @@ bot-token: MUST_BE_SET
 #
 # default-auth-mode: everyone
 
+# Default terminal size. This defines how large the terminal should be when a new session is started. This
+# can be overridden by the user and using the !resize command.
+#
+# Format:    tiny|small|medium|large
+# Default:   small
+# Required:  No
+#
+# default-size: small
+
 # Record sessions by default. If turned on, a ZIP archive containing a recording of the session, including
 # all output will be attached to the session exit message. This option defines the default behavior. It can
 # be changed using the "record" or "norecord" settings.

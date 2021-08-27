@@ -20,7 +20,7 @@ tmux_session="replbot_{{.SessionID}}_client"
 sshd_config_file="/tmp/replbot_{{.SessionID}}.client-sshd-config"
 sshd_hostkey_file="/tmp/replbot_{{.SessionID}}.client-sshd-hostkey"
 sshd_authorized_keys_file="/tmp/replbot_{{.SessionID}}.client-sshd-authorized-keys"
-sshd_port="$(shuf -i 32000-65000 -n 1)"
+sshd_port="$((32000 + $RANDOM))"
 
 # Check dependencies
 for dep in sshd ssh tmux; do

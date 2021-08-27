@@ -4,8 +4,8 @@ import (
 	"errors"
 )
 
-// ConvertSize converts a size string to a Size
-func ConvertSize(size string) (*Size, error) {
+// ParseSize converts a size string to a Size
+func ParseSize(size string) (*Size, error) {
 	switch size {
 	case Tiny.Name, Small.Name, Medium.Name, Large.Name:
 		return Sizes[size], nil

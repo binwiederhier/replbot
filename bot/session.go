@@ -333,7 +333,7 @@ func (s *session) handleUserInput(input string) error {
 		} else if matches := ctrlCommandRegex.FindStringSubmatch(input); len(matches) > 0 {
 			return s.tmux.SendKeys("^" + strings.ToUpper(matches[1]))
 		} else if strings.HasPrefix(input, resizePrefix) {
-			size, err := config.ConvertSize(strings.TrimPrefix(input, resizePrefix))
+			size, err := config.ParseSize(strings.TrimPrefix(input, resizePrefix))
 			if err != nil {
 				return s.conn.Send(s.conf.control, malformatedTerminalSizeMessage)
 			}
