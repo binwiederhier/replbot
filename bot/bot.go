@@ -441,8 +441,8 @@ func (b *Bot) sshReversePortForwardingCallback(ctx ssh.Context, host string, por
 	if !ok || int(port) != sess.relayPort {
 		return
 	}
-	allow = sess.RegisterShareConn(conn)
-	return
+	sess.RegisterShareConn(conn)
+	return true
 }
 
 // sshPtyCallback always returns false, thereby refusing any SSH client attempt to request a TTY

@@ -296,14 +296,13 @@ func (s *session) WriteShareUserFile(user string) error {
 	return os.WriteFile(s.sshUserFile(), []byte(user), 0600)
 }
 
-func (s *session) RegisterShareConn(conn io.Closer) bool {
+func (s *session) RegisterShareConn(conn io.Closer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.shareConn != nil {
-		return false
+		s.shareConn.Close()
 	}
 	s.shareConn = conn
-	return true
 }
 
 func (s *session) userInputLoop() error {
