@@ -157,7 +157,7 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 	if err != nil {
 		return b.handleHelp(ev.Channel, ev.Thread, err)
 	}
-	switch conf.ControlMode {
+	switch conf.controlMode {
 	case config.Channel:
 		return b.startSessionChannel(ev, conf)
 	case config.Thread:
@@ -165,7 +165,7 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 	case config.Split:
 		return b.startSessionSplit(ev, conf)
 	default:
-		return fmt.Errorf("unexpected mode: %s", conf.ControlMode)
+		return fmt.Errorf("unexpected mode: %s", conf.controlMode)
 	}
 }
 
@@ -182,8 +182,9 @@ func (b *Bot) maybeForwardMessage(ev *messageEvent) bool {
 
 func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 	conf := &sessionConfig{
-		User:   ev.User,
-		Record: b.config.DefaultRecord,
+		global: b.config,
+		user:   ev.User,
+		record: b.config.DefaultRecord,
 	}
 	fields := strings.Fields(ev.Message)
 	for _, field := range fields {
@@ -191,15 +192,15 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 		case b.conn.MentionBot():
 			// Ignore
 		case string(config.Thread), string(config.Channel), string(config.Split):
-			conf.ControlMode = config.ControlMode(field)
+			conf.controlMode = config.ControlMode(field)
 		case string(config.Full), string(config.Trim):
-			conf.WindowMode = config.WindowMode(field)
+			conf.windowMode = config.WindowMode(field)
 		case string(config.OnlyMe), string(config.Everyone):
-			conf.AuthMode = config.AuthMode(field)
+			conf.authMode = config.AuthMode(field)
 		case config.Tiny.Name, config.Small.Name, config.Medium.Name, config.Large.Name:
-			conf.Size = config.Sizes[field]
+			conf.size = config.Sizes[field]
 		case recordCommand, noRecordCommand:
-			conf.Record = field == recordCommand
+			conf.record = field == recordCommand
 		default:
 			if b.config.ShareEnabled() && field == shareCommand {
 				relayPort, err := util.RandomPort()
@@ -214,107 +215,109 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 				if err != nil {
 					return nil, err
 				}
-				conf.Script = shareServerScriptFile
-				conf.RelayPort = relayPort
-				conf.HostKeyPair = hostKeyPair
-				conf.ClientKeyPair = clientKeyPair
-				if conf.AuthMode == "" {
-					conf.AuthMode = config.OnlyMe
+				conf.script = shareServerScriptFile
+				conf.share = &shareConfig{
+					relayPort:     relayPort,
+					hostKeyPair:   hostKeyPair,
+					clientKeyPair: clientKeyPair,
 				}
-				if conf.Size == nil && b.config.Platform() == config.Slack { // Discord has a 2000 char limit, sigh ..
-					conf.Size = config.Medium
+				if conf.authMode == "" {
+					conf.authMode = config.OnlyMe
 				}
-			} else if s := b.config.Script(field); conf.Script == "" && s != "" {
-				conf.Script = s
+				if conf.size == nil && b.config.Platform() == config.Slack { // Discord has a 2000 char limit, sigh ..
+					conf.size = config.Medium
+				}
+			} else if s := b.config.Script(field); conf.script == "" && s != "" {
+				conf.script = s
 			} else {
 				return nil, fmt.Errorf(unknownCommandMessage, field) //lint:ignore ST1005 we'll pass this to the client
 			}
 		}
 	}
-	if conf.Script == "" {
+	if conf.script == "" {
 		return nil, errNoScript
 	}
 	return b.applySessionConfigDefaults(ev, conf)
 }
 
 func (b *Bot) applySessionConfigDefaults(ev *messageEvent, conf *sessionConfig) (*sessionConfig, error) {
-	if conf.ControlMode == "" {
+	if conf.controlMode == "" {
 		if ev.Thread != "" {
-			conf.ControlMode = config.Thread // special handling, because it'd be weird otherwise
+			conf.controlMode = config.Thread // special handling, because it'd be weird otherwise
 		} else {
-			conf.ControlMode = b.config.DefaultControlMode
+			conf.controlMode = b.config.DefaultControlMode
 		}
 	}
-	if b.config.Platform() == config.Discord && ev.ChannelType == channelTypeDM && conf.ControlMode != config.Channel {
-		conf.ControlMode = config.Channel // special case: Discord does not support threads in direct messages
+	if b.config.Platform() == config.Discord && ev.ChannelType == channelTypeDM && conf.controlMode != config.Channel {
+		conf.controlMode = config.Channel // special case: Discord does not support threads in direct messages
 	}
-	if conf.WindowMode == "" {
-		if conf.ControlMode == config.Thread {
-			conf.WindowMode = config.Trim
+	if conf.windowMode == "" {
+		if conf.controlMode == config.Thread {
+			conf.windowMode = config.Trim
 		} else {
-			conf.WindowMode = b.config.DefaultWindowMode
+			conf.windowMode = b.config.DefaultWindowMode
 		}
 	}
-	if conf.AuthMode == "" {
-		conf.AuthMode = b.config.DefaultAuthMode
+	if conf.authMode == "" {
+		conf.authMode = b.config.DefaultAuthMode
 	}
-	if conf.Size == nil {
-		if conf.ControlMode == config.Thread {
-			conf.Size = config.Tiny // special case: make it tiny in a thread
+	if conf.size == nil {
+		if conf.controlMode == config.Thread {
+			conf.size = config.Tiny // special case: make it tiny in a thread
 		} else {
-			conf.Size = b.config.DefaultSize
+			conf.size = b.config.DefaultSize
 		}
 	}
 	return conf, nil
 }
 
 func (b *Bot) startSessionChannel(ev *messageEvent, conf *sessionConfig) error {
-	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ""))
-	conf.Control = &channelID{Channel: ev.Channel, Thread: ""}
-	conf.Terminal = conf.Control
+	conf.id = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ""))
+	conf.control = &channelID{Channel: ev.Channel, Thread: ""}
+	conf.terminal = conf.control
 	return b.startSession(conf)
 }
 
 func (b *Bot) startSessionThread(ev *messageEvent, conf *sessionConfig) error {
 	if ev.Thread == "" {
-		conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
-		conf.Control = &channelID{Channel: ev.Channel, Thread: ev.ID}
-		conf.Terminal = conf.Control
+		conf.id = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
+		conf.control = &channelID{Channel: ev.Channel, Thread: ev.ID}
+		conf.terminal = conf.control
 		return b.startSession(conf)
 	}
-	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
-	conf.Control = &channelID{Channel: ev.Channel, Thread: ev.Thread}
-	conf.Terminal = conf.Control
+	conf.id = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
+	conf.control = &channelID{Channel: ev.Channel, Thread: ev.Thread}
+	conf.terminal = conf.control
 	return b.startSession(conf)
 }
 
 func (b *Bot) startSessionSplit(ev *messageEvent, conf *sessionConfig) error {
 	if ev.Thread == "" {
-		conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
-		conf.Control = &channelID{Channel: ev.Channel, Thread: ev.ID}
-		conf.Terminal = &channelID{Channel: ev.Channel, Thread: ""}
+		conf.id = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.ID))
+		conf.control = &channelID{Channel: ev.Channel, Thread: ev.ID}
+		conf.terminal = &channelID{Channel: ev.Channel, Thread: ""}
 		return b.startSession(conf)
 	}
-	conf.ID = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
-	conf.Control = &channelID{Channel: ev.Channel, Thread: ev.Thread}
-	conf.Terminal = &channelID{Channel: ev.Channel, Thread: ""}
+	conf.id = util.SanitizeNonAlphanumeric(fmt.Sprintf("%s_%s", ev.Channel, ev.Thread))
+	conf.control = &channelID{Channel: ev.Channel, Thread: ev.Thread}
+	conf.terminal = &channelID{Channel: ev.Channel, Thread: ""}
 	return b.startSession(conf)
 }
 
 func (b *Bot) startSession(conf *sessionConfig) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	sess := newSession(b.config, b.conn, conf)
-	b.sessions[conf.ID] = sess
-	log.Printf("[session %s] Starting session", conf.ID)
+	sess := newSession(conf, b.conn)
+	b.sessions[conf.id] = sess
+	log.Printf("[session %s] Starting session", conf.id)
 	go func() {
 		if err := sess.Run(); err != nil {
-			log.Printf("[session %s] Session exited with error: %s", conf.ID, err.Error())
+			log.Printf("[session %s] Session exited with error: %s", conf.id, err.Error())
 		} else {
-			log.Printf("[session %s] Session exited successfully", conf.ID)
+			log.Printf("[session %s] Session exited successfully", conf.id)
 		}
 		b.mu.Lock()
-		delete(b.sessions, conf.ID)
+		delete(b.sessions, conf.id)
 		b.mu.Unlock()
 	}()
 	return nil
@@ -438,7 +441,7 @@ func (b *Bot) sshReversePortForwardingCallback(ctx ssh.Context, host string, por
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	sess, ok := b.sessions[ctx.User()]
-	if !ok || int(port) != sess.relayPort {
+	if !ok || sess.conf.share == nil || sess.conf.share.relayPort != int(port) {
 		return
 	}
 	sess.RegisterShareConn(conn)
