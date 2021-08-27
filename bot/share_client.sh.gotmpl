@@ -57,10 +57,12 @@ cat > "${sshd_hostkey_file}" <<SSHDHOSTKEY
 {{.HostKeyPair.PrivateKey}}
 SSHDHOSTKEY
 chmod 600 "${sshd_hostkey_file}"
+
 cat > "${sshd_authorized_keys_file}" <<SSHDAUTHORIZEDKEYS
 {{.ClientKeyPair.PublicKey}}
 SSHDAUTHORIZEDKEYS
 chmod 600 "${sshd_authorized_keys_file}"
+
 cat > "${sshd_config_file}" <<SSHDCONF
 Port ${sshd_port}
 HostKey ${sshd_hostkey_file}
