@@ -248,9 +248,6 @@ func (b *Bot) applySessionConfigDefaults(ev *messageEvent, conf *sessionConfig) 
 		if conf.size == nil && b.config.Platform() != config.Discord {
 			conf.size = config.Medium // Discord has a 2000 char limit, so we can only do this for Slack
 		}
-		if conf.controlMode == "" {
-			conf.controlMode = config.Channel // avoid tagging the owner twice, since we send the start command as a DM already
-		}
 	}
 	if conf.controlMode == "" {
 		if ev.Thread != "" {
