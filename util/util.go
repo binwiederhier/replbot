@@ -2,11 +2,13 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -18,6 +20,12 @@ var (
 	random                    = rand.New(rand.NewSource(time.Now().UnixNano()))
 	randomStringCharset       = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
+
+// SSHKeyPair represents an SSH key pair
+type SSHKeyPair struct {
+	PrivateKey string
+	PublicKey  string
+}
 
 // SanitizeNonAlphanumeric replaces all non-alphanumeric characters with an underscore
 func SanitizeNonAlphanumeric(s string) string {
@@ -101,4 +109,35 @@ func WaitUntil(fn func() bool, maxWait time.Duration) bool {
 // WaitUntilNot waits for fn to turn false within a reasonable amount of time
 func WaitUntilNot(fn func() bool, maxWait time.Duration) bool {
 	return WaitUntil(func() bool { return !fn() }, maxWait)
+}
+
+// TempFileName generates a random file name for a file in the temp folder
+func TempFileName() string {
+	return filepath.Join(os.TempDir(), "replbot_"+RandomString(10))
+}
+
+// GenerateSSHKeyPair generates an SSH key pair
+func GenerateSSHKeyPair() (pair *SSHKeyPair, err error) {
+	privKeyFile := TempFileName()
+	pubKeyFile := privKeyFile + ".pub"
+	defer func() {
+		os.Remove(privKeyFile)
+		os.Remove(pubKeyFile)
+	}()
+	if err := Run("ssh-keygen", "-t", "rsa", "-f", privKeyFile, "-q", "-N", ""); err != nil {
+		return nil, err
+	}
+	privKey, err := os.ReadFile(privKeyFile)
+	if err != nil {
+		return nil, err
+	}
+	pubKey, err := os.ReadFile(pubKeyFile)
+	if err != nil {
+		return nil, err
+	}
+	pubKeyFields := strings.Fields(string(pubKey))
+	if len(pubKeyFields) != 3 {
+		return nil, errors.New("unexpected public key format")
+	}
+	return &SSHKeyPair{string(privKey), strings.Join(pubKeyFields[0:2], " ")}, nil
 }

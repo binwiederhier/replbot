@@ -75,6 +75,18 @@ func (c *discordConn) SendWithID(channel *channelID, message string) (string, er
 	return msg.ID, nil
 }
 
+func (c *discordConn) SendDM(userID string, message string) error {
+	ch, err := c.session.UserChannelCreate(userID)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.channels[ch.ID] = ch
+	c.mu.Unlock()
+	channel := &channelID{ch.ID, ""}
+	return c.Send(channel, message)
+}
+
 func (c *discordConn) UploadFile(channel *channelID, message string, filename string, filetype string, file io.Reader) error {
 	ch := channel.Channel
 	if channel.Thread != "" {

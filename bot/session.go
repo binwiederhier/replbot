@@ -41,6 +41,7 @@ const (
 	usersAddedToDenyList              = "👍 Okay, I added the user(s) to the deny list."
 	cannotAddOwnerToDenyList          = "🙁 I don't think adding the session owner to the deny list is a good idea. I must protest."
 	recordingTooLargeMessage          = "🙁 I'm sorry, but you've produced too much output in this session. You may want to run a session with `norecord` to avoid this problem."
+	shareStartCommandMessage          = "To start your terminal sharing session, please run the following command from your terminal:\n\n```bash -c \"$(ssh -T -p %s %s@%s $USER)\"```"
 	helpCommand                       = "!help"
 	helpShortCommand                  = "!h"
 	exitCommand                       = "!exit"
@@ -123,12 +124,8 @@ var (
 // Discord:
 //   Channels, DMs and Threads are all channels with an ID
 type session struct {
-	id             string
-	user           string
-	config         *config.Config
+	conf           *sessionConfig
 	conn           conn
-	control        *channelID
-	terminal       *channelID
 	userInputChan  chan string
 	userInputCount int32
 	forceResend    chan bool
@@ -138,61 +135,56 @@ type session struct {
 	active         bool
 	warnTimer      *time.Timer
 	closeTimer     *time.Timer
-	script         string
 	scriptID       string
-	controlMode    config.ControlMode
-	windowMode     config.WindowMode
-	authMode       config.AuthMode
 	authUsers      map[string]bool // true = allow, false = deny, n/a = default
 	tmux           *util.Tmux
 	cursorOn       bool
 	cursorUpdated  time.Time
-	relayPort      int
-	record         bool
 	shareConn      io.Closer
 	mu             sync.RWMutex
 }
 
 type sessionConfig struct {
-	ID          string
-	User        string
-	Control     *channelID
-	Terminal    *channelID
-	Script      string
-	ControlMode config.ControlMode
-	WindowMode  config.WindowMode
-	AuthMode    config.AuthMode
-	Size        *config.Size
-	RelayPort   int
-	Record      bool
+	global      *config.Config
+	id          string
+	user        string
+	control     *channelID
+	terminal    *channelID
+	script      string
+	controlMode config.ControlMode
+	windowMode  config.WindowMode
+	authMode    config.AuthMode
+	size        *config.Size
+	share       *shareConfig
+	record      bool
+}
+
+type shareConfig struct {
+	user          string
+	relayPort     int
+	hostKeyPair   *util.SSHKeyPair
+	clientKeyPair *util.SSHKeyPair
 }
 
 type sshSession struct {
-	SessionID  string
-	ServerHost string
-	ServerPort string
-	RelayPort  int
+	SessionID     string
+	ServerHost    string
+	ServerPort    string
+	User          string
+	HostKeyPair   *util.SSHKeyPair
+	ClientKeyPair *util.SSHKeyPair
+	RelayPort     int
 }
 
-func newSession(config *config.Config, conn conn, sconfig *sessionConfig) *session {
+func newSession(conf *sessionConfig, conn conn) *session {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 	return &session{
-		config:         config,
+		conf:           conf,
 		conn:           conn,
-		id:             sconfig.ID,
-		user:           sconfig.User,
-		control:        sconfig.Control,
-		terminal:       sconfig.Terminal,
-		script:         sconfig.Script,
-		scriptID:       fmt.Sprintf("replbot_%s", sconfig.ID),
-		controlMode:    sconfig.ControlMode,
-		windowMode:     sconfig.WindowMode,
-		authMode:       sconfig.AuthMode,
+		scriptID:       fmt.Sprintf("replbot_%s", conf.id),
 		authUsers:      make(map[string]bool),
-		relayPort:      sconfig.RelayPort,
-		record:         sconfig.Record,
-		tmux:           util.NewTmux(sconfig.ID, sconfig.Size.Width, sconfig.Size.Height),
+		tmux:           util.NewTmux(conf.id, conf.size.Width, conf.size.Height),
 		userInputChan:  make(chan string, 10), // buffered!
 		userInputCount: 0,
 		forceResend:    make(chan bool),
@@ -200,32 +192,35 @@ func newSession(config *config.Config, conn conn, sconfig *sessionConfig) *sessi
 		ctx:            ctx,
 		cancelFn:       cancel,
 		active:         true,
-		warnTimer:      time.NewTimer(config.IdleTimeout - time.Minute),
-		closeTimer:     time.NewTimer(config.IdleTimeout),
+		warnTimer:      time.NewTimer(conf.global.IdleTimeout - time.Minute),
+		closeTimer:     time.NewTimer(conf.global.IdleTimeout),
 	}
 }
 
 // Run executes a REPL session. This function only returns on error or when gracefully exiting the session.
 func (s *session) Run() error {
-	log.Printf("[session %s] Started REPL session", s.id)
-	defer log.Printf("[session %s] Closed REPL session", s.id)
+	log.Printf("[session %s] Started REPL session", s.conf.id)
+	defer log.Printf("[session %s] Closed REPL session", s.conf.id)
 	env, err := s.getEnv()
 	if err != nil {
 		return err
 	}
-	command := s.createCommand()
-	if err := s.tmux.Start(env, command...); err != nil {
-		log.Printf("[session %s] Failed to start tmux: %s", s.id, err.Error())
+	if err := s.maybeSendStartShareMessage(); err != nil {
 		return err
 	}
-	if err := s.conn.Send(s.control, s.sessionStartedMessage()); err != nil {
+	command := s.createCommand()
+	if err := s.tmux.Start(env, command...); err != nil {
+		log.Printf("[session %s] Failed to start tmux: %s", s.conf.id, err.Error())
+		return err
+	}
+	if err := s.conn.Send(s.conf.control, s.sessionStartedMessage()); err != nil {
 		return err
 	}
 	s.g.Go(s.userInputLoop)
 	s.g.Go(s.commandOutputLoop)
 	s.g.Go(s.activityMonitor)
 	s.g.Go(s.shutdownHandler)
-	if s.record {
+	if s.conf.record {
 		s.g.Go(s.monitorRecording)
 	}
 	if err := s.g.Wait(); err != nil && err != errExit {
@@ -243,8 +238,8 @@ func (s *session) UserInput(user, message string) {
 	defer s.mu.Unlock()
 
 	// Reset timeout timers
-	s.warnTimer.Reset(s.config.IdleTimeout - time.Minute)
-	s.closeTimer.Reset(s.config.IdleTimeout)
+	s.warnTimer.Reset(s.conf.global.IdleTimeout - time.Minute)
+	s.closeTimer.Reset(s.conf.global.IdleTimeout)
 
 	// Forward to input channel
 	s.userInputChan <- message
@@ -257,7 +252,7 @@ func (s *session) Active() bool {
 }
 
 func (s *session) ForceClose() error {
-	_ = s.conn.Send(s.control, forceCloseMessage)
+	_ = s.conn.Send(s.conf.control, forceCloseMessage)
 	s.cancelFn()
 	if err := s.g.Wait(); err != nil && err != errExit {
 		return err
@@ -265,21 +260,38 @@ func (s *session) ForceClose() error {
 	return nil
 }
 
-func (s *session) WriteShareClientScript(w io.Writer) {
-	if err := s.writeShareClientScript(w); err != nil {
-		log.Printf("cannot write share script: %s", err.Error())
-		io.WriteString(w, "echo 'Oh my, something went wrong ...'")
+func (s *session) WriteShareClientScript(w io.Writer) error {
+	if s.conf.share == nil {
+		return errors.New("not a share session")
 	}
+	host, port, err := net.SplitHostPort(s.conf.global.ShareHost)
+	if err != nil {
+		return fmt.Errorf("invalid config: %s", err.Error())
+	}
+	shareConf := s.conf.share
+	sessionInfo := &sshSession{
+		SessionID:     s.conf.id,
+		ServerHost:    host,
+		ServerPort:    port,
+		User:          shareConf.user,
+		RelayPort:     shareConf.relayPort,
+		HostKeyPair:   shareConf.hostKeyPair,
+		ClientKeyPair: shareConf.clientKeyPair,
+	}
+	return shareClientScriptTemplate.Execute(w, sessionInfo)
 }
 
-func (s *session) RegisterShareConn(conn io.Closer) bool {
+func (s *session) WriteShareUserFile(user string) error {
+	return os.WriteFile(s.sshUserFile(), []byte(user), 0600)
+}
+
+func (s *session) RegisterShareConn(conn io.Closer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.shareConn != nil {
-		return false
+		s.shareConn.Close()
 	}
 	s.shareConn = conn
-	return true
 }
 
 func (s *session) userInputLoop() error {
@@ -296,11 +308,11 @@ func (s *session) userInputLoop() error {
 }
 
 func (s *session) handleUserInput(input string) error {
-	log.Printf("[session %s] User> %s", s.id, input)
+	log.Printf("[session %s] User> %s", s.conf.id, input)
 	switch input {
 	case helpCommand, helpShortCommand:
 		atomic.AddInt32(&s.userInputCount, updateMessageUserInputCountLimit)
-		return s.conn.Send(s.control, availableCommandsMessage)
+		return s.conn.Send(s.conf.control, availableCommandsMessage)
 	case exitCommand, exitShortCommand:
 		return errExit
 	case screenCommand, screenShortCommand:
@@ -323,7 +335,7 @@ func (s *session) handleUserInput(input string) error {
 		} else if strings.HasPrefix(input, resizePrefix) {
 			size, err := config.ConvertSize(strings.TrimPrefix(input, resizePrefix))
 			if err != nil {
-				return s.conn.Send(s.control, malformatedTerminalSizeMessage)
+				return s.conn.Send(s.conf.control, malformatedTerminalSizeMessage)
 			}
 			return s.tmux.Resize(size.Width, size.Height)
 		} else if len(input) > 1 && input[0] == '!' {
@@ -342,7 +354,7 @@ func (s *session) commandOutputLoop() error {
 		select {
 		case <-s.ctx.Done():
 			if lastID != "" {
-				_ = s.conn.Update(s.terminal, lastID, util.FormatMarkdownCode(addExitedMessage(sanitizeWindow(last)))) // Show "(REPL exited.)" in terminal
+				_ = s.conn.Update(s.conf.terminal, lastID, util.FormatMarkdownCode(addExitedMessage(sanitizeWindow(last)))) // Show "(REPL exited.)" in terminal
 			}
 			return errExit
 		case <-s.forceResend:
@@ -350,7 +362,7 @@ func (s *session) commandOutputLoop() error {
 			if err != nil {
 				return err
 			}
-		case <-time.After(s.config.RefreshInterval):
+		case <-time.After(s.conf.global.RefreshInterval):
 			last, lastID, err = s.maybeRefreshTerminal(last, lastID)
 			if err != nil {
 				return err
@@ -363,7 +375,7 @@ func (s *session) maybeRefreshTerminal(last, lastID string) (string, string, err
 	current, err := s.tmux.Capture()
 	if err != nil {
 		if lastID != "" {
-			_ = s.conn.Update(s.terminal, lastID, util.FormatMarkdownCode(addExitedMessage(sanitizeWindow(last)))) // Show "(REPL exited.)" in terminal
+			_ = s.conn.Update(s.conf.terminal, lastID, util.FormatMarkdownCode(addExitedMessage(sanitizeWindow(last)))) // Show "(REPL exited.)" in terminal
 		}
 		return "", "", errExit // The command may have ended, gracefully exit
 	}
@@ -372,11 +384,11 @@ func (s *session) maybeRefreshTerminal(last, lastID string) (string, string, err
 		return last, lastID, nil
 	}
 	if s.shouldUpdateTerminal(lastID) {
-		if err := s.conn.Update(s.terminal, lastID, util.FormatMarkdownCode(current)); err == nil {
+		if err := s.conn.Update(s.conf.terminal, lastID, util.FormatMarkdownCode(current)); err == nil {
 			return current, lastID, nil
 		}
 	}
-	if lastID, err = s.conn.SendWithID(s.terminal, util.FormatMarkdownCode(current)); err != nil {
+	if lastID, err = s.conn.SendWithID(s.conf.terminal, util.FormatMarkdownCode(current)); err != nil {
 		return "", "", err
 	}
 	atomic.StoreInt32(&s.userInputCount, 0)
@@ -384,14 +396,14 @@ func (s *session) maybeRefreshTerminal(last, lastID string) (string, string, err
 }
 
 func (s *session) shouldUpdateTerminal(lastID string) bool {
-	if s.controlMode == config.Split {
+	if s.conf.controlMode == config.Split {
 		return lastID != ""
 	}
 	return lastID != "" && atomic.LoadInt32(&s.userInputCount) < updateMessageUserInputCountLimit
 }
 
 func (s *session) maybeAddCursor(window string) string {
-	switch s.config.Cursor {
+	switch s.conf.global.Cursor {
 	case config.CursorOff:
 		return window
 	case config.CursorOn:
@@ -405,7 +417,7 @@ func (s *session) maybeAddCursor(window string) string {
 		if !show || err != nil {
 			return window
 		}
-		if time.Since(s.cursorUpdated) > s.config.Cursor {
+		if time.Since(s.cursorUpdated) > s.conf.global.Cursor {
 			s.cursorOn = !s.cursorOn
 			s.cursorUpdated = time.Now()
 		}
@@ -419,18 +431,21 @@ func (s *session) maybeAddCursor(window string) string {
 func (s *session) shutdownHandler() error {
 	<-s.ctx.Done()
 	if err := s.tmux.Stop(); err != nil {
-		log.Printf("[session %s] Warning: unable to stop tmux: %s", s.id, err.Error())
+		log.Printf("[session %s] Warning: unable to stop tmux: %s", s.conf.id, err.Error())
 	}
-	cmd := exec.Command(s.script, scriptKillCommand, s.scriptID)
+	cmd := exec.Command(s.conf.script, scriptKillCommand, s.scriptID)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("[session %s] Warning: unable to kill command: %s; command output: %s", s.id, err.Error(), string(output))
+		log.Printf("[session %s] Warning: unable to kill command: %s; command output: %s", s.conf.id, err.Error(), string(output))
 	}
 	if err := s.sendExitedMessage(); err != nil {
-		log.Printf("[session %s] Warning: unable to exit message: %s", s.id, err.Error())
+		log.Printf("[session %s] Warning: unable to exit message: %s", s.conf.id, err.Error())
 	}
-	if err := s.conn.Archive(s.control); err != nil {
-		log.Printf("[session %s] Warning: unable to archive thread: %s", s.id, err.Error())
+	if err := s.conn.Archive(s.conf.control); err != nil {
+		log.Printf("[session %s] Warning: unable to archive thread: %s", s.conf.id, err.Error())
 	}
+	os.Remove(s.sshUserFile())
+	os.Remove(s.sshClientKeyFile())
+	os.Remove(s.tmux.RecordingFile())
 	s.mu.Lock()
 	s.active = false
 	if s.shareConn != nil {
@@ -450,21 +465,21 @@ func (s *session) activityMonitor() error {
 		case <-s.ctx.Done():
 			return errExit
 		case <-s.warnTimer.C:
-			_ = s.conn.Send(s.control, fmt.Sprintf(timeoutWarningMessage, s.conn.Mention(s.user)))
-			log.Printf("[session %s] Session has been idle for a long time. Warning sent to user.", s.id)
+			_ = s.conn.Send(s.conf.control, fmt.Sprintf(timeoutWarningMessage, s.conn.Mention(s.conf.user)))
+			log.Printf("[session %s] Session has been idle for a long time. Warning sent to user.", s.conf.id)
 		case <-s.closeTimer.C:
-			log.Printf("[session %s] Idle timeout reached. Closing session.", s.id)
+			log.Printf("[session %s] Idle timeout reached. Closing session.", s.conf.id)
 			return errExit
 		}
 	}
 }
 
 func (s *session) sessionStartedMessage() string {
-	message := fmt.Sprintf(sessionStartedMessage, s.conn.Mention(s.user))
-	if s.controlMode == config.Split {
+	message := fmt.Sprintf(sessionStartedMessage, s.conn.Mention(s.conf.user))
+	if s.conf.controlMode == config.Split {
 		message += "\n\n" + splitModeThreadMessage
 	}
-	switch s.authMode {
+	switch s.conf.authMode {
 	case config.OnlyMe:
 		message += "\n\n" + onlyMeModeMessage
 	case config.Everyone:
@@ -474,9 +489,9 @@ func (s *session) sessionStartedMessage() string {
 }
 
 func (s *session) maybeTrimWindow(window string) string {
-	switch s.windowMode {
+	switch s.conf.windowMode {
 	case config.Full:
-		if s.config.Platform() == config.Discord {
+		if s.conf.global.Platform() == config.Discord {
 			return expandWindow(window)
 		}
 		return window
@@ -488,69 +503,50 @@ func (s *session) maybeTrimWindow(window string) string {
 }
 
 func (s *session) getEnv() (map[string]string, error) {
-	var host, port, relayPort string
-	var err error
-	if s.config.ShareHost != "" {
-		host, port, err = net.SplitHostPort(s.config.ShareHost)
-		if err != nil {
+	var sshUserFile, sshKeyFile, relayPort string
+	if s.conf.share != nil {
+		shareConf := s.conf.share
+		relayPort = strconv.Itoa(shareConf.relayPort)
+		sshUserFile = s.sshUserFile()
+		sshKeyFile = s.sshClientKeyFile()
+		if err := os.WriteFile(sshKeyFile, []byte(shareConf.clientKeyPair.PrivateKey), 0600); err != nil {
 			return nil, err
 		}
 	}
-	if s.relayPort > 0 {
-		relayPort = strconv.Itoa(s.relayPort)
-	}
 	return map[string]string{
-		"REPLBOT_SESSION_ID": s.id,
-		"REPLBOT_SSH_HOST":   host,
-		"REPLBOT_SSH_PORT":   port,
-		"REPLBOT_RELAY_PORT": relayPort,
+		"REPLBOT_SSH_KEY_FILE":   sshKeyFile,
+		"REPLBOT_SSH_USER_FILE":  sshUserFile,
+		"REPLBOT_SSH_RELAY_PORT": relayPort,
 	}, nil
-}
-
-func (s *session) writeShareClientScript(w io.Writer) error {
-	if s.relayPort == 0 {
-		return errors.New("not a share session")
-	}
-	host, port, err := net.SplitHostPort(s.config.ShareHost)
-	if err != nil {
-		return fmt.Errorf("invalid config: %s", err.Error())
-	}
-	sessionInfo := &sshSession{
-		SessionID:  s.id,
-		ServerHost: host,
-		ServerPort: port,
-		RelayPort:  s.relayPort,
-	}
-	return shareClientScriptTemplate.Execute(w, sessionInfo)
 }
 
 func (s *session) handleAllow(allow string) error {
 	users, err := s.parseUsers(allow)
 	if err != nil {
-		return s.conn.Send(s.control, unknownUserMessage)
+		return s.conn.Send(s.conf.control, unknownUserMessage)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, user := range users {
 		s.authUsers[user] = true
 	}
-	return s.conn.Send(s.control, usersAddedToAllowList)
+	return s.conn.Send(s.conf.control, usersAddedToAllowList)
 }
 
 func (s *session) handleDeny(deny string) error {
 	users, err := s.parseUsers(deny)
 	if err != nil {
-		return s.conn.Send(s.control, unknownUserMessage)
+		return s.conn.Send(s.conf.control, unknownUserMessage)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, user := range users {
-		if s.user == user {
-			return s.conn.Send(s.control, cannotAddOwnerToDenyList)
+		if s.conf.user == user {
+			return s.conn.Send(s.conf.control, cannotAddOwnerToDenyList)
 		}
 		s.authUsers[user] = false
 	}
-	return s.conn.Send(s.control, usersAddedToDenyList)
+	return s.conn.Send(s.conf.control, usersAddedToDenyList)
 }
 
 func (s *session) parseUsers(usersList string) ([]string, error) {
@@ -568,30 +564,38 @@ func (s *session) parseUsers(usersList string) ([]string, error) {
 func (s *session) allowUser(user string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if user == s.user {
+	if user == s.conf.user {
 		return true // Always allow session owner!
 	}
 	if allow, ok := s.authUsers[user]; ok {
 		return allow
 	}
-	return s.authMode == config.Everyone
+	return s.conf.authMode == config.Everyone
 }
 
 func (s *session) createCommand() []string {
-	if s.record {
+	if s.conf.record {
 		if err := util.Run("script", "-V"); err == nil {
 			scriptFile, timingFile := s.replayFiles()
-			command := fmt.Sprintf("%s %s %s", s.script, scriptRunCommand, s.scriptID) // a little icky, but fine, since we trust all arguments
+			command := fmt.Sprintf("%s %s %s", s.conf.script, scriptRunCommand, s.scriptID) // a little icky, but fine, since we trust all arguments
 			return []string{"script", "--flush", "--quiet", "--timing=" + timingFile, "--command", command, scriptFile}
 		}
-		log.Printf("[session %s] Cannot record session, 'script' command is missing.", s.id)
-		s.record = false
+		log.Printf("[session %s] Cannot record session, 'script' command is missing.", s.conf.id)
+		s.conf.record = false
 	}
-	return []string{s.script, scriptRunCommand, s.scriptID}
+	return []string{s.conf.script, scriptRunCommand, s.scriptID}
 }
 
 func (s *session) replayFiles() (replayFile string, timingFile string) {
-	return filepath.Join(os.TempDir(), "replbot_"+s.id+".replay-script"), filepath.Join(os.TempDir(), "replbot_"+s.id+".replay-timing")
+	return filepath.Join(os.TempDir(), "replbot_"+s.conf.id+".replay-script"), filepath.Join(os.TempDir(), "replbot_"+s.conf.id+".replay-timing")
+}
+
+func (s *session) sshClientKeyFile() string {
+	return filepath.Join(os.TempDir(), "replbot_"+s.conf.id+".ssh-client-key")
+}
+
+func (s *session) sshUserFile() string {
+	return filepath.Join(os.TempDir(), "replbot_"+s.conf.id+".ssh-user")
 }
 
 func (s *session) createRecordingArchive(filename string) (*os.File, error) {
@@ -639,7 +643,7 @@ func (s *session) monitorRecording() error {
 			if err != nil {
 				continue
 			} else if stat.Size() > recordingFileSizeMax {
-				if err := s.conn.Send(s.control, recordingTooLargeMessage); err != nil {
+				if err := s.conn.Send(s.conf.control, recordingTooLargeMessage); err != nil {
 					return err
 				}
 				return errExit
@@ -649,9 +653,9 @@ func (s *session) monitorRecording() error {
 }
 
 func (s *session) sendExitedMessage() error {
-	if s.record {
+	if s.conf.record {
 		if err := s.sendExitedMessageWithRecording(); err != nil {
-			log.Printf("[session %s] Warning: unable to upload recording: %s", s.id, err.Error())
+			log.Printf("[session %s] Warning: unable to upload recording: %s", s.conf.id, err.Error())
 			return s.sendExitedMessageWithoutRecording()
 		}
 		return nil
@@ -660,11 +664,11 @@ func (s *session) sendExitedMessage() error {
 }
 
 func (s *session) sendExitedMessageWithoutRecording() error {
-	return s.conn.Send(s.control, sessionExitedMessage)
+	return s.conn.Send(s.conf.control, sessionExitedMessage)
 }
 
 func (s *session) sendExitedMessageWithRecording() error {
-	filename := filepath.Join(os.TempDir(), "replbot_"+s.id+".recording.zip")
+	filename := filepath.Join(os.TempDir(), "replbot_"+s.conf.id+".recording.zip")
 	file, err := s.createRecordingArchive(filename)
 	if err != nil {
 		return err
@@ -673,7 +677,22 @@ func (s *session) sendExitedMessageWithRecording() error {
 		file.Close()
 		os.Remove(filename)
 	}()
-	return s.conn.UploadFile(s.control, sessionExitedWithRecordingMessage, recordingFileName, recordingFileType, file)
+	return s.conn.UploadFile(s.conf.control, sessionExitedWithRecordingMessage, recordingFileName, recordingFileType, file)
+}
+
+func (s *session) maybeSendStartShareMessage() error {
+	if s.conf.share == nil {
+		return nil
+	}
+	host, port, err := net.SplitHostPort(s.conf.global.ShareHost)
+	if err != nil {
+		return err
+	}
+	message := fmt.Sprintf(shareStartCommandMessage, port, s.conf.share.user, host)
+	if err := s.conn.SendDM(s.conf.user, message); err != nil {
+		return err
+	}
+	return nil
 }
 
 func zipAppendFile(zw *zip.Writer, name string, filename string) error {

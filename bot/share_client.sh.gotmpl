@@ -1,3 +1,4 @@
+{{- /*gotype:heckel.io/replbot/bot.sessionConfig*/ -}}
 #!/bin/bash
 #
 # REPLbot terminal sharing script for the client.
@@ -9,49 +10,104 @@
 # This script is customized for one session only. It'll only work once.
 #
 
-local_socket=/tmp/replbot_{{.SessionID}}.sock
-ssh_server={{.ServerHost}}
-ssh_port={{.ServerPort}}
-ssh_user={{.SessionID}}
-relay_port={{.RelayPort}}
-tmux_session=replbot_{{.SessionID}}_client
+set -e
+
+remote_ssh_server="{{.ServerHost}}"
+remote_ssh_port="{{.ServerPort}}"
+remote_ssh_user="{{.User}}"
+remote_ssh_relay_port="{{.RelayPort}}"
+tmux_session="replbot_{{.SessionID}}_client"
+sshd_config_file="/tmp/replbot_{{.SessionID}}.client-sshd-config"
+sshd_hostkey_file="/tmp/replbot_{{.SessionID}}.client-sshd-hostkey"
+sshd_authorized_keys_file="/tmp/replbot_{{.SessionID}}.client-sshd-authorized-keys"
+sshd_port="$(shuf -i 32000-65000 -n 1)"
 
 # Check dependencies
-for dep in ssh tmux socat; do
-  command -v $dep >/dev/null 2>&1 || { echo "error: please install 'ssh', 'socat' and 'tmux'."; exit 1; }
+for dep in sshd ssh tmux; do
+  command -v "${dep}" >/dev/null 2>&1 || { echo "error: please install 'ssh', 'socat' and 'tmux'."; exit 1; }
 done
-tmux has-session -t ${tmux_session} 2>/dev/null && { echo "error: tmux session ${tmux_session} already exists"; exit 1; }
+tmux has-session -t "${tmux_session}" 2>/dev/null && { echo "error: tmux session ${tmux_session} already exists"; exit 1; }
 
 # Set up cleanup hooks
 cleanup() {
-  tmux kill-session -t ${tmux_session} 2>/dev/null
-  kill ${SOCAT_PID} ${SSH_PID} 2>/dev/null
+  set +e
+  tmux kill-session -t "${tmux_session}" 2>/dev/null
+  if [ -n "${sshd_pid}" ]; then
+    kill "${sshd_pid}" 2>/dev/null
+  fi
+  if [ -n "${ssh_pid}" ]; then
+    kill "${ssh_pid}" 2>/dev/null
+  fi
+  if [ -n "${check_pid}" ]; then
+    kill "${check_pid}" 2>/dev/null
+  fi
+  rm -f "${sshd_config_file}" "${sshd_hostkey_file}" "${sshd_authorized_keys_file}"
+  clear
+  echo "REPLbot terminal sharing session ended."
+  echo "Check out https://heckel.io/replbot to learn more."
 }
 trap cleanup EXIT
 
-# Start new tmux session, and redirect TTY to relay port, attach tmux client and forward traffic to local socket
-tmux new-session -d -s ${tmux_session}
-tmux set-option -g -t ${tmux_session} status off
-socat exec:"tmux attach -t ${tmux_session}",pty,raw,echo=0,stderr,setsid,sigint,sane \
-    unix-listen:${local_socket} &
-export SOCAT_PID=$!
+# Start new tmux session
+tmux new-session -d -s "${tmux_session}"
+tmux set-option -g -t "${tmux_session}" status off
+
+# Set up SSHd
+cat > "${sshd_hostkey_file}" <<SSHDHOSTKEY
+{{.HostKeyPair.PrivateKey}}
+SSHDHOSTKEY
+chmod 600 "${sshd_hostkey_file}"
+
+cat > "${sshd_authorized_keys_file}" <<SSHDAUTHORIZEDKEYS
+{{.ClientKeyPair.PublicKey}}
+SSHDAUTHORIZEDKEYS
+chmod 600 "${sshd_authorized_keys_file}"
+
+cat > "${sshd_config_file}" <<SSHDCONF
+Port ${sshd_port}
+HostKey ${sshd_hostkey_file}
+PermitRootLogin yes
+AuthorizedKeysFile ${sshd_authorized_keys_file}
+StrictModes no
+PasswordAuthentication no
+AcceptEnv LANG LC_*
+AuthenticationMethods publickey
+AllowUsers $USER
+Match User $USER
+  ForceCommand tmux attach -t ${tmux_session}
+SSHDCONF
+
+$(which sshd) -f "${sshd_config_file}" -D &
+export sshd_pid=$! sshd_code=$?
+[ $sshd_code -eq 0 ] || { echo "error: cannot start sshd"; exit 1; }
 
 # Open reverse tunnel and redirect incoming traffic to local port
 ssh \
-  -fN \
-  -R ${relay_port}:${local_socket} \
-  -p ${ssh_port} \
+  -N \
+  -R "${remote_ssh_relay_port}:127.0.0.1:${sshd_port}" \
+  -p "${remote_ssh_port}" \
   -o ExitOnForwardFailure=yes \
   -o UserKnownHostsFile=/dev/null \
   -o ExitOnForwardFailure=yes \
   -o StrictHostKeyChecking=no \
   -o PasswordAuthentication=no \
-  ${ssh_user}@${ssh_server}
-export SSH_PID=$! SSH_CODE=$?
-[ $SSH_CODE -eq 0 ] || { echo "error: cannot start reverse tunnel"; exit 1; }
+  "${remote_ssh_user}@${remote_ssh_server}" &
+export ssh_pid=$! ssh_code=$?
+[ $ssh_code -eq 0 ] || { echo "error: cannot start reverse tunnel"; exit 1; }
 
-# Attach another client
-tmux attach -t ${tmux_session}
+# Monitor SSH tunnel and kill tmux if it dies (e.g. if it is remotely killed)
+check_loop() {
+  set +e
+  while true; do
+    if ! kill -0 "${ssh_pid}"; then
+      tmux kill-session -t "${tmux_session}" 2>/dev/null
+      exit
+    fi
+    sleep 1
+  done
+}
+check_loop &
+export check_pid=$!
 
-clear
-echo "Session ended."
+# Attach client
+tmux attach -t "${tmux_session}"
