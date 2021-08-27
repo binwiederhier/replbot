@@ -160,6 +160,7 @@ type sessionConfig struct {
 }
 
 type shareConfig struct {
+	user          string
 	relayPort     int
 	hostKeyPair   *util.SSHKeyPair
 	clientKeyPair *util.SSHKeyPair
@@ -169,6 +170,7 @@ type sshSession struct {
 	SessionID     string
 	ServerHost    string
 	ServerPort    string
+	User          string
 	HostKeyPair   *util.SSHKeyPair
 	ClientKeyPair *util.SSHKeyPair
 	RelayPort     int
@@ -271,6 +273,7 @@ func (s *session) WriteShareClientScript(w io.Writer) error {
 		SessionID:     s.conf.id,
 		ServerHost:    host,
 		ServerPort:    port,
+		User:          shareConf.user,
 		RelayPort:     shareConf.relayPort,
 		HostKeyPair:   shareConf.hostKeyPair,
 		ClientKeyPair: shareConf.clientKeyPair,
@@ -511,7 +514,6 @@ func (s *session) getEnv() (map[string]string, error) {
 		}
 	}
 	return map[string]string{
-		"REPLBOT_SESSION_ID":     s.conf.id,
 		"REPLBOT_SSH_KEY_FILE":   sshKeyFile,
 		"REPLBOT_SSH_USER_FILE":  sshUserFile,
 		"REPLBOT_SSH_RELAY_PORT": relayPort,
@@ -686,7 +688,7 @@ func (s *session) maybeSendStartShareMessage() error {
 	if err != nil {
 		return err
 	}
-	message := fmt.Sprintf(shareStartCommandMessage, port, s.conf.id, host)
+	message := fmt.Sprintf(shareStartCommandMessage, port, s.conf.share.user, host)
 	if err := s.conn.SendDM(s.conf.user, message); err != nil {
 		return err
 	}

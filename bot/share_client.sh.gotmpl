@@ -14,7 +14,7 @@ set -e
 
 remote_ssh_server="{{.ServerHost}}"
 remote_ssh_port="{{.ServerPort}}"
-remote_ssh_user="{{.SessionID}}"
+remote_ssh_user="{{.User}}"
 remote_ssh_relay_port="{{.RelayPort}}"
 tmux_session="replbot_{{.SessionID}}_client"
 sshd_config_file="/tmp/replbot_{{.SessionID}}.client-sshd-config"

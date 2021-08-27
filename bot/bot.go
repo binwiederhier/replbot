@@ -54,11 +54,12 @@ var (
 
 // Bot is the main struct that provides REPLbot
 type Bot struct {
-	config   *config.Config
-	conn     conn
-	sessions map[string]*session
-	cancelFn context.CancelFunc
-	mu       sync.RWMutex
+	config    *config.Config
+	conn      conn
+	sessions  map[string]*session
+	shareUser map[string]*session
+	cancelFn  context.CancelFunc
+	mu        sync.RWMutex
 }
 
 // New creates a new REPLbot instance using the given configuration
@@ -80,9 +81,10 @@ func New(conf *config.Config) (*Bot, error) {
 		return nil, fmt.Errorf("invalid type: %s", conf.Platform())
 	}
 	return &Bot{
-		config:   conf,
-		conn:     conn,
-		sessions: make(map[string]*session),
+		config:    conf,
+		conn:      conn,
+		sessions:  make(map[string]*session),
+		shareUser: make(map[string]*session),
 	}, nil
 }
 
@@ -117,6 +119,9 @@ func (b *Bot) Stop() {
 			log.Printf("[session %s] Force-closing failed: %s", sessionID, err.Error())
 		}
 		delete(b.sessions, sessionID)
+		if sess.conf.share != nil {
+			delete(b.shareUser, sess.conf.share.user)
+		}
 	}
 	b.cancelFn() // This must be at the end, see app.go
 }
@@ -217,6 +222,7 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 				}
 				conf.script = shareServerScriptFile
 				conf.share = &shareConfig{
+					user:          util.RandomString(10),
 					relayPort:     relayPort,
 					hostKeyPair:   hostKeyPair,
 					clientKeyPair: clientKeyPair,
@@ -314,6 +320,9 @@ func (b *Bot) startSession(conf *sessionConfig) error {
 	defer b.mu.Unlock()
 	sess := newSession(conf, b.conn)
 	b.sessions[conf.id] = sess
+	if conf.share != nil {
+		b.shareUser[conf.share.user] = sess
+	}
 	log.Printf("[session %s] Starting session", conf.id)
 	go func() {
 		if err := sess.Run(); err != nil {
@@ -323,6 +332,9 @@ func (b *Bot) startSession(conf *sessionConfig) error {
 		}
 		b.mu.Lock()
 		delete(b.sessions, conf.id)
+		if conf.share != nil {
+			delete(b.shareUser, conf.share.user)
+		}
 		b.mu.Unlock()
 	}()
 	return nil
@@ -409,7 +421,7 @@ func (b *Bot) sshServer(port string) (*ssh.Server, error) {
 func (b *Bot) sshSessionHandler(s ssh.Session) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	sess, ok := b.sessions[s.User()]
+	sess, ok := b.shareUser[s.User()]
 	if !ok {
 		return
 	}
@@ -445,7 +457,7 @@ func (b *Bot) sshReversePortForwardingCallback(ctx ssh.Context, host string, por
 	}
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	sess, ok := b.sessions[ctx.User()]
+	sess, ok := b.shareUser[ctx.User()]
 	if !ok || sess.conf.share == nil || sess.conf.share.relayPort != int(port) {
 		return
 	}
