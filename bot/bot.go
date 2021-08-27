@@ -221,7 +221,7 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 				if conf.AuthMode == "" {
 					conf.AuthMode = config.OnlyMe
 				}
-				if conf.Size == nil {
+				if conf.Size == nil && b.config.Platform() == config.Slack { // Discord has a 2000 char limit, sigh ..
 					conf.Size = config.Medium
 				}
 			} else if s := b.config.Script(field); conf.Script == "" && s != "" {
@@ -409,7 +409,7 @@ func (b *Bot) sshSessionHandler(s ssh.Session) {
 		return
 	}
 	clientUser := s.Command()[0]
-	if err := sess.SetShareUser(clientUser); err != nil {
+	if err := sess.WriteShareUserFile(clientUser); err != nil {
 		log.Printf("cannot write share user file: %s", err.Error())
 		return
 	}

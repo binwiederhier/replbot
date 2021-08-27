@@ -292,7 +292,7 @@ func (s *session) WriteShareClientScript(w io.Writer) error {
 	return shareClientScriptTemplate.Execute(w, sessionInfo)
 }
 
-func (s *session) SetShareUser(user string) error {
+func (s *session) WriteShareUserFile(user string) error {
 	return os.WriteFile(s.sshUserFile(), []byte(user), 0600)
 }
 
@@ -534,12 +534,12 @@ func (s *session) getEnv() (map[string]string, error) {
 		}
 	}
 	return map[string]string{
-		"REPLBOT_SESSION_ID":    s.id,
-		"REPLBOT_SSH_HOST":      host,
-		"REPLBOT_SSH_PORT":      port,
-		"REPLBOT_SSH_KEY_FILE":  sshClientKeyFile,
-		"REPLBOT_SSH_USER_FILE": sshUserFile,
-		"REPLBOT_RELAY_PORT":    relayPort,
+		"REPLBOT_SESSION_ID":     s.id,
+		"REPLBOT_SSH_HOST":       host,
+		"REPLBOT_SSH_PORT":       port,
+		"REPLBOT_SSH_KEY_FILE":   sshClientKeyFile,
+		"REPLBOT_SSH_USER_FILE":  sshUserFile,
+		"REPLBOT_SSH_RELAY_PORT": relayPort,
 	}, nil
 }
 
