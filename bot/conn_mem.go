@@ -67,6 +67,19 @@ func (c *memConn) SendWithID(channel *channelID, message string) (string, error)
 	return strconv.Itoa(c.currentID), nil
 }
 
+func (c *memConn) SendDM(userID string, message string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.currentID++
+	c.messages[strconv.Itoa(c.currentID)] = &messageEvent{
+		ID:      strconv.Itoa(c.currentID),
+		Channel: userID,
+		Thread:  "",
+		Message: message,
+	}
+	return nil
+}
+
 func (c *memConn) UploadFile(channel *channelID, message string, filename string, filetype string, file io.Reader) error {
 	return c.Send(channel, message)
 }

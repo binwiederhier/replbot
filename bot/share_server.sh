@@ -10,11 +10,11 @@ case "$1" in
       sleep 1 # Let the output loop grab this script
     }
     trap cleanup EXIT
-    echo "Hi there. Please run this command to create a local tmux session"
-    echo "and connect it to REPLbot. Your tmux session will be shared here."
+    echo "Hi there, you started a terminal sharing session."
+    echo
+    echo "To connect your terminal to REPLbot, run the command I sent to you in a DM."
+    echo "Your terminal session will be shared here."
     while true; do
-      echo
-      echo "bash -c "'"'"\$(ssh -T -p ${REPLBOT_SSH_PORT} ${REPLBOT_SESSION_ID}@${REPLBOT_SSH_HOST} \$USER)"'"'
       echo
       echo "Waiting for client to connect ..."
       retry=1

@@ -14,6 +14,7 @@ type conn interface {
 	Connect(ctx context.Context) (<-chan event, error)
 	Send(channel *channelID, message string) error
 	SendWithID(channel *channelID, message string) (string, error)
+	SendDM(userID string, message string) error
 	UploadFile(channel *channelID, message string, filename string, filetype string, file io.Reader) error
 	Update(channel *channelID, id string, message string) error
 	Archive(channel *channelID) error

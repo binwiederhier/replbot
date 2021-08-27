@@ -41,6 +41,7 @@ const (
 	usersAddedToDenyList              = "👍 Okay, I added the user(s) to the deny list."
 	cannotAddOwnerToDenyList          = "🙁 I don't think adding the session owner to the deny list is a good idea. I must protest."
 	recordingTooLargeMessage          = "🙁 I'm sorry, but you've produced too much output in this session. You may want to run a session with `norecord` to avoid this problem."
+	shareStartCommandMessage          = "To start your terminal sharing session, please run the following command from your terminal:\n\n```bash -c \"$(ssh -T -p %s %s@%s $USER)\"```"
 	helpCommand                       = "!help"
 	helpShortCommand                  = "!h"
 	exitCommand                       = "!exit"
@@ -201,6 +202,16 @@ func (s *session) Run() error {
 	env, err := s.getEnv()
 	if err != nil {
 		return err
+	}
+	if s.conf.share != nil {
+		host, port, err := net.SplitHostPort(s.conf.global.ShareHost)
+		if err != nil {
+			return err
+		}
+		shareStartMessage := fmt.Sprintf(shareStartCommandMessage, port, s.conf.id, host)
+		if err := s.conn.SendDM(s.conf.user, shareStartMessage); err != nil {
+			return err
+		}
 	}
 	command := s.createCommand()
 	if err := s.tmux.Start(env, command...); err != nil {

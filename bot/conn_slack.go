@@ -81,6 +81,18 @@ func (c *slackConn) SendWithID(channel *channelID, message string) (string, erro
 	}
 }
 
+func (c *slackConn) SendDM(userID string, message string) error {
+	ch, _, _, err := c.rtm.OpenConversation(&slack.OpenConversationParameters{
+		ReturnIM: true,
+		Users:    []string{userID},
+	})
+	if err != nil {
+		return err
+	}
+	channel := &channelID{ch.ID, ""}
+	return c.Send(channel, message)
+}
+
 func (c *slackConn) UploadFile(channel *channelID, message string, filename string, filetype string, file io.Reader) error {
 	_, err := c.rtm.UploadFile(slack.FileUploadParameters{
 		InitialComment:  message,
