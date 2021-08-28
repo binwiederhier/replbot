@@ -86,6 +86,16 @@ func FormatMarkdownCode(s string) string {
 	return fmt.Sprintf("```%s```", strings.ReplaceAll(s, "```", "` ` `")) // Hack ...
 }
 
+// InStringList returns true if needle is contained in the list of strings
+func InStringList(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
+}
+
 // StringContainsWait is a helper function for tests to check if a string is contained within a haystack
 // within a reasonable amount of time
 func StringContainsWait(haystackFn func() string, needle string, maxWait time.Duration) (contains bool) {

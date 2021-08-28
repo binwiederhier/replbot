@@ -1,8 +1,11 @@
 package bot
 
 import (
+	"archive/zip"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"os"
 	"regexp"
 	"strings"
 )
@@ -69,4 +72,29 @@ func sanitizeWindow(window string) string {
 		sanitized = fmt.Sprintf("(screen is empty) %s", sanitized)
 	}
 	return sanitized
+}
+
+func zipAppendFile(zw *zip.Writer, name string, filename string) error {
+	f, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	w, err := zw.Create(name)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(w, f)
+	return err
+}
+
+func zipAppendEntry(zw *zip.Writer, name string, content string) error {
+	w, err := zw.Create(name)
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write([]byte(content)); err != nil {
+		return err
+	}
+	return nil
 }

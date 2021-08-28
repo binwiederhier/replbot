@@ -21,7 +21,7 @@ import (
 const (
 	welcomeMessage = "Hi there 👋! "
 	mentionMessage = "I'm a robot for running interactive REPLs and shells from right here. To start a new session, simply tag me " +
-		"and name one of the available REPLs, like so: %s %s\n\nAvailable REPLs: %s.\n\nTo run the session in a `thread`, " +
+		"and prefix one of the available REPLs, like so: %s %s\n\nAvailable REPLs: %s.\n\nTo run the session in a `thread`, " +
 		"the main `channel`, or in `split` mode, use the respective keywords (default: `%s`). To define the terminal size, use the words " +
 		"`tiny`, `small`, `medium` or `large` (default: `%s`). Use `full` or `trim` to set the window mode (default: `%s`), and `everyone` " +
 		"or `only-me` to define who can send commands (default: `%s`). Send `record` or `norecord` to define if your session should be " +
@@ -417,7 +417,7 @@ func (b *Bot) sshServer(port string) (*ssh.Server, error) {
 }
 
 // sshSessionHandler is the main SSH session handler. It returns the share script which creates a local tmux session
-// and opens the reverse tunnel. The session is identified by the SSH user name. If the session is not found, the
+// and opens the reverse tunnel. The session is identified by the SSH user prefix. If the session is not found, the
 // handler exits immediately.
 func (b *Bot) sshSessionHandler(s ssh.Session) {
 	b.mu.RLock()

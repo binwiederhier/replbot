@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,25 +37,17 @@ const (
 	timeoutWarningMessage             = "⏱️ Are you still there, %s? Your session will time out in one minute."
 	forceCloseMessage                 = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
 	malformatedTerminalSizeMessage    = "🙁 You entered an invalid size. Use `tiny`, `small`, `medium` or `large` instead."
-	unknownUserMessage                = "⁉ I'm not sure what you mean. Please only list users."
 	usersAddedToAllowList             = "👍 Okay, I added the user(s) to the allow list."
 	usersAddedToDenyList              = "👍 Okay, I added the user(s) to the deny list."
 	cannotAddOwnerToDenyList          = "🙁 I don't think adding the session owner to the deny list is a good idea. I must protest."
 	recordingTooLargeMessage          = "🙁 I'm sorry, but you've produced too much output in this session. You may want to run a session with `norecord` to avoid this problem."
 	shareStartCommandMessage          = "To start your terminal sharing session, please run the following command from your terminal:\n\n```bash -c \"$(ssh -T -p %s %s@%s $USER)\"```"
-	helpCommand                       = "!help"
-	helpShortCommand                  = "!h"
-	exitCommand                       = "!exit"
-	exitShortCommand                  = "!q"
-	screenCommand                     = "!screen"
-	screenShortCommand                = "!s"
-	resizePrefix                      = "!resize "
-	commentPrefix                     = "!! "
-	noNewLinePrefix                   = "!n "
-	unquotePrefix                     = "!e "
-	allowPrefix                       = "!allow "
-	denyPrefix                        = "!deny "
-	availableCommandsMessage          = "Available commands:\n" +
+	allowCommandHelpMessage           = "To allow users to interact with this session, use the `!allow` command like so: !allow %s\n\nYou may tag multiple users, or use the words " +
+		"`everyone`/`all` to allow all users, or `nobody`/`only-me` to only yourself access."
+	denyCommandHelpMessage = "To deny users from interacting with this session, use the `!deny` command like so: !deny %s\n\nYou may tag multiple users, or use the words " +
+		"`everyone`/`all` to deny everyone (except yourself), like so: !deny all"
+	authModeChangeMessage    = "👍 Okay, I updated the auth mode: "
+	availableCommandsMessage = "Available commands:\n" +
 		"  `!ret`, `!r` - Send empty return\n" +
 		"  `!n ...` - Text without a new line\n" +
 		"  `!e ...` - Text with escape sequences (`\\n`, `\\t`, ...)\n" +
@@ -87,26 +80,27 @@ var (
 	// See https://man7.org/linux/man-pages/man4/console_codes.4.html
 	consoleCodeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
-	// sendKeysTable is a translation table that translates input commands "!<command>" to something that can be
+	// sendKeysMapping is a translation table that translates input commands "!<command>" to something that can be
 	// send via tmux's send-keys command, see https://man7.org/linux/man-pages/man1/tmux.1.html#KEY_BINDINGS
-	sendKeysTable = map[string]string{
-		"c":     "^C",
-		"d":     "^D",
-		"ret":   "^M",
-		"r":     "^M",
-		"t":     "\t",
-		"tt":    "\t\t",
-		"esc":   "escape", // ESC
-		"up":    "up",     // Cursor up
-		"down":  "down",   // Cursor down
-		"right": "right",  // Cursor right
-		"left":  "left",   // Cursor left
-		"space": "space",  // Space
-		"pd":    "ppage",  // Page up
-		"pu":    "npage",  // Page down
+	sendKeysMapping = map[string]string{
+		"!c":     "^C",
+		"!d":     "^D",
+		"!ret":   "^M",
+		"!r":     "^M",
+		"!t":     "\t",
+		"!tt":    "\t\t",
+		"!esc":   "escape", // ESC
+		"!up":    "up",     // Cursor up
+		"!down":  "down",   // Cursor down
+		"!right": "right",  // Cursor right
+		"!left":  "left",   // Cursor left
+		"!space": "space",  // Space
+		"!pu":    "ppage",  // Page up
+		"!pd":    "npage",  // Page down
 	}
-	ctrlCommandRegex = regexp.MustCompile(`^!c-([a-z])$`)
-	errExit          = errors.New("exited REPL")
+	ctrlCommandRegex  = regexp.MustCompile(`^!c-([a-z])$`)
+	alphanumericRegex = regexp.MustCompile(`^([a-zA-Z0-9])$`)
+	errExit           = errors.New("exited REPL")
 
 	//go:embed share_client.sh.gotmpl
 	shareClientScriptSource   string
@@ -164,6 +158,11 @@ type shareConfig struct {
 	relayPort     int
 	hostKeyPair   *util.SSHKeyPair
 	clientKeyPair *util.SSHKeyPair
+}
+
+type sessionCommand struct {
+	prefix string
+	fn     func(input string) error
 }
 
 type sshSession struct {
@@ -308,43 +307,35 @@ func (s *session) userInputLoop() error {
 }
 
 func (s *session) handleUserInput(input string) error {
-	log.Printf("[session %s] User> %s", s.conf.id, input)
-	switch input {
-	case helpCommand, helpShortCommand:
-		atomic.AddInt32(&s.userInputCount, updateMessageUserInputCountLimit)
-		return s.conn.Send(s.conf.control, availableCommandsMessage)
-	case exitCommand, exitShortCommand:
-		return errExit
-	case screenCommand, screenShortCommand:
-		s.forceResend <- true
-		return nil
-	default:
-		atomic.AddInt32(&s.userInputCount, 1)
-		if strings.HasPrefix(input, commentPrefix) {
-			return nil // Ignore comments
-		} else if strings.HasPrefix(input, noNewLinePrefix) {
-			return s.tmux.Paste(s.conn.Unescape(strings.TrimPrefix(input, noNewLinePrefix)))
-		} else if strings.HasPrefix(input, unquotePrefix) {
-			return s.tmux.Paste(unquote(s.conn.Unescape(strings.TrimPrefix(input, unquotePrefix))))
-		} else if strings.HasPrefix(input, allowPrefix) {
-			return s.handleAllow(strings.TrimPrefix(input, allowPrefix))
-		} else if strings.HasPrefix(input, denyPrefix) {
-			return s.handleDeny(strings.TrimPrefix(input, denyPrefix))
-		} else if matches := ctrlCommandRegex.FindStringSubmatch(input); len(matches) > 0 {
-			return s.tmux.SendKeys("^" + strings.ToUpper(matches[1]))
-		} else if strings.HasPrefix(input, resizePrefix) {
-			size, err := config.ParseSize(strings.TrimPrefix(input, resizePrefix))
-			if err != nil {
-				return s.conn.Send(s.conf.control, malformatedTerminalSizeMessage)
-			}
-			return s.tmux.Resize(size.Width, size.Height)
-		} else if len(input) > 1 && input[0] == '!' {
-			if controlChar, ok := sendKeysTable[input[1:]]; ok {
-				return s.tmux.SendKeys(controlChar)
-			}
-		}
-		return s.tmux.Paste(fmt.Sprintf("%s\n", s.conn.Unescape(input)))
+	commands := []*sessionCommand{
+		{"!h", s.handleHelpCommand},
+		{"!help", s.handleHelpCommand},
+		{"!n", s.handleNoNewlineCommand},
+		{"!e", s.handleEscapeCommand},
+		{"!allow", s.handleAllowCommand},
+		{"!deny", s.handleDenyCommand},
+		{"!!", s.handleCommentCommand},
+		{"!screen", s.handleScreenCommand},
+		{"!s", s.handleScreenCommand},
+		{"!resize", s.handleResizeCommand},
+		{"!c-", s.handleSendKeysCommand}, // more see below!
+		{"!q", s.handleExitCommand},
+		{"!exit", s.handleExitCommand},
 	}
+	for name, _ := range sendKeysMapping {
+		commands = append(commands, &sessionCommand{name, s.handleSendKeysCommand})
+	}
+	sort.Slice(commands, func(i, j int) bool {
+		return len(commands[i].prefix) > len(commands[j].prefix)
+	})
+	log.Printf("[session %s] User> %s", s.conf.id, input)
+	atomic.AddInt32(&s.userInputCount, 1)
+	for _, c := range commands {
+		if strings.HasPrefix(input, c.prefix) {
+			return c.fn(input)
+		}
+	}
+	return s.tmux.Paste(fmt.Sprintf("%s\n", s.conn.Unescape(input)))
 }
 
 func (s *session) commandOutputLoop() error {
@@ -520,38 +511,9 @@ func (s *session) getEnv() (map[string]string, error) {
 	}, nil
 }
 
-func (s *session) handleAllow(allow string) error {
-	users, err := s.parseUsers(allow)
-	if err != nil {
-		return s.conn.Send(s.conf.control, unknownUserMessage)
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, user := range users {
-		s.authUsers[user] = true
-	}
-	return s.conn.Send(s.conf.control, usersAddedToAllowList)
-}
-
-func (s *session) handleDeny(deny string) error {
-	users, err := s.parseUsers(deny)
-	if err != nil {
-		return s.conn.Send(s.conf.control, unknownUserMessage)
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, user := range users {
-		if s.conf.user == user {
-			return s.conn.Send(s.conf.control, cannotAddOwnerToDenyList)
-		}
-		s.authUsers[user] = false
-	}
-	return s.conn.Send(s.conf.control, usersAddedToDenyList)
-}
-
-func (s *session) parseUsers(usersList string) ([]string, error) {
+func (s *session) parseUsers(usersList []string) ([]string, error) {
 	users := make([]string, 0)
-	for _, field := range strings.Fields(usersList) {
+	for _, field := range usersList {
 		user, err := s.conn.ParseMention(field)
 		if err != nil {
 			return nil, err
@@ -695,27 +657,105 @@ func (s *session) maybeSendStartShareMessage() error {
 	return nil
 }
 
-func zipAppendFile(zw *zip.Writer, name string, filename string) error {
-	f, err := os.Open(filename)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	w, err := zw.Create(name)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(w, f)
-	return err
+func (s *session) handleHelpCommand(_ string) error {
+	atomic.AddInt32(&s.userInputCount, updateMessageUserInputCountLimit)
+	return s.conn.Send(s.conf.control, availableCommandsMessage)
 }
 
-func zipAppendEntry(zw *zip.Writer, name string, content string) error {
-	w, err := zw.Create(name)
-	if err != nil {
-		return err
+func (s *session) handleNoNewlineCommand(input string) error {
+	return s.tmux.Paste(s.conn.Unescape(strings.TrimSpace(strings.TrimPrefix(input, "!n"))))
+}
+
+func (s *session) handleEscapeCommand(input string) error {
+	return s.tmux.Paste(unquote(s.conn.Unescape(strings.TrimSpace(strings.TrimPrefix(input, "!e")))))
+}
+
+func (s *session) handleAllowCommand(input string) error {
+	fields := strings.Fields(strings.TrimSpace(strings.TrimPrefix(input, "!allow")))
+	if util.InStringList(fields, "all") || util.InStringList(fields, "everyone") {
+		return s.resetAuthMode(config.Everyone)
 	}
-	if _, err := w.Write([]byte(content)); err != nil {
-		return err
+	if util.InStringList(fields, "nobody") || util.InStringList(fields, "only-me") {
+		return s.resetAuthMode(config.OnlyMe)
 	}
+	users, err := s.parseUsers(fields)
+	if err != nil || len(users) == 0 {
+		return s.conn.Send(s.conf.control, fmt.Sprintf(allowCommandHelpMessage, s.conn.MentionBot()))
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, user := range users {
+		s.authUsers[user] = true
+	}
+	return s.conn.Send(s.conf.control, usersAddedToAllowList)
+}
+
+func (s *session) handleDenyCommand(input string) error {
+	fields := strings.Fields(strings.TrimSpace(strings.TrimPrefix(input, "!deny")))
+	if util.InStringList(fields, "all") || util.InStringList(fields, "everyone") {
+		return s.resetAuthMode(config.OnlyMe)
+	}
+	users, err := s.parseUsers(fields)
+	if err != nil || len(users) == 0 {
+		return s.conn.Send(s.conf.control, fmt.Sprintf(denyCommandHelpMessage, s.conn.MentionBot()))
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, user := range users {
+		if s.conf.user == user {
+			return s.conn.Send(s.conf.control, cannotAddOwnerToDenyList)
+		}
+		s.authUsers[user] = false
+	}
+	return s.conn.Send(s.conf.control, usersAddedToDenyList)
+}
+
+func (s *session) resetAuthMode(authMode config.AuthMode) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.conf.authMode = authMode
+	s.authUsers = make(map[string]bool)
+	if authMode == config.Everyone {
+		return s.conn.Send(s.conf.control, authModeChangeMessage+everyoneModeMessage)
+	}
+	return s.conn.Send(s.conf.control, authModeChangeMessage+onlyMeModeMessage)
+}
+
+func (s *session) handleSendKeysCommand(input string) error {
+	fields := strings.Fields(strings.TrimSpace(input))
+	keys := make([]string, 0)
+	for _, field := range fields {
+		if matches := ctrlCommandRegex.FindStringSubmatch(field); len(matches) > 0 {
+			keys = append(keys, "^"+strings.ToUpper(matches[1]))
+		} else if matches := alphanumericRegex.FindStringSubmatch(field); len(matches) > 0 {
+			keys = append(keys, matches[1])
+		} else if controlChar, ok := sendKeysMapping[field]; ok {
+			keys = append(keys, controlChar)
+		} else {
+			return s.conn.Send(s.conf.control, "xxxxxxxxxxxxxxxx")
+		}
+	}
+	return s.tmux.SendKeys(keys...)
+}
+
+func (s *session) handleCommentCommand(_ string) error {
+	atomic.AddInt32(&s.userInputCount, 1)
+	return nil // Ignore comments
+}
+
+func (s *session) handleScreenCommand(_ string) error {
+	s.forceResend <- true
 	return nil
+}
+
+func (s *session) handleResizeCommand(input string) error {
+	size, err := config.ParseSize(strings.TrimSpace(strings.TrimPrefix(input, "!resize")))
+	if err != nil {
+		return s.conn.Send(s.conf.control, malformatedTerminalSizeMessage)
+	}
+	return s.tmux.Resize(size.Width, size.Height)
+}
+
+func (s *session) handleExitCommand(_ string) error {
+	return errExit
 }

@@ -11,10 +11,10 @@ import (
 )
 
 func TestSessionCustomShell(t *testing.T) {
-	sess, conn := createSession(t, "enter-name")
+	sess, conn := createSession(t, "enter-prefix")
 	defer sess.ForceClose()
 	assert.True(t, conn.MessageContainsWait("1", "REPL session started, @phil"))
-	assert.True(t, conn.MessageContainsWait("2", "Enter name:"))
+	assert.True(t, conn.MessageContainsWait("2", "Enter prefix:"))
 
 	sess.UserInput("phil", "Phil")
 	assert.True(t, conn.MessageContainsWait("2", "Hello Phil!"))

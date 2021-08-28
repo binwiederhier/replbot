@@ -81,8 +81,8 @@ func (s *Tmux) Paste(input string) error {
 }
 
 // SendKeys invokes the tmux send-keys command, which is useful for sending control sequences
-func (s *Tmux) SendKeys(keys string) error {
-	return Run("tmux", "send-keys", "-t", fmt.Sprintf("%s.2", s.id), keys)
+func (s *Tmux) SendKeys(keys ...string) error {
+	return Run(append([]string{"tmux", "send-keys", "-t", fmt.Sprintf("%s.2", s.id)}, keys...)...)
 }
 
 // Resize resizes the active pane (.2) to the given size up to the max size
