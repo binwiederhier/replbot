@@ -46,9 +46,26 @@ const (
 		"`everyone`/`all` to allow all users, or `nobody`/`only-me` to only yourself access."
 	denyCommandHelpMessage = "To deny users from interacting with this session, use the `!deny` command like so: !deny %s\n\nYou may tag multiple users, or use the words " +
 		"`everyone`/`all` to deny everyone (except yourself), like so: !deny all"
-	authModeChangeMessage    = "👍 Okay, I updated the auth mode: "
+	noNewlineHelpMessage = "Use the `!n` command to send text without a newline character (`\\n`) at the end of the line, e.g. sending `!n ls`, will send `ls` and not `ls\\n`. " +
+		"This is similar `echo -n` in a shell."
+	escapeHelpMessage = "Use the `!e` command to interpret the escape sequences `\\n` (new line), `\\r` (carriage return), `\\t` (tab), `\\b` (backspace) and `\\x..` (hex " +
+		"representation of any byte), e.g. `Hi\\bI` will show up as `HI`. This is is similar to `echo -e` in a shell."
+	sendKeysHelpMessage = "Use any of the send-key commands (`!c`, `!esc`, ...) to send common keyboard shortcuts, e.g. `!d` to send Ctrl-D, or `!up` to send the up key.\n\n" +
+		"You may also combine them in a sequence, like so: `!c-b d` (Ctrl-B + d), or `!up !up !down !down !left !right !left !right b a`."
+	authModeChangeMessage = "👍 Okay, I updated the auth mode: "
+
+	/*
+	   Sending text:
+	      `<text>` - Sends `<text>\n`
+	      `!n <text>` - Sends `<text>` (no new line)
+	      `!e <text>` - Sends `<text>`, interpreting escape sequences (`\\n`, `\\r`, ...)
+	   Sending keys:
+
+	   Other commands:
+
+	*/
 	availableCommandsMessage = "Available commands:\n" +
-		"  `!ret`, `!r` - Send empty return\n" +
+		"  `!r` - Send empty return\n" +
 		"  `!n ...` - Text without a new line\n" +
 		"  `!e ...` - Text with escape sequences (`\\n`, `\\t`, ...)\n" +
 		"  `!c`, `!d`, `!c-...` - Send Ctrl-C/Ctrl-D/Ctrl-...\n" +
@@ -83,10 +100,9 @@ var (
 	// sendKeysMapping is a translation table that translates input commands "!<command>" to something that can be
 	// send via tmux's send-keys command, see https://man7.org/linux/man-pages/man1/tmux.1.html#KEY_BINDINGS
 	sendKeysMapping = map[string]string{
+		"!r":     "^M",
 		"!c":     "^C",
 		"!d":     "^D",
-		"!ret":   "^M",
-		"!r":     "^M",
 		"!t":     "\t",
 		"!tt":    "\t\t",
 		"!esc":   "escape", // ESC
@@ -120,6 +136,7 @@ var (
 type session struct {
 	conf           *sessionConfig
 	conn           conn
+	commands       []*sessionCommand
 	userInputChan  chan string
 	userInputCount int32
 	forceResend    chan bool
@@ -161,8 +178,8 @@ type shareConfig struct {
 }
 
 type sessionCommand struct {
-	prefix string
-	fn     func(input string) error
+	prefix  string
+	execute func(input string) error
 }
 
 type sshSession struct {
@@ -178,7 +195,7 @@ type sshSession struct {
 func newSession(conf *sessionConfig, conn conn) *session {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
-	return &session{
+	s := &session{
 		conf:           conf,
 		conn:           conn,
 		scriptID:       fmt.Sprintf("replbot_%s", conf.id),
@@ -194,6 +211,32 @@ func newSession(conf *sessionConfig, conn conn) *session {
 		warnTimer:      time.NewTimer(conf.global.IdleTimeout - time.Minute),
 		closeTimer:     time.NewTimer(conf.global.IdleTimeout),
 	}
+	return initSessionCommands(s)
+}
+
+func initSessionCommands(s *session) *session {
+	s.commands = []*sessionCommand{
+		{"!h", s.handleHelpCommand},
+		{"!help", s.handleHelpCommand},
+		{"!n", s.handleNoNewlineCommand},
+		{"!e", s.handleEscapeCommand},
+		{"!allow", s.handleAllowCommand},
+		{"!deny", s.handleDenyCommand},
+		{"!!", s.handleCommentCommand},
+		{"!screen", s.handleScreenCommand},
+		{"!s", s.handleScreenCommand},
+		{"!resize", s.handleResizeCommand},
+		{"!c-", s.handleSendKeysCommand}, // more see below!
+		{"!q", s.handleExitCommand},
+		{"!exit", s.handleExitCommand},
+	}
+	for prefix := range sendKeysMapping {
+		s.commands = append(s.commands, &sessionCommand{prefix, s.handleSendKeysCommand})
+	}
+	sort.Slice(s.commands, func(i, j int) bool {
+		return len(s.commands[i].prefix) > len(s.commands[j].prefix)
+	})
+	return s
 }
 
 // Run executes a REPL session. This function only returns on error or when gracefully exiting the session.
@@ -288,7 +331,7 @@ func (s *session) RegisterShareConn(conn io.Closer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.shareConn != nil {
-		s.shareConn.Close()
+		_ = s.shareConn.Close()
 	}
 	s.shareConn = conn
 }
@@ -307,35 +350,14 @@ func (s *session) userInputLoop() error {
 }
 
 func (s *session) handleUserInput(input string) error {
-	commands := []*sessionCommand{
-		{"!h", s.handleHelpCommand},
-		{"!help", s.handleHelpCommand},
-		{"!n", s.handleNoNewlineCommand},
-		{"!e", s.handleEscapeCommand},
-		{"!allow", s.handleAllowCommand},
-		{"!deny", s.handleDenyCommand},
-		{"!!", s.handleCommentCommand},
-		{"!screen", s.handleScreenCommand},
-		{"!s", s.handleScreenCommand},
-		{"!resize", s.handleResizeCommand},
-		{"!c-", s.handleSendKeysCommand}, // more see below!
-		{"!q", s.handleExitCommand},
-		{"!exit", s.handleExitCommand},
-	}
-	for name, _ := range sendKeysMapping {
-		commands = append(commands, &sessionCommand{name, s.handleSendKeysCommand})
-	}
-	sort.Slice(commands, func(i, j int) bool {
-		return len(commands[i].prefix) > len(commands[j].prefix)
-	})
 	log.Printf("[session %s] User> %s", s.conf.id, input)
 	atomic.AddInt32(&s.userInputCount, 1)
-	for _, c := range commands {
+	for _, c := range s.commands {
 		if strings.HasPrefix(input, c.prefix) {
-			return c.fn(input)
+			return c.execute(input)
 		}
 	}
-	return s.tmux.Paste(fmt.Sprintf("%s\n", s.conn.Unescape(input)))
+	return s.handlePassthrough(input)
 }
 
 func (s *session) commandOutputLoop() error {
@@ -657,17 +679,29 @@ func (s *session) maybeSendStartShareMessage() error {
 	return nil
 }
 
+func (s *session) handlePassthrough(input string) error {
+	return s.tmux.Paste(fmt.Sprintf("%s\n", s.conn.Unescape(input)))
+}
+
 func (s *session) handleHelpCommand(_ string) error {
 	atomic.AddInt32(&s.userInputCount, updateMessageUserInputCountLimit)
 	return s.conn.Send(s.conf.control, availableCommandsMessage)
 }
 
 func (s *session) handleNoNewlineCommand(input string) error {
-	return s.tmux.Paste(s.conn.Unescape(strings.TrimSpace(strings.TrimPrefix(input, "!n"))))
+	input = s.conn.Unescape(strings.TrimSpace(strings.TrimPrefix(input, "!n")))
+	if input == "" {
+		return s.conn.Send(s.conf.control, noNewlineHelpMessage)
+	}
+	return s.tmux.Paste(input)
 }
 
 func (s *session) handleEscapeCommand(input string) error {
-	return s.tmux.Paste(unquote(s.conn.Unescape(strings.TrimSpace(strings.TrimPrefix(input, "!e")))))
+	input = unquote(s.conn.Unescape(strings.TrimSpace(strings.TrimPrefix(input, "!e"))))
+	if input == "" {
+		return s.conn.Send(s.conf.control, escapeHelpMessage)
+	}
+	return s.tmux.Paste(input)
 }
 
 func (s *session) handleAllowCommand(input string) error {
@@ -732,14 +766,13 @@ func (s *session) handleSendKeysCommand(input string) error {
 		} else if controlChar, ok := sendKeysMapping[field]; ok {
 			keys = append(keys, controlChar)
 		} else {
-			return s.conn.Send(s.conf.control, "xxxxxxxxxxxxxxxx")
+			return s.conn.Send(s.conf.control, sendKeysHelpMessage)
 		}
 	}
 	return s.tmux.SendKeys(keys...)
 }
 
 func (s *session) handleCommentCommand(_ string) error {
-	atomic.AddInt32(&s.userInputCount, 1)
 	return nil // Ignore comments
 }
 
