@@ -37,6 +37,7 @@ const (
 	timeoutWarningMessage             = "⏱️ Are you still there, %s? Your session will time out in one minute."
 	forceCloseMessage                 = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
 	resizeCommandHelpMessage          = "Use the `!resize` command to resize the terminal, like so: !resize medium.\n\nAllowed sizes are `tiny`, `small`, `medium` or `large`."
+	messageLimitWarningMessage        = "Note that Discord has a message size limit of 2000 characters, so your messages may be truncated if they get to large."
 	usersAddedToAllowList             = "👍 Okay, I added the user(s) to the allow list."
 	usersAddedToDenyList              = "👍 Okay, I added the user(s) to the deny list."
 	cannotAddOwnerToDenyList          = "🙁 I don't think adding the session owner to the deny list is a good idea. I must protest."
@@ -491,6 +492,9 @@ func (s *session) sessionStartedMessage() string {
 	case config.Everyone:
 		message += "\n\n" + everyoneModeMessage
 	}
+	if s.shouldWarnMessageLength(s.conf.size) {
+		message += "\n\n" + messageLimitWarningMessage
+	}
 	return message
 }
 
@@ -672,6 +676,17 @@ func (s *session) maybeSendStartShareMessage() error {
 	return nil
 }
 
+func (s *session) shouldWarnMessageLength(size *config.Size) bool {
+	return s.conf.global.Platform() == config.Discord && (size == config.Medium || size == config.Large)
+}
+
+func (s *session) maybeSendMessageLengthWarning(size *config.Size) error {
+	if s.shouldWarnMessageLength(size) {
+		return s.conn.Send(s.conf.control, messageLimitWarningMessage)
+	}
+	return nil
+}
+
 func (s *session) handlePassthrough(input string) error {
 	return s.tmux.Paste(fmt.Sprintf("%s\n", s.conn.Unescape(input)))
 }
@@ -778,6 +793,9 @@ func (s *session) handleResizeCommand(input string) error {
 	size, err := config.ParseSize(strings.TrimSpace(strings.TrimPrefix(input, "!resize")))
 	if err != nil {
 		return s.conn.Send(s.conf.control, resizeCommandHelpMessage)
+	}
+	if err := s.maybeSendMessageLengthWarning(size); err != nil {
+		return err
 	}
 	return s.tmux.Resize(size.Width, size.Height)
 }
