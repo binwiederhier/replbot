@@ -676,15 +676,15 @@ func (s *session) maybeSendStartShareMessage() error {
 	return nil
 }
 
-func (s *session) shouldWarnMessageLength(size *config.Size) bool {
-	return s.conf.global.Platform() == config.Discord && (size == config.Medium || size == config.Large)
-}
-
 func (s *session) maybeSendMessageLengthWarning(size *config.Size) error {
 	if s.shouldWarnMessageLength(size) {
 		return s.conn.Send(s.conf.control, messageLimitWarningMessage)
 	}
 	return nil
+}
+
+func (s *session) shouldWarnMessageLength(size *config.Size) bool {
+	return s.conf.global.Platform() == config.Discord && (size == config.Medium || size == config.Large)
 }
 
 func (s *session) handlePassthrough(input string) error {
