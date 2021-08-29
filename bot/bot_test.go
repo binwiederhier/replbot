@@ -15,14 +15,14 @@ const (
 
 var (
 	testScripts = map[string]string{
-		"enter-prefix": `
+		"enter-name": `
 #!/bin/bash
 case "$1" in
   run)
     while true; do
-      echo -n "Enter prefix: "
-      read prefix
-      echo "Hello $prefix!"
+      echo -n "Enter name: "
+      read name
+      echo "Hello $name!"
     done 
     ;;
   *) ;;

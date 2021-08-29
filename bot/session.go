@@ -36,13 +36,13 @@ const (
 	sessionExitedWithRecordingMessage = "👋 REPL exited. You can find a recording of the session in the file below. See you later!"
 	timeoutWarningMessage             = "⏱️ Are you still there, %s? Your session will time out in one minute."
 	forceCloseMessage                 = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
-	malformatedTerminalSizeMessage    = "🙁 You entered an invalid size. Use `tiny`, `small`, `medium` or `large` instead."
+	resizeCommandHelpMessage          = "Use the `!resize` command to resize the terminal, like so: !resize medium.\n\nAllowed sizes are `tiny`, `small`, `medium` or `large`."
 	usersAddedToAllowList             = "👍 Okay, I added the user(s) to the allow list."
 	usersAddedToDenyList              = "👍 Okay, I added the user(s) to the deny list."
 	cannotAddOwnerToDenyList          = "🙁 I don't think adding the session owner to the deny list is a good idea. I must protest."
 	recordingTooLargeMessage          = "🙁 I'm sorry, but you've produced too much output in this session. You may want to run a session with `norecord` to avoid this problem."
 	shareStartCommandMessage          = "To start your terminal sharing session, please run the following command from your terminal:\n\n```bash -c \"$(ssh -T -p %s %s@%s $USER)\"```"
-	allowCommandHelpMessage           = "To allow users to interact with this session, use the `!allow` command like so: !allow %s\n\nYou may tag multiple users, or use the words " +
+	allowCommandHelpMessage           = "To allow other users to interact with this session, use the `!allow` command like so: !allow %s\n\nYou may tag multiple users, or use the words " +
 		"`everyone`/`all` to allow all users, or `nobody`/`only-me` to only yourself access."
 	denyCommandHelpMessage = "To deny users from interacting with this session, use the `!deny` command like so: !deny %s\n\nYou may tag multiple users, or use the words " +
 		"`everyone`/`all` to deny everyone (except yourself), like so: !deny all"
@@ -53,30 +53,23 @@ const (
 	sendKeysHelpMessage = "Use any of the send-key commands (`!c`, `!esc`, ...) to send common keyboard shortcuts, e.g. `!d` to send Ctrl-D, or `!up` to send the up key.\n\n" +
 		"You may also combine them in a sequence, like so: `!c-b d` (Ctrl-B + d), or `!up !up !down !down !left !right !left !right b a`."
 	authModeChangeMessage = "👍 Okay, I updated the auth mode: "
-
-	/*
-	   Sending text:
-	      `<text>` - Sends `<text>\n`
-	      `!n <text>` - Sends `<text>` (no new line)
-	      `!e <text>` - Sends `<text>`, interpreting escape sequences (`\\n`, `\\r`, ...)
-	   Sending keys:
-
-	   Other commands:
-
-	*/
-	availableCommandsMessage = "Available commands:\n" +
-		"  `!r` - Send empty return\n" +
-		"  `!n ...` - Text without a new line\n" +
-		"  `!e ...` - Text with escape sequences (`\\n`, `\\t`, ...)\n" +
-		"  `!c`, `!d`, `!c-...` - Send Ctrl-C/Ctrl-D/Ctrl-...\n" +
-		"  `!t`, `!tt` - Send TAB / double-TAB\n" +
-		"  `!up`, `!down`, `!left`, `!right` - Send cursor keys\n" +
-		"  `!pu`, `!pd` - Send page up / page down\n" +
-		"  `!esc`, `!space` - Send ESC/Space\n" +
-		"  `!allow ...`, `!deny ...` - Allow/deny users to interact\n" +
-		"  `!! ...` - Comment\n" +
-		"  `!resize ...` - Resize window\n" +
-		"  `!screen`, `!s` - Re-send a new terminal window\n" +
+	helpMessage           = "Alright, buckle up. Here's a list of all the things you can do in this REPL session.\n\n" +
+		"Sending text:\n" +
+		"  `TEXT` - Sends _TEXT\\n_\n" +
+		"  `!n TEXT` - Sends _TEXT_ (no new line)\n" +
+		"  `!e TEXT` - Sends _TEXT_ (interprets _\\n_, _\\r_, _\\t_, _\\b_ & _\\x.._)\n\n" +
+		"Sending keys (can be combined):\n" +
+		"  `!r` - Return key\n" +
+		"  `!t`, `!tt` - Tab / double-tab\n" +
+		"  `!up`, `!down`, `!left`, `!right` - Cursor\n" +
+		"  `!pu`, `!pd` - Page up / page down\n" +
+		"  `!c`, `!d`, `!c-..` - Ctrl-C/Ctrl-D/Ctrl-..\n" +
+		"  `!esc`, `!space` - Escape/Space\n\n" +
+		"Other commands:\n" +
+		"  `!! ..` - Comment, ignored entirely\n" +
+		"  `!allow ..`, `!deny ..` - Allow/deny users\n" +
+		"  `!resize ..` - Resize window\n" +
+		"  `!screen`, `!s` - Re-send terminal\n" +
 		"  `!help`, `!h` - Show this help screen\n" +
 		"  `!exit`, `!q` - Exit REPL"
 
@@ -685,7 +678,7 @@ func (s *session) handlePassthrough(input string) error {
 
 func (s *session) handleHelpCommand(_ string) error {
 	atomic.AddInt32(&s.userInputCount, updateMessageUserInputCountLimit)
-	return s.conn.Send(s.conf.control, availableCommandsMessage)
+	return s.conn.Send(s.conf.control, helpMessage)
 }
 
 func (s *session) handleNoNewlineCommand(input string) error {
@@ -784,7 +777,7 @@ func (s *session) handleScreenCommand(_ string) error {
 func (s *session) handleResizeCommand(input string) error {
 	size, err := config.ParseSize(strings.TrimSpace(strings.TrimPrefix(input, "!resize")))
 	if err != nil {
-		return s.conn.Send(s.conf.control, malformatedTerminalSizeMessage)
+		return s.conn.Send(s.conf.control, resizeCommandHelpMessage)
 	}
 	return s.tmux.Resize(size.Width, size.Height)
 }
