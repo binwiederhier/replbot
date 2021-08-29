@@ -12,6 +12,10 @@ import (
 	"sync"
 )
 
+const (
+	discordMessageLengthLimit = 2000 // Sigh ...
+)
+
 var (
 	discordUserLinkRegex    = regexp.MustCompile(`<@!([^>]+)>`)
 	discordChannelLinkRegex = regexp.MustCompile(`<#[^>]+>`)
@@ -68,7 +72,7 @@ func (c *discordConn) SendWithID(channel *channelID, message string) (string, er
 	if err != nil {
 		return "", err
 	}
-	msg, err := c.session.ChannelMessageSend(ch, message)
+	msg, err := c.session.ChannelMessageSend(ch, cropWindow(message, discordMessageLengthLimit))
 	if err != nil {
 		return "", err
 	}
@@ -84,7 +88,16 @@ func (c *discordConn) SendDM(userID string, message string) error {
 	c.channels[ch.ID] = ch
 	c.mu.Unlock()
 	channel := &channelID{ch.ID, ""}
-	return c.Send(channel, message)
+	return c.Send(channel, cropWindow(message, discordMessageLengthLimit))
+}
+
+func (c *discordConn) Update(channel *channelID, id string, message string) error {
+	ch := channel.Channel
+	if channel.Thread != "" {
+		ch = channel.Thread
+	}
+	_, err := c.session.ChannelMessageEdit(ch, id, cropWindow(message, discordMessageLengthLimit))
+	return err
 }
 
 func (c *discordConn) UploadFile(channel *channelID, message string, filename string, filetype string, file io.Reader) error {
@@ -100,15 +113,6 @@ func (c *discordConn) UploadFile(channel *channelID, message string, filename st
 			Reader:      file,
 		},
 	})
-	return err
-}
-
-func (c *discordConn) Update(channel *channelID, id string, message string) error {
-	ch := channel.Channel
-	if channel.Thread != "" {
-		ch = channel.Thread
-	}
-	_, err := c.session.ChannelMessageEdit(ch, id, message)
 	return err
 }
 

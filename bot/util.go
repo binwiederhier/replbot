@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"regexp"
 	"strings"
@@ -50,10 +51,34 @@ func expandWindow(window string) string {
 	if len(lines) <= 2 {
 		return window
 	}
+	// FIXME this is still wrong i think; also we need to expand empty lines at the beginning
 	if strings.TrimSpace(lines[len(lines)-1]) != "" || strings.TrimSpace(lines[len(lines)-2]) != "" {
 		return window
 	}
 	lines[len(lines)-1] = ".\n"
+	return strings.Join(lines, "\n")
+}
+
+func cropWindow(window string, limit int) string {
+	if len(window) < limit {
+		return window
+	}
+	lines := strings.Split(window, "\n")
+	if len(lines) <= 2 {
+		return window[:limit-1]
+	}
+	cropMessage := "   (Cropped due to platform limit)   "
+	if len(lines[1]) < len(cropMessage) {
+		lines[1] = cropMessage
+	} else {
+		lines[1] = cropMessage + lines[1][len(cropMessage):]
+	}
+	maxlen := int(math.Ceil(float64(limit)/float64(len(lines)))) - 1
+	for i := range lines {
+		if len(lines[i]) > maxlen {
+			lines[i] = lines[i][:maxlen]
+		}
+	}
 	return strings.Join(lines, "\n")
 }
 

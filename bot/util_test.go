@@ -102,3 +102,30 @@ does not need to be expanded.
 	actual := expandWindow(before)
 	assert.Equal(t, expected, actual)
 }
+
+func TestCropWindow(t *testing.T) {
+	before := `1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+`
+	expected := `1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHI
+   (Cropped due to platform limit)   BCDEFGHI
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHI
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHI
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHI
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHI
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHI
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHI
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHI
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHI
+`
+	actual := cropWindow(before, 500)
+	assert.Equal(t, expected, actual)
+}
