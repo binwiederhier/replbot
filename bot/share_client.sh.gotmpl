@@ -24,8 +24,14 @@ sshd_port="$((32000 + $RANDOM))"
 
 # Check dependencies
 for dep in sshd ssh tmux; do
-  command -v "${dep}" >/dev/null 2>&1 || { echo "error: please install 'ssh', 'socat' and 'tmux'."; exit 1; }
+  command -v "${dep}" >/dev/null 2>&1 || { echo "error: please install 'ssh', 'sshd' and 'tmux'."; exit 1; }
 done
+tmux_bin="$(which tmux)"
+sshd_bin="$(which sshd)"
+[ -x "${tmux_bin}" ] || { echo "error: cannot find full path for 'tmux'."; exit 1; }
+[ -x "${sshd_bin}" ] || { echo "error: cannot find full path for 'sshd'."; exit 1; }
+
+# Check active sessions
 tmux has-session -t "${tmux_session}" 2>/dev/null && { echo "error: tmux session ${tmux_session} already exists"; exit 1; }
 
 # Set up cleanup hooks
@@ -74,10 +80,10 @@ AcceptEnv LANG LC_*
 AuthenticationMethods publickey
 AllowUsers $USER
 Match User $USER
-  ForceCommand tmux attach -t ${tmux_session}
+  ForceCommand ${tmux_bin} attach -t ${tmux_session}
 SSHDCONF
 
-$(which sshd) -f "${sshd_config_file}" -D &
+"${sshd_bin}" -f "${sshd_config_file}" -D &
 export sshd_pid=$! sshd_code=$?
 [ $sshd_code -eq 0 ] || { echo "error: cannot start sshd"; exit 1; }
 
