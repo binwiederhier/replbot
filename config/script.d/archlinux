@@ -1,12 +1,12 @@
 #!/bin/sh
-# REPLbot script to run a Bash shell in an Ubuntu container.
+# REPLbot script to run a Bash shell in an Arch Linux container.
 #
 # Scripts are executed as "./script run <id>" to start the REPL,
 # and as "./script kill <id>" to stop it.
 
 DIR="$(cd -- "$(dirname "$0")" >/dev/null 2>&1 && pwd -P)"
 case "$1" in
-  run) docker run --rm --name "$2" -it ubuntu ;;
+  run) docker run --rm --name "$2" -it archlinux ;;
   kill) "$DIR"/helpers/docker-kill "$2" ;;
   *) echo "Syntax: $0 (run|kill) ID"; exit 1 ;;
 esac
