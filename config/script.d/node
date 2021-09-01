@@ -10,5 +10,3 @@ case "$1" in
   kill) "$DIR"/helpers/docker-kill "$2" ;;
   *) echo "Syntax: $0 (run|kill) ID"; exit 1 ;;
 esac
-
-
