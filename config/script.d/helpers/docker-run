@@ -36,6 +36,21 @@ else
   fi
 fi
 
+# Horrible hack to kill container when the disk grows into GB range,
+# since --storage-opt is not available for ext4
+check_docker() {
+  while :; do
+    toobig=$(docker ps -f "name=$name" --format '{{.Names}} {{.Size}}' | awk '$2 ~ /^[0-9]+(\.[0-9]+)?G/ { print }')
+    if [ -n "${toobig}" ]; then
+      echo; echo "Oh no, you've used too much disk space. Please try to behave next time. Exiting."
+      docker kill "$name" >/dev/null
+      exit
+    fi
+    sleep 1
+  done
+}
+check_docker &
+
 # Run container with some reasonable defaults
 docker run \
   --cpus "${cpus}" \
