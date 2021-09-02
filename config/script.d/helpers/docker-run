@@ -31,16 +31,26 @@ if [ -z "${mem}" ]; then
   mem=128
 else
   mem="$((mem / 1024 / divisor))"
-  if [ "${mem}" -lt "1280000000" ]; then
+  if [ "${mem}" -lt "128" ]; then
     mem=128
   fi
 fi
 
 # Horrible hack to kill container when the disk grows into GB range,
 # since --storage-opt is not available for ext4
+check_file=/tmp/$name.check_docker
+touch "${check_file}"
+
+cleanup() { rm -f "${check_file}"; }
+trap cleanup EXIT
+
 check_docker() {
+  trap cleanup EXIT
   while :; do
-    toobig=$(docker ps -f "name=$name" --format '{{.Names}} {{.Size}}' | awk '$2 ~ /^[0-9]+(\.[0-9]+)?G/ { print }')
+    if [ ! -f "${check_file}" ]; then
+      exit
+    fi
+    toobig=$(docker ps -f "name=$name" --format '{{.Size}}' | awk '$1 ~ /^[0-9]+(\.[0-9]+)?G/ { print }')
     if [ -n "${toobig}" ]; then
       echo; echo "Oh no, you've used too much disk space. Please try to behave next time. Exiting."
       docker kill "$name" >/dev/null
