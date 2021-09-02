@@ -10,7 +10,7 @@ case "$1" in
     echo 'The Java REPL uses commands prefixed with a slash, e.g. /help.'
     echo 'To type these in Slack/Discord, prefix them with space, e.g. " /help".'
     echo
-    docker run --rm --name "$2" -it openjdk
+    "$DIR"/helpers/docker-run "$2" openjdk
     ;;
   kill) "$DIR"/helpers/docker-kill "$2" ;;
   *) echo "Syntax: $0 (run|kill) ID"; exit 1 ;;

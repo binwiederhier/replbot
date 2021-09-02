@@ -1,0 +1,51 @@
+#!/bin/sh
+# This is a helper script to start REPLs and shells inside of Docker containers.
+# It tries its best to launch Docker with reasonable and secure defaults.
+#
+# Containers should be safe against fork bombs and too much memory or CPU consumption.
+#
+# To test these yourself, you may use these commands:
+# - CPU: for i in 1 2 3 4; do while : ; do : ; done & done
+# - Memory: free -m; var1="$(yes | head -c $((80 * 1024 * 1024)))"; free -m
+# - Fork bomb: :(){ :|:& };: # Dangerous, DANGEROUS!
+#
+# This script should be executed as "./docker-run <id> <container>".
+
+name="$1"
+container="$2"
+shift; shift
+
+# Determine CPU/RAM resources
+divisor=4
+cpus="$(grep -c '^processor' /proc/cpuinfo)"
+mem="$(grep MemTotal /proc/meminfo | awk '{print $2}')"
+if [ -z "${cpus}" ]; then
+  cpus=0.5
+else
+  cpus="$((cpus / divisor))"
+  if [ "${cpus}" = "0" ]; then
+    cpus=0.5
+  fi
+fi
+if [ -z "${mem}" ]; then
+  mem=128
+else
+  mem="$((mem / 1024 / divisor))"
+  if [ "${mem}" -lt "1280000000" ]; then
+    mem=128
+  fi
+fi
+
+# Run container with some reasonable defaults
+docker run \
+  --cpus "${cpus}" \
+  --memory "${mem}M" \
+  --ulimit nofile=1024:1024 \
+  --ulimit nproc=512:512 \
+  --pids-limit 512 \
+  --interactive \
+  --tty \
+  --rm \
+  --name "${name}" \
+   "${container}" \
+   "$@"

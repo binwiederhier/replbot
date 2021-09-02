@@ -6,7 +6,7 @@
 
 DIR="$(cd -- "$(dirname "$0")" >/dev/null 2>&1 && pwd -P)"
 case "$1" in
-  run) docker run --rm --name "$2" -it centos ;;
+  run) "$DIR"/helpers/docker-run "$2" centos ;;
   kill) "$DIR"/helpers/docker-kill "$2" ;;
   *) echo "Syntax: $0 (run|kill) ID"; exit 1 ;;
 esac
