@@ -524,9 +524,10 @@ func (s *session) getEnv() (map[string]string, error) {
 		}
 	}
 	return map[string]string{
-		"REPLBOT_SSH_KEY_FILE":   sshKeyFile,
-		"REPLBOT_SSH_USER_FILE":  sshUserFile,
-		"REPLBOT_SSH_RELAY_PORT": relayPort,
+		"REPLBOT_SSH_KEY_FILE":       sshKeyFile,
+		"REPLBOT_SSH_USER_FILE":      sshUserFile,
+		"REPLBOT_SSH_RELAY_PORT":     relayPort,
+		"REPLBOT_MAX_TOTAL_SESSIONS": strconv.Itoa(s.conf.global.MaxUserSessions),
 	}, nil
 }
 

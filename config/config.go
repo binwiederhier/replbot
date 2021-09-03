@@ -12,6 +12,12 @@ const (
 	// DefaultIdleTimeout defines the default time after which a session is terminated
 	DefaultIdleTimeout = 10 * time.Minute
 
+	// DefaultMaxTotalSessions is the default number of sessions all users are allowed to run concurrently
+	DefaultMaxTotalSessions = 6
+
+	// DefaultMaxUserSessions is the default number of sessions a user is allowed to run concurrently
+	DefaultMaxUserSessions = 2
+
 	// DefaultRecord defines if sessions are recorded by default
 	DefaultRecord = false
 
@@ -24,6 +30,8 @@ type Config struct {
 	Token              string
 	ScriptDir          string
 	IdleTimeout        time.Duration
+	MaxTotalSessions   int
+	MaxUserSessions    int
 	DefaultControlMode ControlMode
 	DefaultWindowMode  WindowMode
 	DefaultAuthMode    AuthMode
@@ -41,6 +49,8 @@ func New(token string) *Config {
 	return &Config{
 		Token:              token,
 		IdleTimeout:        DefaultIdleTimeout,
+		MaxTotalSessions:   DefaultMaxTotalSessions,
+		MaxUserSessions:    DefaultMaxUserSessions,
 		DefaultControlMode: DefaultControlMode,
 		DefaultWindowMode:  DefaultWindowMode,
 		DefaultAuthMode:    DefaultAuthMode,

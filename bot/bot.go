@@ -28,13 +28,15 @@ const (
 		"recorded (default: `%s`). To start a private REPL session, just DM me."
 	shareMessage = "Using the word `share` will allow you to share your own terminal here in the chat. Terminal sharing " +
 		"sessions are always started in `only-me` mode, unless overridden."
-	unknownCommandMessage = "I am not quite sure what you mean by _%s_ ⁉"
-	misconfiguredMessage  = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
-	helpRequestedCommand  = "help"
-	recordCommand         = "record"
-	noRecordCommand       = "norecord"
-	shareCommand          = "share"
-	shareServerScriptFile = "/tmp/replbot_share_server.sh"
+	unknownCommandMessage           = "I am not quite sure what you mean by _%s_ ⁉"
+	misconfiguredMessage            = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
+	maxTotalSessionsExceededMessage = "😭 There are too many active sessions. Please wait until another session is closed."
+	maxUserSessionsExceededMessage  = "😭 You have too many active sessions. Please close a session to start a new one."
+	helpRequestedCommand            = "help"
+	recordCommand                   = "record"
+	noRecordCommand                 = "norecord"
+	shareCommand                    = "share"
+	shareServerScriptFile           = "/tmp/replbot_share_server.sh"
 )
 
 // Key exchange algorithms, ciphers,and MACs (see `ssh-audit` output)
@@ -163,6 +165,9 @@ func (b *Bot) handleMessageEvent(ev *messageEvent) error {
 	conf, err := b.parseSessionConfig(ev)
 	if err != nil {
 		return b.handleHelp(ev.Channel, ev.Thread, err)
+	}
+	if allowed, err := b.checkSessionAllowed(ev.Channel, ev.Thread, conf); err != nil || !allowed {
+		return err
 	}
 	switch conf.controlMode {
 	case config.Channel:
@@ -478,4 +483,24 @@ func (b *Bot) sshServerConfigCallback(ctx ssh.Context) *gossh.ServerConfig {
 	conf.Ciphers = []string{cipherAES128GCM, cipherED25519, cipherSSHRSA}
 	conf.MACs = []string{macHMACSHA256ETM}
 	return conf
+}
+
+func (b *Bot) checkSessionAllowed(channel, thread string, conf *sessionConfig) (allowed bool, err error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if len(b.sessions) >= b.config.MaxTotalSessions {
+		ch := &channelID{Channel: channel, Thread: thread}
+		return false, b.conn.Send(ch, maxTotalSessionsExceededMessage)
+	}
+	var userSessions int
+	for _, sess := range b.sessions {
+		if sess.conf.user == conf.user {
+			userSessions++
+		}
+	}
+	if userSessions >= b.config.MaxUserSessions {
+		ch := &channelID{Channel: channel, Thread: thread}
+		return false, b.conn.Send(ch, maxUserSessionsExceededMessage)
+	}
+	return true, nil
 }

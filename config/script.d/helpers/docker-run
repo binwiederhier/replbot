@@ -16,9 +16,12 @@ container="$2"
 shift; shift
 
 # Determine CPU/RAM resources
-divisor=4
+if [ -n "${REPLBOT_MAX_TOTAL_SESSIONS}" ]; then
+  divisor="${REPLBOT_MAX_TOTAL_SESSIONS}"
+else
+  divisor=4
+fi
 cpus="$(grep -c '^processor' /proc/cpuinfo)"
-mem="$(grep MemTotal /proc/meminfo | awk '{print $2}')"
 if [ -z "${cpus}" ]; then
   cpus=0.5
 else
@@ -27,6 +30,7 @@ else
     cpus=0.5
   fi
 fi
+mem="$(grep MemTotal /proc/meminfo | awk '{print $2}')"
 if [ -z "${mem}" ]; then
   mem=128
 else

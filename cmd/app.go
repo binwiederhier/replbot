@@ -24,6 +24,8 @@ func New() *cli.App {
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "bot-token", Aliases: []string{"t"}, EnvVars: []string{"REPLBOT_BOT_TOKEN"}, DefaultText: "none", Usage: "bot token"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "script-dir", Aliases: []string{"d"}, EnvVars: []string{"REPLBOT_SCRIPT_DIR"}, Value: "/etc/replbot/script.d", DefaultText: "/etc/replbot/script.d", Usage: "script directory"}),
 		altsrc.NewDurationFlag(&cli.DurationFlag{Name: "idle-timeout", Aliases: []string{"T"}, EnvVars: []string{"REPLBOT_IDLE_TIMEOUT"}, Value: config.DefaultIdleTimeout, Usage: "timeout after which sessions are ended"}),
+		altsrc.NewIntFlag(&cli.IntFlag{Name: "max-total-sessions", Aliases: []string{"S"}, EnvVars: []string{"REPLBOT_MAX_TOTAL_SESSIONS"}, Value: config.DefaultMaxTotalSessions, Usage: "max number of concurrent total sessions"}),
+		altsrc.NewIntFlag(&cli.IntFlag{Name: "max-user-sessions", Aliases: []string{"U"}, EnvVars: []string{"REPLBOT_MAX_USER_SESSIONS"}, Value: config.DefaultMaxUserSessions, Usage: "max number of concurrent sessions per user"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-control-mode", Aliases: []string{"m"}, EnvVars: []string{"REPLBOT_DEFAULT_CONTROL_MODE"}, Value: string(config.DefaultControlMode), DefaultText: string(config.DefaultControlMode), Usage: "default control mode [channel, thread or split]"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-window-mode", Aliases: []string{"w"}, EnvVars: []string{"REPLBOT_DEFAULT_WINDOW_MODE"}, Value: string(config.DefaultWindowMode), DefaultText: string(config.DefaultWindowMode), Usage: "default window mode [full or trim]"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-auth-mode", Aliases: []string{"a"}, EnvVars: []string{"REPLBOT_DEFAULT_AUTH_MODE"}, Value: string(config.DefaultAuthMode), DefaultText: string(config.DefaultAuthMode), Usage: "default auth mode [only-me or everyone]"}),
@@ -55,6 +57,8 @@ func execRun(c *cli.Context) error {
 	token := c.String("bot-token")
 	scriptDir := c.String("script-dir")
 	timeout := c.Duration("idle-timeout")
+	maxTotalSessions := c.Int("max-total-sessions")
+	maxUserSessions := c.Int("max-user-sessions")
 	defaultControlMode := config.ControlMode(c.String("default-control-mode"))
 	defaultWindowMode := config.WindowMode(c.String("default-window-mode"))
 	defaultAuthMode := config.AuthMode(c.String("default-auth-mode"))
@@ -78,6 +82,8 @@ func execRun(c *cli.Context) error {
 		return errors.New("default window mode must be 'full' or 'trim'")
 	} else if shareHost != "" && (shareKeyFile == "" || !util.FileExists(shareKeyFile)) {
 		return errors.New("share key file must be set and exist if share host is set, check --share-key-file or REPLBOT_SHARE_KEY_FILE")
+	} else if maxUserSessions > maxTotalSessions {
+		return errors.New("max total sessions must be larger or equal to max user sessions")
 	}
 	cursorRate, err := parseCursorRate(cursor)
 	if err != nil {
@@ -100,6 +106,8 @@ func execRun(c *cli.Context) error {
 	conf := config.New(token)
 	conf.ScriptDir = scriptDir
 	conf.IdleTimeout = timeout
+	conf.MaxTotalSessions = maxTotalSessions
+	conf.MaxUserSessions = maxUserSessions
 	conf.DefaultControlMode = defaultControlMode
 	conf.DefaultWindowMode = defaultWindowMode
 	conf.DefaultAuthMode = defaultAuthMode
