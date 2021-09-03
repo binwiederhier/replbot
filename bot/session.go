@@ -64,8 +64,9 @@ const (
 		"  `!t`, `!tt` - Tab / double-tab\n" +
 		"  `!up`, `!down`, `!left`, `!right` - Cursor\n" +
 		"  `!pu`, `!pd` - Page up / page down\n" +
-		"  `!c`, `!d`, `!c-..` - Ctrl-C/Ctrl-D/Ctrl-..\n" +
+		"  `!a`, `!b`, `!c`, `!d`, `!c-..` - Ctrl-..\n" +
 		"  `!esc`, `!space` - Escape/Space\n\n" +
+		"  `!f1`, `!f2`, ... - F1, F2, ...\n\n" +
 		"Other commands:\n" +
 		"  `!! ..` - Comment, ignored entirely\n" +
 		"  `!allow ..`, `!deny ..` - Allow/deny users\n" +
@@ -95,6 +96,8 @@ var (
 	// send via tmux's send-keys command, see https://man7.org/linux/man-pages/man1/tmux.1.html#KEY_BINDINGS
 	sendKeysMapping = map[string]string{
 		"!r":     "^M",
+		"!a":     "^A",
+		"!b":     "^B",
 		"!c":     "^C",
 		"!d":     "^D",
 		"!t":     "\t",
@@ -109,6 +112,7 @@ var (
 		"!pd":    "npage",  // Page down
 	}
 	ctrlCommandRegex  = regexp.MustCompile(`^!c-([a-z])$`)
+	fKeysRegex        = regexp.MustCompile(`^!f([0-9][012]?)$`)
 	alphanumericRegex = regexp.MustCompile(`^([a-zA-Z0-9])$`)
 	errExit           = errors.New("exited REPL")
 
@@ -131,7 +135,7 @@ type session struct {
 	conf           *sessionConfig
 	conn           conn
 	commands       []*sessionCommand
-	userInputChan  chan string
+	userInputChan  chan [2]string // user, message
 	userInputCount int32
 	forceResend    chan bool
 	g              *errgroup.Group
@@ -195,7 +199,7 @@ func newSession(conf *sessionConfig, conn conn) *session {
 		scriptID:       fmt.Sprintf("replbot_%s", conf.id),
 		authUsers:      make(map[string]bool),
 		tmux:           util.NewTmux(conf.id, conf.size.Width, conf.size.Height),
-		userInputChan:  make(chan string, 10), // buffered!
+		userInputChan:  make(chan [2]string, 10), // buffered!
 		userInputCount: 0,
 		forceResend:    make(chan bool),
 		g:              g,
@@ -221,6 +225,7 @@ func initSessionCommands(s *session) *session {
 		{"!s", s.handleScreenCommand},
 		{"!resize", s.handleResizeCommand},
 		{"!c-", s.handleSendKeysCommand}, // more see below!
+		{"!f", s.handleSendKeysCommand},  // more see below!
 		{"!q", s.handleExitCommand},
 		{"!exit", s.handleExitCommand},
 	}
@@ -235,8 +240,8 @@ func initSessionCommands(s *session) *session {
 
 // Run executes a REPL session. This function only returns on error or when gracefully exiting the session.
 func (s *session) Run() error {
-	log.Printf("[session %s] Started REPL session", s.conf.id)
-	defer log.Printf("[session %s] Closed REPL session", s.conf.id)
+	log.Printf("[%s] Started REPL session", s.conf.id)
+	defer log.Printf("[%s] Closed REPL session", s.conf.id)
 	env, err := s.getEnv()
 	if err != nil {
 		return err
@@ -246,7 +251,7 @@ func (s *session) Run() error {
 	}
 	command := s.createCommand()
 	if err := s.tmux.Start(env, command...); err != nil {
-		log.Printf("[session %s] Failed to start tmux: %s", s.conf.id, err.Error())
+		log.Printf("[%s] Failed to start tmux: %s", s.conf.id, err.Error())
 		return err
 	}
 	if err := s.conn.Send(s.conf.control, s.sessionStartedMessage()); err != nil {
@@ -278,7 +283,7 @@ func (s *session) UserInput(user, message string) {
 	s.closeTimer.Reset(s.conf.global.IdleTimeout)
 
 	// Forward to input channel
-	s.userInputChan <- message
+	s.userInputChan <- [2]string{user, message}
 }
 
 func (s *session) Active() bool {
@@ -333,8 +338,8 @@ func (s *session) RegisterShareConn(conn io.Closer) {
 func (s *session) userInputLoop() error {
 	for {
 		select {
-		case line := <-s.userInputChan:
-			if err := s.handleUserInput(line); err != nil {
+		case m := <-s.userInputChan:
+			if err := s.handleUserInput(m[0], m[1]); err != nil {
 				return err
 			}
 		case <-s.ctx.Done():
@@ -343,15 +348,15 @@ func (s *session) userInputLoop() error {
 	}
 }
 
-func (s *session) handleUserInput(input string) error {
-	log.Printf("[session %s] User> %s", s.conf.id, input)
+func (s *session) handleUserInput(user, message string) error {
+	log.Printf("[%s] User %s> %s", s.conf.id, user, message)
 	atomic.AddInt32(&s.userInputCount, 1)
 	for _, c := range s.commands {
-		if strings.HasPrefix(input, c.prefix) {
-			return c.execute(input)
+		if strings.HasPrefix(message, c.prefix) {
+			return c.execute(message)
 		}
 	}
-	return s.handlePassthrough(input)
+	return s.handlePassthrough(message)
 }
 
 func (s *session) commandOutputLoop() error {
@@ -438,17 +443,17 @@ func (s *session) maybeAddCursor(window string) string {
 func (s *session) shutdownHandler() error {
 	<-s.ctx.Done()
 	if err := s.tmux.Stop(); err != nil {
-		log.Printf("[session %s] Warning: unable to stop tmux: %s", s.conf.id, err.Error())
+		log.Printf("[%s] Warning: unable to stop tmux: %s", s.conf.id, err.Error())
 	}
 	cmd := exec.Command(s.conf.script, scriptKillCommand, s.scriptID)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("[session %s] Warning: unable to kill command: %s; command output: %s", s.conf.id, err.Error(), string(output))
+		log.Printf("[%s] Warning: unable to kill command: %s; command output: %s", s.conf.id, err.Error(), string(output))
 	}
 	if err := s.sendExitedMessage(); err != nil {
-		log.Printf("[session %s] Warning: unable to exit message: %s", s.conf.id, err.Error())
+		log.Printf("[%s] Warning: unable to exit message: %s", s.conf.id, err.Error())
 	}
 	if err := s.conn.Archive(s.conf.control); err != nil {
-		log.Printf("[session %s] Warning: unable to archive thread: %s", s.conf.id, err.Error())
+		log.Printf("[%s] Warning: unable to archive thread: %s", s.conf.id, err.Error())
 	}
 	os.Remove(s.sshUserFile())
 	os.Remove(s.sshClientKeyFile())
@@ -473,9 +478,9 @@ func (s *session) activityMonitor() error {
 			return errExit
 		case <-s.warnTimer.C:
 			_ = s.conn.Send(s.conf.control, fmt.Sprintf(timeoutWarningMessage, s.conn.Mention(s.conf.user)))
-			log.Printf("[session %s] Session has been idle for a long time. Warning sent to user.", s.conf.id)
+			log.Printf("[%s] Session has been idle for a long time. Warning sent to user.", s.conf.id)
 		case <-s.closeTimer.C:
-			log.Printf("[session %s] Idle timeout reached. Closing session.", s.conf.id)
+			log.Printf("[%s] Idle timeout reached. Closing session.", s.conf.id)
 			return errExit
 		}
 	}
@@ -562,7 +567,7 @@ func (s *session) createCommand() []string {
 			command := fmt.Sprintf("%s %s %s", s.conf.script, scriptRunCommand, s.scriptID) // a little icky, but fine, since we trust all arguments
 			return []string{"script", "--flush", "--quiet", "--timing=" + timingFile, "--command", command, scriptFile}
 		}
-		log.Printf("[session %s] Cannot record session, 'script' command is missing.", s.conf.id)
+		log.Printf("[%s] Cannot record session, 'script' command is missing.", s.conf.id)
 		s.conf.record = false
 	}
 	return []string{s.conf.script, scriptRunCommand, s.scriptID}
@@ -637,7 +642,7 @@ func (s *session) monitorRecording() error {
 func (s *session) sendExitedMessage() error {
 	if s.conf.record {
 		if err := s.sendExitedMessageWithRecording(); err != nil {
-			log.Printf("[session %s] Warning: unable to upload recording: %s", s.conf.id, err.Error())
+			log.Printf("[%s] Warning: unable to upload recording: %s", s.conf.id, err.Error())
 			return s.sendExitedMessageWithoutRecording()
 		}
 		return nil
@@ -770,6 +775,8 @@ func (s *session) handleSendKeysCommand(input string) error {
 	for _, field := range fields {
 		if matches := ctrlCommandRegex.FindStringSubmatch(field); len(matches) > 0 {
 			keys = append(keys, "^"+strings.ToUpper(matches[1]))
+		} else if matches := fKeysRegex.FindStringSubmatch(field); len(matches) > 0 {
+			keys = append(keys, "F"+strings.ToUpper(matches[1]))
 		} else if matches := alphanumericRegex.FindStringSubmatch(field); len(matches) > 0 {
 			keys = append(keys, matches[1])
 		} else if controlChar, ok := sendKeysMapping[field]; ok {

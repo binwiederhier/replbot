@@ -118,9 +118,9 @@ func (b *Bot) Stop() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for sessionID, sess := range b.sessions {
-		log.Printf("[session %s] Force-closing session", sessionID)
+		log.Printf("[%s] Force-closing session", sessionID)
 		if err := sess.ForceClose(); err != nil {
-			log.Printf("[session %s] Force-closing failed: %s", sessionID, err.Error())
+			log.Printf("[%s] Force-closing failed: %s", sessionID, err.Error())
 		}
 		delete(b.sessions, sessionID)
 		if sess.conf.share != nil {
@@ -329,12 +329,12 @@ func (b *Bot) startSession(conf *sessionConfig) error {
 	if conf.share != nil {
 		b.shareUser[conf.share.user] = sess
 	}
-	log.Printf("[session %s] Starting session", conf.id)
+	log.Printf("[%s] Starting session, requested by %s", conf.id, conf.user)
 	go func() {
 		if err := sess.Run(); err != nil {
-			log.Printf("[session %s] Session exited with error: %s", conf.id, err.Error())
+			log.Printf("[%s] Session exited with error: %s", conf.id, err.Error())
 		} else {
-			log.Printf("[session %s] Session exited successfully", conf.id)
+			log.Printf("[%s] Session exited successfully", conf.id)
 		}
 		b.mu.Lock()
 		delete(b.sessions, conf.id)
