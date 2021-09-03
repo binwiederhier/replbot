@@ -102,7 +102,20 @@ bot-token: MUST_BE_SET
 #
 # idle-timeout: 10m
 
+# Defines the maximum number of active sessions by all users combined.
+#
+# Format:    <number>
+# Default:   6
+# Required:  No
+#
 # max-total-sessions: 6
+
+# Defines the maximum number of active sessions by any individual user.
+#
+# Format:    <number>
+# Default:   2
+# Required:  No
+#
 # max-user-sessions: 2
 
 # Cursor setting for the terminal. Can be "on" to always render the cursor, "off" to turn it off entirely,
