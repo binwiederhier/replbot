@@ -32,6 +32,8 @@ func New() *cli.App {
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "default-size", Aliases: []string{"s"}, EnvVars: []string{"REPLBOT_DEFAULT_SIZE"}, Value: config.DefaultSize.Name, DefaultText: config.DefaultSize.Name, Usage: "default terminal size [tiny, small, medium, or large]"}),
 		altsrc.NewBoolFlag(&cli.BoolFlag{Name: "default-record", Aliases: []string{"r"}, EnvVars: []string{"REPLBOT_DEFAULT_RECORD"}, Usage: "record sessions by default"}),
 		altsrc.NewBoolFlag(&cli.BoolFlag{Name: "no-default-record", Aliases: []string{"R"}, EnvVars: []string{"REPLBOT_NO_DEFAULT_RECORD"}, Usage: "do not record sessions by default"}),
+		altsrc.NewBoolFlag(&cli.BoolFlag{Name: "upload-recording", Aliases: []string{"z"}, EnvVars: []string{"REPLBOT_UPLOAD_RECORDING"}, Usage: "upload recorded sessions via 'asciinema upload'"}),
+		altsrc.NewBoolFlag(&cli.BoolFlag{Name: "no-upload-recording", Aliases: []string{"Z"}, EnvVars: []string{"REPLBOT_NO_UPLOAD_RECORDING"}, Usage: "do not upload recorded sessions via 'asciinema upload'"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "cursor", Aliases: []string{"C"}, EnvVars: []string{"REPLBOT_CURSOR"}, Value: "on", Usage: "cursor blink rate (on, off or duration)"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "share-host", Aliases: []string{"H"}, EnvVars: []string{"REPLBOT_SHARE_HOST"}, Usage: "SSH hostname:port, used for terminal sharing"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "share-key-file", Aliases: []string{"K"}, EnvVars: []string{"REPLBOT_SHARE_KEY_FILE"}, Value: "/etc/replbot/hostkey", Usage: "SSH host key file, used for terminal sharing"}),
@@ -101,6 +103,14 @@ func execRun(c *cli.Context) error {
 	} else {
 		defaultRecord = config.DefaultRecord
 	}
+	var uploadRecording bool
+	if c.IsSet("no-upload-recording") {
+		uploadRecording = false
+	} else if c.IsSet("upload-recording") {
+		uploadRecording = true
+	} else {
+		uploadRecording = config.DefaultUploadRecording
+	}
 
 	// Create main bot
 	conf := config.New(token)
@@ -113,6 +123,7 @@ func execRun(c *cli.Context) error {
 	conf.DefaultAuthMode = defaultAuthMode
 	conf.DefaultSize = defaultSize
 	conf.DefaultRecord = defaultRecord
+	conf.UploadRecording = uploadRecording
 	conf.Cursor = cursorRate
 	conf.ShareHost = shareHost
 	conf.ShareKeyFile = shareKeyFile

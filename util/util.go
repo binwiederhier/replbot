@@ -33,9 +33,13 @@ func SanitizeNonAlphanumeric(s string) string {
 }
 
 // FileExists returns true if a file with the given filename exists
-func FileExists(filename string) bool {
-	_, err := os.Stat(filename)
-	return err == nil
+func FileExists(filenames ...string) bool {
+	for _, filename := range filenames {
+		if _, err := os.Stat(filename); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // Run is a shortcut running an exec.Command

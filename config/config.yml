@@ -94,6 +94,20 @@ bot-token: MUST_BE_SET
 #
 # default-record: false
 
+# Upload recorded sessions using `asciinema upload`. If set, sessions that are recorded will also
+# be uploaded. If you'd like to have control over what asciinema host sessions and with what user
+# are uploaded to, you should make sure that you configure your asciinema client and properly log in
+# using `asciinema auth`.
+#
+# If you have your own asciinema server set up, you may also configure that in the config file
+# ~/.config/asciinema/config. If REPLbot runs as "replbot" user, that'd be /home/replbot/.config/...
+#
+# Format:    true or false
+# Default:   false
+# Required:  No
+#
+# upload-recording: false
+
 # Timeout after which REPL sessions are terminated if there is no user input.
 #
 # Format:    <number>(hms), must be >1m

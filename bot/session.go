@@ -33,7 +33,9 @@ const (
 	onlyMeModeMessage                 = "Only you as the session owner can send commands. Use the `!allow` command to let other users control the session."
 	everyoneModeMessage               = "*Everyone in this channel* can send commands. Use the `!deny` command specifically revoke access from users."
 	sessionExitedMessage              = "👋 REPL exited. See you later!"
-	sessionExitedWithRecordingMessage = "👋 REPL exited. You can find a recording of the session in the file below. See you later!"
+	sessionExitedWithRecordingMessage = "👋 REPL exited. You can find a recording of the session in the file below."
+	sessionAsciinemaLinkMessage       = "Here's a link to the recording: %s"
+	sessionAsciinemaExpiryMessage     = "(expires in %s)"
 	timeoutWarningMessage             = "⏱️ Are you still there, %s? Your session will time out in one minute."
 	forceCloseMessage                 = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
 	resizeCommandHelpMessage          = "Use the `!resize` command to resize the terminal, like so: !resize medium.\n\nAllowed sizes are `tiny`, `small`, `medium` or `large`."
@@ -111,10 +113,12 @@ var (
 		"!pu":    "ppage",  // Page up
 		"!pd":    "npage",  // Page down
 	}
-	ctrlCommandRegex  = regexp.MustCompile(`^!c-([a-z])$`)
-	fKeysRegex        = regexp.MustCompile(`^!f([0-9][012]?)$`)
-	alphanumericRegex = regexp.MustCompile(`^([a-zA-Z0-9])$`)
-	errExit           = errors.New("exited REPL")
+	ctrlCommandRegex         = regexp.MustCompile(`^!c-([a-z])$`)
+	fKeysRegex               = regexp.MustCompile(`^!f([0-9][012]?)$`)
+	alphanumericRegex        = regexp.MustCompile(`^([a-zA-Z0-9])$`)
+	asciinemaUploadURLRegex  = regexp.MustCompile(`(https?://\S+)`)
+	asciinemaUploadDaysRegex = regexp.MustCompile(`(\d+) days?`)
+	errExit                  = errors.New("exited REPL")
 
 	//go:embed share_client.sh.gotmpl
 	shareClientScriptSource   string
@@ -562,19 +566,25 @@ func (s *session) allowUser(user string) bool {
 
 func (s *session) createCommand() []string {
 	if s.conf.record {
-		if err := util.Run("script", "-V"); err == nil {
-			scriptFile, timingFile := s.replayFiles()
-			command := fmt.Sprintf("%s %s %s", s.conf.script, scriptRunCommand, s.scriptID) // a little icky, but fine, since we trust all arguments
-			return []string{"script", "--flush", "--quiet", "--timing=" + timingFile, "--command", command, scriptFile}
+		if err := util.Run("asciinema", "--version"); err == nil {
+			command := fmt.Sprintf("%s %s %s", s.conf.script, scriptRunCommand, s.scriptID)
+			return []string{
+				"asciinema", "rec",
+				"--quiet",
+				"--idle-time-limit", "3",
+				"--title", "REPLbot session",
+				"--command", command,
+				s.asciinemaFile(),
+			}
 		}
-		log.Printf("[%s] Cannot record session, 'script' command is missing.", s.conf.id)
+		log.Printf("[%s] Cannot record session, 'asciinema' command is missing.", s.conf.id)
 		s.conf.record = false
 	}
 	return []string{s.conf.script, scriptRunCommand, s.scriptID}
 }
 
-func (s *session) replayFiles() (replayFile string, timingFile string) {
-	return filepath.Join(os.TempDir(), "replbot_"+s.conf.id+".replay-script"), filepath.Join(os.TempDir(), "replbot_"+s.conf.id+".replay-timing")
+func (s *session) asciinemaFile() string {
+	return filepath.Join(os.TempDir(), "replbot_"+s.conf.id+".asciinema")
 }
 
 func (s *session) sshClientKeyFile() string {
@@ -595,19 +605,15 @@ func (s *session) createRecordingArchive(filename string) (*os.File, error) {
 		return nil, err
 	}
 	recordingFile := s.tmux.RecordingFile()
-	defer os.Remove(recordingFile)
+	asciinemaFile := s.asciinemaFile()
+	defer func() {
+		os.Remove(recordingFile)
+		os.Remove(asciinemaFile)
+	}()
 	if err := zipAppendFile(zw, "REPLbot session/terminal.txt", recordingFile); err != nil {
 		return nil, err
 	}
-	replayFile, timingFile := s.replayFiles()
-	defer func() {
-		os.Remove(replayFile)
-		os.Remove(timingFile)
-	}()
-	if err := zipAppendFile(zw, "REPLbot session/replay.script", replayFile); err != nil {
-		return nil, err
-	}
-	if err := zipAppendFile(zw, "REPLbot session/replay.timing", timingFile); err != nil {
+	if err := zipAppendFile(zw, "REPLbot session/replay.asciinema", asciinemaFile); err != nil {
 		return nil, err
 	}
 	if err := zw.Close(); err != nil {
@@ -625,8 +631,7 @@ func (s *session) monitorRecording() error {
 		case <-s.ctx.Done():
 			return nil
 		case <-time.After(time.Second):
-			scriptFile, _ := s.replayFiles()
-			stat, err := os.Stat(scriptFile)
+			stat, err := os.Stat(s.asciinemaFile())
 			if err != nil {
 				continue
 			} else if stat.Size() > recordingFileSizeMax {
@@ -655,6 +660,10 @@ func (s *session) sendExitedMessageWithoutRecording() error {
 }
 
 func (s *session) sendExitedMessageWithRecording() error {
+	url, expiry, err := s.maybeUploadAsciinemaRecording()
+	if err != nil {
+		log.Printf("[%s] Cannot upload recorded asciinema session: %s", s.conf.id, err.Error())
+	}
 	filename := filepath.Join(os.TempDir(), "replbot_"+s.conf.id+".recording.zip")
 	file, err := s.createRecordingArchive(filename)
 	if err != nil {
@@ -664,7 +673,14 @@ func (s *session) sendExitedMessageWithRecording() error {
 		file.Close()
 		os.Remove(filename)
 	}()
-	return s.conn.UploadFile(s.conf.control, sessionExitedWithRecordingMessage, recordingFileName, recordingFileType, file)
+	message := sessionExitedWithRecordingMessage
+	if url != "" {
+		message += " " + fmt.Sprintf(sessionAsciinemaLinkMessage, url)
+	}
+	if expiry != "" {
+		message += " " + fmt.Sprintf(sessionAsciinemaExpiryMessage, expiry)
+	}
+	return s.conn.UploadFile(s.conf.control, message, recordingFileName, recordingFileType, file)
 }
 
 func (s *session) maybeSendStartShareMessage() error {
@@ -810,4 +826,27 @@ func (s *session) handleResizeCommand(input string) error {
 
 func (s *session) handleExitCommand(_ string) error {
 	return errExit
+}
+
+func (s *session) maybeUploadAsciinemaRecording() (url string, expiry string, err error) {
+	if !s.conf.record || !s.conf.global.UploadRecording {
+		return "", "", nil
+	}
+	cmd := exec.Command("asciinema", "upload", s.asciinemaFile())
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", "", err
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		if matches := asciinemaUploadURLRegex.FindStringSubmatch(line); url == "" && len(matches) > 0 {
+			url = matches[0]
+		}
+		if matches := asciinemaUploadDaysRegex.FindStringSubmatch(line); expiry == "" && len(matches) > 0 {
+			expiry = matches[0]
+		}
+	}
+	if url == "" {
+		return "", "", errors.New("no asciinema URL found")
+	}
+	return url, expiry, nil
 }

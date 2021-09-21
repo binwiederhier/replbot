@@ -21,6 +21,9 @@ const (
 	// DefaultRecord defines if sessions are recorded by default
 	DefaultRecord = false
 
+	// DefaultUploadRecording defines if session recording are uploaded to asciinema
+	DefaultUploadRecording = false
+
 	// defaultRefreshInterval defines the interval at which the terminal refreshed
 	defaultRefreshInterval = 200 * time.Millisecond
 )
@@ -40,6 +43,7 @@ type Config struct {
 	ShareHost          string
 	ShareKeyFile       string
 	DefaultRecord      bool
+	UploadRecording    bool
 	RefreshInterval    time.Duration
 	Debug              bool
 }
@@ -56,6 +60,7 @@ func New(token string) *Config {
 		DefaultAuthMode:    DefaultAuthMode,
 		DefaultSize:        DefaultSize,
 		DefaultRecord:      DefaultRecord,
+		UploadRecording:    DefaultUploadRecording,
 		RefreshInterval:    defaultRefreshInterval,
 	}
 }
