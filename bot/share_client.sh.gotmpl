@@ -49,14 +49,19 @@ cleanup() {
   fi
   rm -f "${sshd_config_file}" "${sshd_hostkey_file}" "${sshd_authorized_keys_file}"
   clear
-  echo "REPLbot terminal sharing session ended."
-  echo "Check out https://heckel.io/replbot to learn more."
+  echo "REPLbot terminal sharing session ended. You may reconnect with the same"
+  echo "command as before. Check out https://heckel.io/replbot to learn more."
 }
 trap cleanup EXIT
 
 # Start new tmux session
-tmux new-session -d -s "${tmux_session}"
-tmux set-option -g -t "${tmux_session}" status off
+tmux set -g default-terminal "xterm-256color" # This is ugly, because it's global (-g)
+tmux new-session -d -s "${tmux_session}" \
+  "echo 'Your session is now shared in your chat.'; echo 'This is a tmux session. The prefix key is Ctrl+I.'; echo; $SHELL"
+tmux set-option -t "${tmux_session}" status off
+tmux set-option -t "${tmux_session}" prefix C-i
+# tmux set-option -t "${tmux_session}" pane-active-border-style "fg=#000000,bg=#000000"
+# tmux set-option -t "${tmux_session}" pane-border-style "fg=#000000,bg=#000000"
 
 # Set up SSHd
 cat > "${sshd_hostkey_file}" <<SSHDHOSTKEY

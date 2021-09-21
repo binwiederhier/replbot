@@ -49,6 +49,7 @@ func (s *Tmux) Start(env map[string]string, command ...string) error {
 	pane1 := fmt.Sprintf("%s.1", s.id)
 	pane2 := fmt.Sprintf("%s.2", s.id)
 	c := make([][]string, 0)
+	c = append(c, []string{"tmux", "set-option", "-g", "default-terminal", "xterm-256color"}) // This is ugly, because it's global (-g)
 	c = append(c, []string{"tmux", "new-session", "-s", s.id, "-d", "-x", terminalWidth, "-y", terminalHeight, fmt.Sprintf(checkMainPaneScript, s.id)})
 	c = append(c, []string{"tmux", "split-window", "-v", "-t", pane0, fmt.Sprintf(checkMainPaneScript, s.id)})
 	for k, v := range env {
@@ -60,6 +61,7 @@ func (s *Tmux) Start(env map[string]string, command ...string) error {
 	c = append(c, []string{"tmux", "select-pane", "-t", pane2})
 	c = append(c, []string{"tmux", "set-hook", "-t", pane2, "pane-died", fmt.Sprintf("capture-pane -S- -E-; save-buffer \"%s\"; kill-pane", s.recordingFile())})
 	c = append(c, []string{"tmux", "set-option", "-t", pane2, "remain-on-exit"})
+	c = append(c, []string{"tmux", "set-option", "-t", s.id, "prefix", "none"}) // disable prefix!
 	return RunAll(c...)
 }
 

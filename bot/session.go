@@ -38,7 +38,7 @@ const (
 	sessionExitedWithRecordingMessage = "👋 REPL exited. You can find a recording of the session in the file below."
 	sessionAsciinemaLinkMessage       = "Here's a link to the recording: %s"
 	sessionAsciinemaExpiryMessage     = "(expires in %s)"
-	timeoutWarningMessage             = "⏱️ Are you still there, %s? Your session will time out in one minute."
+	timeoutWarningMessage             = "⏱️ Are you still there, %s? Your session will time out in one minute. Type `!alive` to keep your session active."
 	forceCloseMessage                 = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
 	resizeCommandHelpMessage          = "Use the `!resize` command to resize the terminal, like so: !resize medium.\n\nAllowed sizes are `tiny`, `small`, `medium` or `large`."
 	messageLimitWarningMessage        = "Note that Discord has a message size limit of 2000 characters, so your messages may be truncated if they get to large."
@@ -57,8 +57,9 @@ const (
 		"representation of any byte), e.g. `Hi\\bI` will show up as `HI`. This is is similar to `echo -e` in a shell."
 	sendKeysHelpMessage = "Use any of the send-key commands (`!c`, `!esc`, ...) to send common keyboard shortcuts, e.g. `!d` to send Ctrl-D, or `!up` to send the up key.\n\n" +
 		"You may also combine them in a sequence, like so: `!c-b d` (Ctrl-B + d), or `!up !up !down !down !left !right !left !right b a`."
-	authModeChangeMessage = "👍 Okay, I updated the auth mode: "
-	helpMessage           = "Alright, buckle up. Here's a list of all the things you can do in this REPL session.\n\n" +
+	authModeChangeMessage   = "👍 Okay, I updated the auth mode: "
+	sessionKeptAliveMessage = "I'm glad you're still here 😀"
+	helpMessage             = "Alright, buckle up. Here's a list of all the things you can do in this REPL session.\n\n" +
 		"Sending text:\n" +
 		"  `TEXT` - Sends _TEXT\\n_\n" +
 		"  `!n TEXT` - Sends _TEXT_ (no new line)\n" +
@@ -76,6 +77,7 @@ const (
 		"  `!allow ..`, `!deny ..` - Allow/deny users\n" +
 		"  `!resize ..` - Resize window\n" +
 		"  `!screen`, `!s` - Re-send terminal\n" +
+		"  `!alive` - Reset session timeout\n" +
 		"  `!help`, `!h` - Show this help screen\n" +
 		"  `!exit`, `!q` - Exit REPL"
 
@@ -226,6 +228,7 @@ func initSessionCommands(s *session) *session {
 		{"!help", s.handleHelpCommand},
 		{"!n", s.handleNoNewlineCommand},
 		{"!e", s.handleEscapeCommand},
+		{"!alive", s.handleKeepaliveCommand},
 		{"!allow", s.handleAllowCommand},
 		{"!deny", s.handleDenyCommand},
 		{"!!", s.handleCommentCommand},
@@ -738,6 +741,10 @@ func (s *session) handleEscapeCommand(input string) error {
 		return s.conn.Send(s.conf.control, escapeHelpMessage)
 	}
 	return s.tmux.Paste(input)
+}
+
+func (s *session) handleKeepaliveCommand(input string) error {
+	return s.conn.Send(s.conf.control, sessionKeptAliveMessage)
 }
 
 func (s *session) handleAllowCommand(input string) error {
