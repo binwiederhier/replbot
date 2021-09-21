@@ -102,8 +102,8 @@ esac
 
 ### Control mode
 You can specify if you want the session to be started in the main channel (`channel`), in a thread (`thread`),
-or in split mode (`split`) using both channel and thread. Split mode is the default because it is the cleanest to use: it'll use
-a thread for command input and the main channel to display the terminal.
+or in split mode (`split`) using both channel and thread. Split mode is the default because it is the cleanest to use: 
+it'll use a thread for command input and the main channel to display the terminal.
 
 ![replbot split mode](assets/slack-split-mode.png)
 
@@ -133,6 +133,19 @@ When a session is started, you can get a list of available commands by typing `!
 point in time, type `!exit` (or `!q`).
 
 ![replbot session help](assets/slack-session-help.png)
+
+### Recording sessions
+Sessions can be recorded using `asciinema`, and can even be automatically to either [asciinema.org](https://asciinema.org/)
+or your private [asciinema-server](https://github.com/asciinema/asciinema-server) (see [install instructions](https://github.com/asciinema/asciinema-server/wiki/Installation-guide)).
+
+After a session exits, the recording is then attached to chat as a ZIP file and optionally as a link to the asciinema server.
+This behavior can be controlled by the `default-record` and `upload-recording` option in the [config.yml](config/config.yml)
+file, as well as the `record`/`norecord` option when starting a session. 
+
+![replbot session recording](assets/slack-recording.png)
+
+Here's [the asciinema.org link](https://asciinema.org/a/MGsOv6CCVXiRtR8ZEd7MtFOTe) of the example
+I recorded, as well as the [ZIP archive](assets/slack-recording.zip) with the recording.
 
 ## Installation
 First, create a Slack or Discord app and authorize it. After that, you can install REPLbot via packages or binaries.
