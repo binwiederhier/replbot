@@ -142,10 +142,10 @@ After a session exits, the recording is then attached to chat as a ZIP file and 
 This behavior can be controlled by the `default-record` and `upload-recording` option in the [config.yml](config/config.yml)
 file, as well as the `record`/`norecord` option when starting a session. 
 
-![replbot session recording](assets/slack-recording.png)
-
 Here's [the asciinema.org link](https://asciinema.org/a/MGsOv6CCVXiRtR8ZEd7MtFOTe) of the example
 I recorded, as well as the [ZIP archive](assets/slack-recording.zip) with the recording.
+
+![replbot session recording](assets/slack-recording.png)
 
 ## Installation
 First, create a Slack or Discord app and authorize it. After that, you can install REPLbot via packages or binaries.
