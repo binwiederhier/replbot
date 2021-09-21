@@ -32,6 +32,7 @@ const (
 	terminalWidth       = "200"
 	terminalHeight      = "80"
 	checkMainPaneScript = "sh -c \"while true; do sleep 10; if ! tmux has-session -t %s.2; then exit; fi; done\""
+	configFile          = "set-option default-terminal xterm-256color" // must be set before new-session
 )
 
 // NewTmux creates a new Tmux instance, but does not start the tmux
@@ -45,12 +46,15 @@ func NewTmux(id string, width, height int) *Tmux {
 
 // Start starts the tmux using the given command and arguments
 func (s *Tmux) Start(env map[string]string, command ...string) error {
+	defer os.Remove(s.bufferFile())
+	if err := os.WriteFile(s.configFile(), []byte(configFile), 0600); err != nil {
+		return err
+	}
 	pane0 := fmt.Sprintf("%s.0", s.id)
 	pane1 := fmt.Sprintf("%s.1", s.id)
 	pane2 := fmt.Sprintf("%s.2", s.id)
 	c := make([][]string, 0)
-	c = append(c, []string{"tmux", "set-option", "-g", "default-terminal", "xterm-256color"}) // This is ugly, because it's global (-g)
-	c = append(c, []string{"tmux", "new-session", "-s", s.id, "-d", "-x", terminalWidth, "-y", terminalHeight, fmt.Sprintf(checkMainPaneScript, s.id)})
+	c = append(c, []string{"tmux", "-f", s.configFile(), "new-session", "-s", s.id, "-d", "-x", terminalWidth, "-y", terminalHeight, fmt.Sprintf(checkMainPaneScript, s.id)})
 	c = append(c, []string{"tmux", "split-window", "-v", "-t", pane0, fmt.Sprintf(checkMainPaneScript, s.id)})
 	for k, v := range env {
 		c = append(c, []string{"tmux", "set-environment", "-t", s.id, k, v})
@@ -148,6 +152,10 @@ func (s *Tmux) Stop() error {
 
 func (s *Tmux) bufferFile() string {
 	return fmt.Sprintf("/dev/shm/%s.buffer", s.id)
+}
+
+func (s *Tmux) configFile() string {
+	return fmt.Sprintf("/dev/shm/%s.conf", s.id)
 }
 
 func (s *Tmux) recordingFile() string {
