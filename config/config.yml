@@ -100,7 +100,14 @@ bot-token: MUST_BE_SET
 # using `asciinema auth`.
 #
 # If you have your own asciinema server set up, you may also configure that in the config file
-# ~/.config/asciinema/config. If REPLbot runs as "replbot" user, that'd be /home/replbot/.config/...
+# ~/.config/asciinema/config. If REPLbot runs as "replbot" user (installed via the .deb/.rpm),
+# that'd be /var/lib/replbot/.config/asciinema/config, and you may install it like so:
+#
+#  $ su -s/bin/bash replbot
+#  $ mkdir -p /var/lib/replbot/.config/asciinema
+#  $ vi /var/lib/replbot/.config/asciinema/config
+#      [api]
+#      url=http://my-local.host.lan
 #
 # Format:    true or false
 # Default:   false
