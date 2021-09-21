@@ -254,9 +254,6 @@ func (b *Bot) applySessionConfigDefaults(ev *messageEvent, conf *sessionConfig) 
 		if conf.authMode == "" {
 			conf.authMode = config.OnlyMe
 		}
-		if conf.size == nil && b.config.Platform() != config.Discord {
-			conf.size = config.Medium // Discord has a 2000 char limit, so we can only do this for Slack
-		}
 	}
 	if conf.controlMode == "" {
 		if ev.Thread != "" {

@@ -69,6 +69,14 @@ var (
 	}
 )
 
+// Max returns the larger size of the two given sizes
+func (s *Size) Max(other *Size) *Size {
+	if other.Width*other.Height > s.Width*s.Height {
+		return other
+	}
+	return s
+}
+
 // Constants used to toggle the cursor on or off
 const (
 	CursorOff = time.Duration(0)

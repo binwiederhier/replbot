@@ -23,6 +23,10 @@ require (
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
+	github.com/tidwall/gjson v1.9.1 // indirect
+	github.com/tidwall/match v1.0.3 // indirect
+	github.com/tidwall/pretty v1.2.0 // indirect
+	github.com/tidwall/sjson v1.2.2 // indirect
 )
 
 replace github.com/bwmarrin/discordgo => github.com/binwiederhier/discordgo v0.23.3-0.20210824013058-32da67e86a5d

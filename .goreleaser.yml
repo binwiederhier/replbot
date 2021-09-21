@@ -22,6 +22,7 @@ nfpms:
       - rpm
     dependencies:
       - tmux
+      - asciinema
     suggests:
       - docker-ce
     recommends:

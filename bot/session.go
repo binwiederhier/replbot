@@ -2,10 +2,12 @@ package bot
 
 import (
 	"archive/zip"
+	"bufio"
 	"context"
 	_ "embed" // go:embed requires this
 	"errors"
 	"fmt"
+	"github.com/tidwall/sjson"
 	"golang.org/x/sync/errgroup"
 	"heckel.io/replbot/config"
 	"heckel.io/replbot/util"
@@ -153,6 +155,7 @@ type session struct {
 	tmux           *util.Tmux
 	cursorOn       bool
 	cursorUpdated  time.Time
+	maxSize        *config.Size
 	shareConn      io.Closer
 	mu             sync.RWMutex
 }
@@ -212,6 +215,7 @@ func newSession(conf *sessionConfig, conn conn) *session {
 		active:         true,
 		warnTimer:      time.NewTimer(conf.global.IdleTimeout - time.Minute),
 		closeTimer:     time.NewTimer(conf.global.IdleTimeout),
+		maxSize:        conf.size,
 	}
 	return initSessionCommands(s)
 }
@@ -461,7 +465,6 @@ func (s *session) shutdownHandler() error {
 	}
 	os.Remove(s.sshUserFile())
 	os.Remove(s.sshClientKeyFile())
-	os.Remove(s.tmux.RecordingFile())
 	s.mu.Lock()
 	s.active = false
 	if s.shareConn != nil {
@@ -571,7 +574,7 @@ func (s *session) createCommand() []string {
 			return []string{
 				"asciinema", "rec",
 				"--quiet",
-				"--idle-time-limit", "3",
+				"--idle-time-limit", "5",
 				"--title", "REPLbot session",
 				"--command", command,
 				s.asciinemaFile(),
@@ -596,6 +599,12 @@ func (s *session) sshUserFile() string {
 }
 
 func (s *session) createRecordingArchive(filename string) (*os.File, error) {
+	recordingFile := s.tmux.RecordingFile()
+	asciinemaFile := s.asciinemaFile()
+	defer func() {
+		os.Remove(recordingFile)
+		os.Remove(asciinemaFile)
+	}()
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
@@ -604,12 +613,6 @@ func (s *session) createRecordingArchive(filename string) (*os.File, error) {
 	if err := zipAppendEntry(zw, "REPLbot session/README.md", recordingReadmeSource); err != nil {
 		return nil, err
 	}
-	recordingFile := s.tmux.RecordingFile()
-	asciinemaFile := s.asciinemaFile()
-	defer func() {
-		os.Remove(recordingFile)
-		os.Remove(asciinemaFile)
-	}()
 	if err := zipAppendFile(zw, "REPLbot session/terminal.txt", recordingFile); err != nil {
 		return nil, err
 	}
@@ -660,6 +663,9 @@ func (s *session) sendExitedMessageWithoutRecording() error {
 }
 
 func (s *session) sendExitedMessageWithRecording() error {
+	if err := s.maybePatchAsciinemaRecordingFile(); err != nil {
+		log.Printf("[%s] Cannot patch asciinema session file: %s", s.conf.id, err.Error())
+	}
 	url, expiry, err := s.maybeUploadAsciinemaRecording()
 	if err != nil {
 		log.Printf("[%s] Cannot upload recorded asciinema session: %s", s.conf.id, err.Error())
@@ -821,6 +827,11 @@ func (s *session) handleResizeCommand(input string) error {
 	if err := s.maybeSendMessageLengthWarning(size); err != nil {
 		return err
 	}
+	if s.maxSize.Max(size) == size {
+		s.mu.Lock()
+		s.maxSize = size
+		s.mu.Unlock()
+	}
 	return s.tmux.Resize(size.Width, size.Height)
 }
 
@@ -849,4 +860,44 @@ func (s *session) maybeUploadAsciinemaRecording() (url string, expiry string, er
 		return "", "", errors.New("no asciinema URL found")
 	}
 	return url, expiry, nil
+}
+
+func (s *session) maybePatchAsciinemaRecordingFile() error {
+	replayFile := s.asciinemaFile()
+	tempReplayFile := fmt.Sprintf("%s.tmp", replayFile)
+	defer os.Remove(tempReplayFile)
+	in, err := os.Open(s.asciinemaFile())
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(tempReplayFile, os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	rd := bufio.NewReader(in)
+	header, err := rd.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	if header, err = sjson.Set(header, "width", s.maxSize.Width); err != nil {
+		return err
+	}
+	if header, err = sjson.Set(header, "height", s.maxSize.Height); err != nil {
+		return err
+	}
+	if _, err := out.WriteString(header); err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, rd); err != nil {
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	if err := in.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tempReplayFile, replayFile)
 }
