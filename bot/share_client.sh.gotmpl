@@ -65,8 +65,6 @@ tmux -f "${tmux_config_file}" new-session -d -s "${tmux_session}" \
 tmux set-option -t "${tmux_session}" status off
 tmux set-option -t "${tmux_session}" prefix C-i
 tmux set-option -t "${tmux_session}" mouse on
-# tmux set-option -t "${tmux_session}" pane-active-border-style "fg=#000000,bg=#000000"
-# tmux set-option -t "${tmux_session}" pane-border-style "fg=#000000,bg=#000000"
 
 # Set up SSHd
 cat > "${sshd_hostkey_file}" <<SSHDHOSTKEY

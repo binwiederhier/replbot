@@ -7,14 +7,15 @@ main_id="{{.MainID}}"
 frame_id="{{.FrameID}}"
 window_width="{{.Width}}"
 window_height="{{.Height}}"
+command="{{.Command}}"
 config_file="{{.ConfigFile}}"
 capture_file="{{.CaptureFile}}"
-command="{{.Command}}"
+launch_script_file="{{.LaunchScriptFile}}"
 
 # Set up cleanup hooks
 cleanup_on_failure() {
   set +e
-  rm -f "${config_file}"
+  rm -f "${config_file}" "${launch_script_file}"
   tmux kill-session -t "${main_id}" 2>/dev/null
   tmux kill-session -t "${frame_id}" 2>/dev/null
 }
@@ -26,8 +27,17 @@ set-option default-terminal xterm-256color
 set-option -g history-limit 50000
 TMUXCONF
 
+# Write launch script
+cat > "${launch_script_file}" <<LAUNCHSCRIPT
+#!/bin/sh
+set -e
+export {{ range $key, $value := .Env }}{{ $key }}="{{ $value }}" {{ end }}
+${command}
+LAUNCHSCRIPT
+chmod 700 "${launch_script_file}"
+
 # Start main tmux session
-tmux -f "${config_file}" new-session -s "${main_id}" -d "export ENV1=abc ENV2=xyz; ${command}"
+tmux -f "${config_file}" new-session -s "${main_id}" -d "${launch_script_file}"
 tmux bind-key -n C-F12 detach
 tmux set-option -t "${main_id}" status off
 tmux set-option -t "${main_id}" prefix none
@@ -43,5 +53,5 @@ tmux resize-pane -t "${frame_id}.2" -x "${window_width}" -y "${window_height}"
 tmux select-pane -t "${frame_id}.2"
 
 # Clean exit
-rm -f "${config_file}"
+rm -f "${config_file}" "${launch_script_file}"
 trap - EXIT

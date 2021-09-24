@@ -26,12 +26,13 @@ type Tmux struct {
 }
 
 type tmuxScriptParams struct {
-	MainID, FrameID string
-	Width, Height   int
-	Env             map[string]string
-	Command         string
-	ConfigFile      string
-	CaptureFile     string
+	MainID, FrameID  string
+	Width, Height    int
+	Env              map[string]string
+	Command          string
+	ConfigFile       string
+	CaptureFile      string
+	LaunchScriptFile string
 }
 
 // NewTmux creates a new Tmux instance, but does not start the tmux
@@ -46,20 +47,22 @@ func NewTmux(id string, width, height int) *Tmux {
 // Start starts the tmux using the given command and arguments
 func (s *Tmux) Start(env map[string]string, command ...string) error {
 	defer os.Remove(s.scriptFile())
+	defer os.Remove(s.launchScriptFile())
 	script, err := os.OpenFile(s.scriptFile(), os.O_CREATE|os.O_WRONLY, 0700)
 	if err != nil {
 		return err
 	}
 	defer script.Close()
 	params := &tmuxScriptParams{
-		MainID:      s.mainID(),
-		FrameID:     s.frameID(),
-		Width:       s.width,
-		Height:      s.height,
-		Env:         env,
-		Command:     strings.Join(command, " "), // FIXME
-		ConfigFile:  s.configFile(),
-		CaptureFile: s.captureFile(),
+		MainID:           s.mainID(),
+		FrameID:          s.frameID(),
+		Width:            s.width,
+		Height:           s.height,
+		Env:              env,
+		Command:          QuoteCommand(command),
+		ConfigFile:       s.configFile(),
+		CaptureFile:      s.captureFile(),
+		LaunchScriptFile: s.launchScriptFile(),
 	}
 	if err := scriptTemplate.Execute(script, params); err != nil {
 		return err
@@ -159,6 +162,10 @@ func (s *Tmux) bufferFile() string {
 
 func (s *Tmux) scriptFile() string {
 	return fmt.Sprintf("/tmp/%s.tmux.script", s.id)
+}
+
+func (s *Tmux) launchScriptFile() string {
+	return fmt.Sprintf("/tmp/%s.tmux.lauch-script", s.id)
 }
 
 func (s *Tmux) configFile() string {

@@ -4,6 +4,12 @@
 #
 # This script should be executed as "./docker-kill <id>".
 
+# Remove the check file written in the docker-run script.
+# This is necessary to stop the background process, when it's not cleanly shut down.
+check_file="/tmp/$1.check_docker"
+rm -f "${check_file}"
+
+# Try a few times to kill the docker
 for i in 1 2 3 4 5; do
   if [ -z "$(docker ps -q -f "name=$1")" ] || docker kill "$1" 2>/dev/null; then
     exit

@@ -40,9 +40,10 @@ else
   fi
 fi
 
-# Horrible hack to kill container when the disk grows into GB range,
-# since --storage-opt is not available for ext4
-check_file=/tmp/$name.check_docker
+# Horrible hack to kill container when the disk grows into GB range, since --storage-opt
+# is not available for ext4. Note that the cleanup hook is not run when this is killed, so we
+# have to also remove the file in the docker-kill script.
+check_file="/tmp/$name.check_docker"
 touch "${check_file}"
 
 cleanup() { rm -f "${check_file}"; }
