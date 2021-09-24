@@ -1,0 +1,47 @@
+{{- /*gotype:heckel.io/replbot/util.tmuxScriptParams*/ -}}
+#!/bin/bash
+
+set -e
+
+main_id="{{.MainID}}"
+frame_id="{{.FrameID}}"
+window_width="{{.Width}}"
+window_height="{{.Height}}"
+config_file="{{.ConfigFile}}"
+capture_file="{{.CaptureFile}}"
+command="{{.Command}}"
+
+# Set up cleanup hooks
+cleanup_on_failure() {
+  set +e
+  rm -f "${config_file}"
+  tmux kill-session -t "${main_id}" 2>/dev/null
+  tmux kill-session -t "${frame_id}" 2>/dev/null
+}
+trap cleanup_on_failure EXIT
+
+# Write tmux.conf
+cat > "${config_file}" <<TMUXCONF
+set-option default-terminal xterm-256color
+set-option -g history-limit 50000
+TMUXCONF
+
+# Start main tmux session
+tmux -f "${config_file}" new-session -s "${main_id}" -d "export ENV1=abc ENV2=xyz; ${command}"
+tmux bind-key -n C-F12 detach
+tmux set-option -t "${main_id}" status off
+tmux set-option -t "${main_id}" prefix none
+tmux set-option -t "${main_id}" remain-on-exit
+tmux set-hook -t "${main_id}" pane-died "capture-pane -S- -E-; save-buffer '${capture_file}'; kill-pane"
+
+# Start frame tmux session attaches to main session, allows resizing window
+tmux -f "${config_file}" new-session -s "${frame_id}" -d -x 200 -y 80 sh -c "while true; do sleep 10; if ! tmux has-session -t '${main_id}'; then exit; fi; done"
+tmux set-option -t "${frame_id}" status off
+tmux split-window -v -t "${frame_id}.0" sh -c "while true; do sleep 10; if ! tmux has-session -t '${main_id}'; then exit; fi; done"
+tmux split-window -h -t "${frame_id}.1" sh -c "unset TMUX; tmux attach -t '${main_id}'"
+tmux resize-pane -t "${frame_id}.2" -x "${window_width}" -y "${window_height}"
+tmux select-pane -t "${frame_id}.2"
+
+# Clean exit
+rm -f "${config_file}"
+trap - EXIT

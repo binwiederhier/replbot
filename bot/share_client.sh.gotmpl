@@ -58,6 +58,7 @@ trap cleanup EXIT
 # Start new tmux session
 cat > "${tmux_config_file}" <<TMUXCONF
 set-option default-terminal xterm-256color
+set-option -g history-limit 50000
 TMUXCONF
 tmux -f "${tmux_config_file}" new-session -d -s "${tmux_session}" \
   "echo 'Your session is now shared in your chat.'; echo 'This is a tmux session. The prefix key is Ctrl+I.'; echo; $SHELL"

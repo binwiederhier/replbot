@@ -2,38 +2,37 @@ package util
 
 import (
 	"bytes"
+	_ "embed" // required by go:embed
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"text/template"
+)
+
+var (
+	//go:embed tmux.sh.gotmpl
+	scriptSource   string
+	scriptTemplate = template.Must(template.New("tmux_script").Parse(scriptSource))
 )
 
 // Tmux represents a tmux(1) process with one window and three panes, to allow us to resize the terminal of the
 // main pane (.2). The main pane is .2, so that if it exits there is no other pane to take its place.
-//
-// Example: Assuming "htop" is our target process, we're essentially doing this:
-//   tmux new-session -s abc -d -x 200 -y 60
-//   tmux split-window -t abc.0 -v
-//   tmux split-window -t abc.1 -h htop
-//   tmux resize-pane -t abc.2 -x 80 -y 24
-//   tmux select-pane -t abc.2
-//   sleep 1
-//   tmux capture-pane -t abc.2 -p
-//
 type Tmux struct {
 	id            string
 	width, height int
 }
 
-// Must be more than config.MaxSize to give tmux a little room for the other two panes
-const (
-	terminalWidth       = "200"
-	terminalHeight      = "80"
-	checkMainPaneScript = "sh -c \"while true; do sleep 10; if ! tmux has-session -t %s.2; then exit; fi; done\""
-	configFile          = "set-option default-terminal xterm-256color" // must be set before new-session
-)
+type tmuxScriptParams struct {
+	MainID, FrameID string
+	Width, Height   int
+	Env             map[string]string
+	Command         string
+	ConfigFile      string
+	CaptureFile     string
+}
 
 // NewTmux creates a new Tmux instance, but does not start the tmux
 func NewTmux(id string, width, height int) *Tmux {
@@ -46,32 +45,39 @@ func NewTmux(id string, width, height int) *Tmux {
 
 // Start starts the tmux using the given command and arguments
 func (s *Tmux) Start(env map[string]string, command ...string) error {
-	defer os.Remove(s.bufferFile())
-	if err := os.WriteFile(s.configFile(), []byte(configFile), 0600); err != nil {
+	defer os.Remove(s.scriptFile())
+	script, err := os.OpenFile(s.scriptFile(), os.O_CREATE|os.O_WRONLY, 0700)
+	if err != nil {
 		return err
 	}
-	pane0 := fmt.Sprintf("%s.0", s.id)
-	pane1 := fmt.Sprintf("%s.1", s.id)
-	pane2 := fmt.Sprintf("%s.2", s.id)
-	c := make([][]string, 0)
-	c = append(c, []string{"tmux", "-f", s.configFile(), "new-session", "-s", s.id, "-d", "-x", terminalWidth, "-y", terminalHeight, fmt.Sprintf(checkMainPaneScript, s.id)})
-	c = append(c, []string{"tmux", "split-window", "-v", "-t", pane0, fmt.Sprintf(checkMainPaneScript, s.id)})
-	for k, v := range env {
-		c = append(c, []string{"tmux", "set-environment", "-t", s.id, k, v})
+	defer script.Close()
+	params := &tmuxScriptParams{
+		MainID:      s.mainID(),
+		FrameID:     s.frameID(),
+		Width:       s.width,
+		Height:      s.height,
+		Env:         env,
+		Command:     strings.Join(command, " "), // FIXME
+		ConfigFile:  s.configFile(),
+		CaptureFile: s.captureFile(),
 	}
-	c = append(c, []string{"tmux", "set-option", "-t", s.id, "history-limit", "500000"}) // before split-window!
-	c = append(c, append([]string{"tmux", "split-window", "-h", "-t", pane1}, command...))
-	c = append(c, []string{"tmux", "resize-pane", "-t", pane2, "-x", strconv.Itoa(s.width), "-y", strconv.Itoa(s.height)})
-	c = append(c, []string{"tmux", "select-pane", "-t", pane2})
-	c = append(c, []string{"tmux", "set-hook", "-t", pane2, "pane-died", fmt.Sprintf("capture-pane -S- -E-; save-buffer \"%s\"; kill-pane", s.recordingFile())})
-	c = append(c, []string{"tmux", "set-option", "-t", pane2, "remain-on-exit"})
-	c = append(c, []string{"tmux", "set-option", "-t", s.id, "prefix", "none"}) // disable prefix!
-	return RunAll(c...)
+	if err := scriptTemplate.Execute(script, params); err != nil {
+		return err
+	}
+	if err := script.Close(); err != nil {
+		return err
+	}
+	cmd := exec.Command(s.scriptFile())
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s\ncommand output:\n%s", err.Error(), string(output))
+	}
+	return nil
 }
 
 // Active checks if the tmux is still active
 func (s *Tmux) Active() bool {
-	return Run("tmux", "has-session", "-t", s.id) == nil
+	return Run("tmux", "has-session", "-t", s.mainID()) == nil
 }
 
 // Paste pastes the input into the tmux, as if the user entered it
@@ -82,24 +88,24 @@ func (s *Tmux) Paste(input string) error {
 	}
 	return RunAll(
 		[]string{"tmux", "load-buffer", "-b", s.id, s.bufferFile()},
-		[]string{"tmux", "paste-buffer", "-b", s.id, "-t", fmt.Sprintf("%s.2", s.id), "-d"},
+		[]string{"tmux", "paste-buffer", "-b", s.id, "-t", s.mainID(), "-d"},
 	)
 }
 
 // SendKeys invokes the tmux send-keys command, which is useful for sending control sequences
 func (s *Tmux) SendKeys(keys ...string) error {
-	return Run(append([]string{"tmux", "send-keys", "-t", fmt.Sprintf("%s.2", s.id)}, keys...)...)
+	return Run(append([]string{"tmux", "send-keys", "-t", s.mainID()}, keys...)...)
 }
 
 // Resize resizes the active pane (.2) to the given size up to the max size
 func (s *Tmux) Resize(width, height int) error {
-	return Run("tmux", "resize-pane", "-t", fmt.Sprintf("%s.2", s.id), "-x", strconv.Itoa(width), "-y", strconv.Itoa(height))
+	return Run("tmux", "resize-pane", "-t", s.frameMainPaneID(), "-x", strconv.Itoa(width), "-y", strconv.Itoa(height))
 }
 
 // Capture returns a string representation of the current terminal
 func (s *Tmux) Capture() (string, error) {
 	var buf bytes.Buffer
-	cmd := exec.Command("tmux", "capture-pane", "-t", fmt.Sprintf("%s.2", s.id), "-p")
+	cmd := exec.Command("tmux", "capture-pane", "-t", s.mainID(), "-p")
 	cmd.Stdout = &buf
 	if err := cmd.Run(); err != nil {
 		return "", err
@@ -110,13 +116,13 @@ func (s *Tmux) Capture() (string, error) {
 // RecordingFile returns the file name of the recording file. This method can only be called
 // after the session has exited. Before that, the file will not exist.
 func (s *Tmux) RecordingFile() string {
-	return s.recordingFile()
+	return s.captureFile()
 }
 
 // Cursor returns the X and Y position of the cursor
 func (s *Tmux) Cursor() (show bool, x int, y int, err error) {
 	var buf bytes.Buffer
-	cmd := exec.Command("tmux", "display-message", "-t", fmt.Sprintf("%s.2", s.id), "-p", "-F", "#{cursor_flag},#{cursor_x},#{cursor_y}")
+	cmd := exec.Command("tmux", "display-message", "-t", s.mainID(), "-p", "-F", "#{cursor_flag},#{cursor_x},#{cursor_y}")
 	cmd.Stdout = &buf
 	if err = cmd.Run(); err != nil {
 		return
@@ -138,26 +144,39 @@ func (s *Tmux) Cursor() (show bool, x int, y int, err error) {
 // Stop kills the tmux and its command using the 'quit' command
 func (s *Tmux) Stop() error {
 	if s.Active() {
-		if !FileExists(s.recordingFile()) {
-			if err := Run("tmux", "capture-pane", "-S-", "-E-", ";", "save-buffer", s.recordingFile()); err != nil {
-				return err
-			}
+		if !FileExists(s.captureFile()) {
+			_ = Run("tmux", "capture-pane", "-t", s.mainID(), "-S-", "-E-", ";", "save-buffer", s.captureFile())
 		}
-		if err := Run("tmux", "kill-session", "-t", s.id); err != nil {
-			return err
-		}
+		_ = Run("tmux", "kill-session", "-t", s.mainID())
+		_ = Run("tmux", "kill-session", "-t", s.frameID())
 	}
 	return nil
 }
 
 func (s *Tmux) bufferFile() string {
-	return fmt.Sprintf("/dev/shm/%s.buffer", s.id)
+	return fmt.Sprintf("/dev/shm/%s.tmux.buffer", s.id)
+}
+
+func (s *Tmux) scriptFile() string {
+	return fmt.Sprintf("/tmp/%s.tmux.script", s.id)
 }
 
 func (s *Tmux) configFile() string {
-	return fmt.Sprintf("/dev/shm/%s.conf", s.id)
+	return fmt.Sprintf("/tmp/%s.tmux.conf", s.id)
 }
 
-func (s *Tmux) recordingFile() string {
-	return fmt.Sprintf("/tmp/%s.recording", s.id)
+func (s *Tmux) captureFile() string {
+	return fmt.Sprintf("/tmp/%s.tmux.capture", s.id)
+}
+
+func (s *Tmux) frameID() string {
+	return fmt.Sprintf("%s_frame", s.id)
+}
+
+func (s *Tmux) frameMainPaneID() string {
+	return fmt.Sprintf("%s.2", s.frameID())
+}
+
+func (s *Tmux) mainID() string {
+	return fmt.Sprintf("%s_main", s.id)
 }

@@ -159,6 +159,7 @@ type session struct {
 	cursorUpdated  time.Time
 	maxSize        *config.Size
 	shareConn      io.Closer
+	webPort        int
 	mu             sync.RWMutex
 }
 
@@ -175,6 +176,7 @@ type sessionConfig struct {
 	size        *config.Size
 	share       *shareConfig
 	record      bool
+	webMode     string
 }
 
 type shareConfig struct {
@@ -468,6 +470,7 @@ func (s *session) shutdownHandler() error {
 	}
 	os.Remove(s.sshUserFile())
 	os.Remove(s.sshClientKeyFile())
+	os.Remove(s.tmux.RecordingFile())
 	s.mu.Lock()
 	s.active = false
 	if s.shareConn != nil {
@@ -506,6 +509,12 @@ func (s *session) sessionStartedMessage() string {
 		message += "\n\n" + onlyMeModeMessage
 	case config.Everyone:
 		message += "\n\n" + everyoneModeMessage
+	}
+	switch s.conf.webMode {
+	case "read-write":
+		message += "\n\n" + "*Danger*: In addition to this chat, you can also control the session from here: http://plop.datto.lan/lalala"
+	case "read-only":
+		message += "\n\n" + "You may also view the session here: http://plop.datto.lan/lalala"
 	}
 	if s.shouldWarnMessageLength(s.conf.size) {
 		message += "\n\n" + messageLimitWarningMessage
@@ -571,22 +580,47 @@ func (s *session) allowUser(user string) bool {
 }
 
 func (s *session) createCommand() []string {
+	command := []string{s.conf.script, scriptRunCommand, s.scriptID}
 	if s.conf.record {
-		if err := util.Run("asciinema", "--version"); err == nil {
-			command := fmt.Sprintf("%s %s %s", s.conf.script, scriptRunCommand, s.scriptID)
-			return []string{
-				"asciinema", "rec",
-				"--quiet",
-				"--idle-time-limit", "5",
-				"--title", "REPLbot session",
-				"--command", command,
-				s.asciinemaFile(),
-			}
-		}
+		command = s.maybeWrapAsciinemaCommand(command)
+	}
+	return command
+}
+
+func (s *session) maybeWrapGottyCommand(command []string) []string {
+	// FIXME
+	var err error
+	if err = util.Run("gotty", "--version"); err != nil {
+		log.Printf("[%s] Cannot expose web endpoint, 'gotty' command missing", s.conf.id)
+		s.conf.webMode = "off"
+		return command
+	}
+	s.webPort, err = util.RandomPort()
+	if err != nil {
+		log.Printf("[%s] Cannot expose web endpoint, failed to pick random port: %s", s.conf.id, err.Error())
+		s.conf.webMode = "off"
+		return command
+	}
+	if s.conf.webMode == "rw" {
+		return append([]string{"gotty", "--port", strconv.Itoa(s.webPort), "--random-url", "--permit-write"}, command...)
+	}
+	return append([]string{"gotty", "--port", strconv.Itoa(s.webPort), "--random-url"}, command...)
+}
+
+func (s *session) maybeWrapAsciinemaCommand(command []string) []string {
+	if err := util.Run("asciinema", "--version"); err != nil {
 		log.Printf("[%s] Cannot record session, 'asciinema' command is missing.", s.conf.id)
 		s.conf.record = false
+		return command
 	}
-	return []string{s.conf.script, scriptRunCommand, s.scriptID}
+	return []string{
+		"asciinema", "rec",
+		"--quiet",
+		"--idle-time-limit", "5",
+		"--title", "REPLbot session",
+		"--command", strings.Join(command, " "),
+		s.asciinemaFile(),
+	}
 }
 
 func (s *session) asciinemaFile() string {
