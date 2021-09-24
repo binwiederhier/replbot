@@ -159,6 +159,7 @@ type session struct {
 	cursorUpdated  time.Time
 	maxSize        *config.Size
 	shareConn      io.Closer
+	gotty          *exec.Cmd
 	webPort        int
 	mu             sync.RWMutex
 }
@@ -237,6 +238,7 @@ func initSessionCommands(s *session) *session {
 		{"!screen", s.handleScreenCommand},
 		{"!s", s.handleScreenCommand},
 		{"!resize", s.handleResizeCommand},
+		{"!web", s.handleWebCommand},
 		{"!c-", s.handleSendKeysCommand}, // more see below!
 		{"!f", s.handleSendKeysCommand},  // more see below!
 		{"!q", s.handleExitCommand},
@@ -858,6 +860,19 @@ func (s *session) handleCommentCommand(_ string) error {
 func (s *session) handleScreenCommand(_ string) error {
 	s.forceResend <- true
 	return nil
+}
+
+func (s *session) handleWebCommand(_ string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.gotty != nil && s.gotty.Process != nil {
+		_ = s.gotty.Process.Kill()
+	}
+	s.gotty = exec.Command("gotty", "-w", "--address", "localhost", "--port", "12345", "tmux", "attach", "-t", s.tmux.MainID())
+	if err := s.gotty.Start(); err != nil {
+		return err
+	}
+	return s.conn.Send(s.conf.control, "👍 Okay, I started a Web terminal for you: http://localhost:12345")
 }
 
 func (s *session) handleResizeCommand(input string) error {

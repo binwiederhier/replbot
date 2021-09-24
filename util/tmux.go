@@ -156,6 +156,10 @@ func (s *Tmux) Stop() error {
 	return nil
 }
 
+func (s *Tmux) MainID() string {
+	return s.mainID()
+}
+
 func (s *Tmux) bufferFile() string {
 	return fmt.Sprintf("/dev/shm/%s.tmux.buffer", s.id)
 }
