@@ -59,7 +59,16 @@ const (
 		"You may also combine them in a sequence, like so: `!c-b d` (Ctrl-B + d), or `!up !up !down !down !left !right !left !right b a`."
 	authModeChangeMessage   = "👍 Okay, I updated the auth mode: "
 	sessionKeptAliveMessage = "I'm glad you're still here 😀"
-	helpMessage             = "Alright, buckle up. Here's a list of all the things you can do in this REPL session.\n\n" +
+	webCommandHelpMessage   = "To enable a web-based terminal, simply type `!web on`. Type `!web off` to turn if back off.\n\nYou may use `!allow all` or `!deny all` to toggle between read-only " +
+		"access and read-write access for the web terminal."
+	webStartedReadOnlyMessage             = "👍 Okay, I started a web terminal for you: http://%s:%d\n\nThe terminal is *read-only*. Use `!allow all` to change it to read-write."
+	webStartedReadWriteMessage            = "👍 Okay, I started a web terminal for you: http://%s:%d\n\n*Everyone in this channel* can write to this terminal. Use `!deny all` to change it to read-only."
+	webStoppedMessage                     = "👍 Okay, I stopped the web terminal."
+	webNotWorkingMessage                  = "🙁 I'm sorry but I can't start the web terminal for you."
+	webIndividualUsersNotSupportedMessage = "The web terminal *does not support* allowing/denying individual users. You may want to turn it off using `!web off` if you need granular permissions."
+	webAlreadyEnabledMessage              = "The web terminal is available at http://%s:%d"
+	webAlreadyDisabledMessage             = "The web terminal is already disabled."
+	helpMessage                           = "Alright, buckle up. Here's a list of all the things you can do in this REPL session.\n\n" +
 		"Sending text:\n" +
 		"  `TEXT` - Sends _TEXT\\n_\n" +
 		"  `!n TEXT` - Sends _TEXT_ (no new line)\n" +
@@ -75,6 +84,7 @@ const (
 		"Other commands:\n" +
 		"  `!! ..` - Comment, ignored entirely\n" +
 		"  `!allow ..`, `!deny ..` - Allow/deny users\n" +
+		"  `!web` - Start web terminal\n" +
 		"  `!resize ..` - Resize window\n" +
 		"  `!screen`, `!s` - Re-send terminal\n" +
 		"  `!alive` - Reset session timeout\n" +
@@ -159,7 +169,7 @@ type session struct {
 	cursorUpdated  time.Time
 	maxSize        *config.Size
 	shareConn      io.Closer
-	gotty          *exec.Cmd
+	webCmd         *exec.Cmd
 	webPort        int
 	mu             sync.RWMutex
 }
@@ -177,7 +187,7 @@ type sessionConfig struct {
 	size        *config.Size
 	share       *shareConfig
 	record      bool
-	webMode     string
+	webTerm     bool
 }
 
 type shareConfig struct {
@@ -509,14 +519,14 @@ func (s *session) sessionStartedMessage() string {
 	switch s.conf.authMode {
 	case config.OnlyMe:
 		message += "\n\n" + onlyMeModeMessage
+		if s.conf.webTerm {
+			message += "\n\n" + "You may also view the session here: http://plop.datto.lan/lalala"
+		}
 	case config.Everyone:
 		message += "\n\n" + everyoneModeMessage
-	}
-	switch s.conf.webMode {
-	case "read-write":
-		message += "\n\n" + "*Danger*: In addition to this chat, you can also control the session from here: http://plop.datto.lan/lalala"
-	case "read-only":
-		message += "\n\n" + "You may also view the session here: http://plop.datto.lan/lalala"
+		if s.conf.webTerm {
+			message += "\n\n" + "*Danger*: In addition to this chat, you can also control the session from here: http://plop.datto.lan/lalala"
+		}
 	}
 	if s.shouldWarnMessageLength(s.conf.size) {
 		message += "\n\n" + messageLimitWarningMessage
@@ -587,26 +597,6 @@ func (s *session) createCommand() []string {
 		command = s.maybeWrapAsciinemaCommand(command)
 	}
 	return command
-}
-
-func (s *session) maybeWrapGottyCommand(command []string) []string {
-	// FIXME
-	var err error
-	if err = util.Run("gotty", "--version"); err != nil {
-		log.Printf("[%s] Cannot expose web endpoint, 'gotty' command missing", s.conf.id)
-		s.conf.webMode = "off"
-		return command
-	}
-	s.webPort, err = util.RandomPort()
-	if err != nil {
-		log.Printf("[%s] Cannot expose web endpoint, failed to pick random port: %s", s.conf.id, err.Error())
-		s.conf.webMode = "off"
-		return command
-	}
-	if s.conf.webMode == "rw" {
-		return append([]string{"gotty", "--port", strconv.Itoa(s.webPort), "--random-url", "--permit-write"}, command...)
-	}
-	return append([]string{"gotty", "--port", strconv.Itoa(s.webPort), "--random-url"}, command...)
 }
 
 func (s *session) maybeWrapAsciinemaCommand(command []string) []string {
@@ -800,7 +790,11 @@ func (s *session) handleAllowCommand(input string) error {
 	for _, user := range users {
 		s.authUsers[user] = true
 	}
-	return s.conn.Send(s.conf.control, usersAddedToAllowList)
+	message := usersAddedToAllowList
+	if s.webCmd != nil {
+		message += "\n\n" + webIndividualUsersNotSupportedMessage
+	}
+	return s.conn.Send(s.conf.control, message)
 }
 
 func (s *session) handleDenyCommand(input string) error {
@@ -820,7 +814,11 @@ func (s *session) handleDenyCommand(input string) error {
 		}
 		s.authUsers[user] = false
 	}
-	return s.conn.Send(s.conf.control, usersAddedToDenyList)
+	message := usersAddedToDenyList
+	if s.webCmd != nil {
+		message += "\n\n" + webIndividualUsersNotSupportedMessage
+	}
+	return s.conn.Send(s.conf.control, message)
 }
 
 func (s *session) resetAuthMode(authMode config.AuthMode) error {
@@ -829,6 +827,7 @@ func (s *session) resetAuthMode(authMode config.AuthMode) error {
 	s.conf.authMode = authMode
 	s.authUsers = make(map[string]bool)
 	if authMode == config.Everyone {
+		// FIXME add restartGotty() here
 		return s.conn.Send(s.conf.control, authModeChangeMessage+everyoneModeMessage)
 	}
 	return s.conn.Send(s.conf.control, authModeChangeMessage+onlyMeModeMessage)
@@ -862,17 +861,67 @@ func (s *session) handleScreenCommand(_ string) error {
 	return nil
 }
 
-func (s *session) handleWebCommand(_ string) error {
+func (s *session) handleWebCommand(input string) error {
+	toggle := strings.TrimSpace(strings.TrimPrefix(input, "!web"))
+	s.mu.RLock()
+	webEnabled := s.webCmd != nil
+	s.mu.RUnlock()
+	switch toggle {
+	case "on":
+		if webEnabled {
+			return s.conn.Send(s.conf.control, fmt.Sprintf(webAlreadyEnabledMessage, "localhost", s.webPort))
+		}
+		return s.maybeRestartGotty()
+	case "off":
+		if !webEnabled {
+			return s.conn.Send(s.conf.control, webAlreadyDisabledMessage)
+		}
+		return s.stopGotty()
+	default:
+		return s.conn.Send(s.conf.control, webCommandHelpMessage)
+	}
+}
+
+func (s *session) maybeRestartGotty() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.gotty != nil && s.gotty.Process != nil {
-		_ = s.gotty.Process.Kill()
+	if s.webCmd != nil && s.webCmd.Process != nil {
+		_ = s.webCmd.Process.Kill()
 	}
-	s.gotty = exec.Command("gotty", "-w", "--address", "localhost", "--port", "12345", "tmux", "attach", "-t", s.tmux.MainID())
-	if err := s.gotty.Start(); err != nil {
+	if s.webPort == 0 {
+		webPort, err := util.RandomPort()
+		if err != nil {
+			return err
+		}
+		s.webPort = webPort
+	}
+	permitWrite := s.conf.authMode == config.Everyone
+	var message string
+	if permitWrite {
+		s.webCmd = exec.Command("gotty", "--permit-write", "--address", "localhost", "--port", strconv.Itoa(s.webPort), "tmux", "attach", "-t", s.tmux.MainID())
+		message = fmt.Sprintf(webStartedReadWriteMessage, "localhost", s.webPort)
+	} else {
+		s.webCmd = exec.Command("gotty", "--address", "localhost", "--port", strconv.Itoa(s.webPort), "tmux", "attach", "-t", s.tmux.MainID())
+		message = fmt.Sprintf(webStartedReadOnlyMessage, "localhost", s.webPort)
+	}
+	if err := s.webCmd.Start(); err != nil {
+		log.Printf("[%s] Cannot start gotty: %s", s.conf.id, err.Error())
+		return s.conn.Send(s.conf.control, webNotWorkingMessage)
+	}
+	return s.conn.Send(s.conf.control, message)
+}
+
+func (s *session) stopGotty() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.webCmd == nil {
+		return nil
+	}
+	if err := s.webCmd.Process.Kill(); err != nil {
 		return err
 	}
-	return s.conn.Send(s.conf.control, "👍 Okay, I started a Web terminal for you: http://localhost:12345")
+	s.webCmd = nil
+	return s.conn.Send(s.conf.control, webStoppedMessage)
 }
 
 func (s *session) handleResizeCommand(input string) error {
