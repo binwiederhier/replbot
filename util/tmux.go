@@ -13,9 +13,8 @@ import (
 	"text/template"
 )
 
-
 const (
-	requiredVersion     = 2.6 // see issue #
+	requiredVersion = 2.6 // see issue #
 )
 
 var (
