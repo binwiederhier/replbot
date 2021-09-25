@@ -150,6 +150,11 @@ I recorded, as well as the [ZIP archive](assets/slack-recording.zip) with the re
 ## Installation
 First, create a Slack or Discord app and authorize it. After that, you can install REPLbot via packages or binaries.
 
+**Requirements**:
+- `tmux` >= 2.6 is required, which is part of Ubuntu 18.04 (but surprisingly not part of Amazon Linux!)
+- `asciinema` if you'd like to record sessions
+- `docker` for almost all scripts REPLbot shipts with
+
 **Creating a REPLbot Slack app**:   
 REPLbot requires a Slack "Classic App (bot)", because of its use of the real time messaging (RTM)
 API. To create a classic app and acquire a Slack bot token, follow these steps:
