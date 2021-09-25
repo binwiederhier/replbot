@@ -51,7 +51,7 @@ type Tmux struct {
 
 // Must be more than config.MaxSize to give tmux a little room for the other two panes
 const (
-	requiredVersion = 2.6
+	requiredVersion     = 2.6
 	terminalWidth       = "200"
 	terminalHeight      = "80"
 	checkMainPaneScript = "sh -c \"while true; do sleep 10; if ! tmux has-session -t %s.2; then exit; fi; done\""
