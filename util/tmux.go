@@ -41,7 +41,7 @@ func CheckTmuxVersion() error {
 	if err != nil {
 		return err
 	}
-	if version < requiredVersion {
+	if version < requiredVersion-0.01 { // floats are fun
 		return fmt.Errorf("tmux version too low: tmux %.1f required, but found tmux %.1f", requiredVersion, version)
 	}
 	return nil
