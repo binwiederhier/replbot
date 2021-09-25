@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -34,6 +35,10 @@ const (
 	checkMainPaneScript = "sh -c \"while true; do sleep 10; if ! tmux has-session -t %s.2; then exit; fi; done\""
 )
 
+var (
+	tmuxVersionRegex = regexp.MustCompile(`tmux (\d+\.\d+)`)
+)
+
 // NewTmux creates a new Tmux instance, but does not start the tmux
 func NewTmux(id string, width, height int) *Tmux {
 	return &Tmux{
@@ -45,6 +50,10 @@ func NewTmux(id string, width, height int) *Tmux {
 
 // Start starts the tmux using the given command and arguments
 func (s *Tmux) Start(env map[string]string, command ...string) error {
+	supportsHooks, err := supportsHooks()
+	if err != nil {
+		return err
+	}
 	pane0 := fmt.Sprintf("%s.0", s.id)
 	pane1 := fmt.Sprintf("%s.1", s.id)
 	pane2 := fmt.Sprintf("%s.2", s.id)
@@ -55,11 +64,13 @@ func (s *Tmux) Start(env map[string]string, command ...string) error {
 		c = append(c, []string{"tmux", "set-environment", "-t", s.id, k, v})
 	}
 	c = append(c, []string{"tmux", "set-option", "-t", s.id, "history-limit", "500000"}) // before split-window!
-	c = append(c, append([]string{"tmux", "split-window", "-h", "-t", pane1}, command...))
+	c = append(c, append([]string{"tmux", "split-window", "-h", "-t", pane1}, strings.Join(command, " "))) // FIXME Use QuoteCommand instead!
 	c = append(c, []string{"tmux", "resize-pane", "-t", pane2, "-x", strconv.Itoa(s.width), "-y", strconv.Itoa(s.height)})
 	c = append(c, []string{"tmux", "select-pane", "-t", pane2})
-	c = append(c, []string{"tmux", "set-hook", "-t", pane2, "pane-died", fmt.Sprintf("capture-pane -S- -E-; save-buffer \"%s\"; kill-pane", s.recordingFile())})
-	c = append(c, []string{"tmux", "set-option", "-t", pane2, "remain-on-exit"})
+	if supportsHooks {
+		c = append(c, []string{"tmux", "set-hook", "-t", pane2, "pane-died", fmt.Sprintf("capture-pane -S- -E-; save-buffer \"%s\"; kill-pane", s.recordingFile())})
+		c = append(c, []string{"tmux", "set-option", "-t", pane2, "remain-on-exit"})
+	}
 	return RunAll(c...)
 }
 
@@ -150,4 +161,21 @@ func (s *Tmux) bufferFile() string {
 
 func (s *Tmux) recordingFile() string {
 	return fmt.Sprintf("/tmp/%s.recording", s.id)
+}
+
+func supportsHooks() (bool, error) {
+	cmd := exec.Command("tmux", "-V")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, nil
+	}
+	matches := tmuxVersionRegex.FindStringSubmatch(string(output))
+	if len(matches) <= 1 {
+		return false, errors.New("unexpected tmux version output")
+	}
+	version, err := strconv.ParseFloat(matches[1], 32)
+	if err != nil {
+		return false, err
+	}
+	return version >= 2.6, nil
 }
