@@ -22,8 +22,8 @@ nfpms:
       - rpm
     dependencies:
       - tmux
-      - asciinema
     suggests:
+      - asciinema
       - docker-ce
     recommends:
       - openssh-client
