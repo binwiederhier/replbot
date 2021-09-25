@@ -6,9 +6,31 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 )
+
+// CheckTmuxVersion checks the version of tmux and returns an error if it's not supported
+func CheckTmuxVersion() error {
+	cmd := exec.Command("tmux", "-V")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return err
+	}
+	matches := tmuxVersionRegex.FindStringSubmatch(string(output))
+	if len(matches) <= 1 {
+		return errors.New("unexpected tmux version output")
+	}
+	version, err := strconv.ParseFloat(matches[1], 32)
+	if err != nil {
+		return err
+	}
+	if version < requiredVersion {
+		return fmt.Errorf("tmux version too low: tmux %.1f required, but found tmux %.1f", requiredVersion, version)
+	}
+	return nil
+}
 
 // Tmux represents a tmux(1) process with one window and three panes, to allow us to resize the terminal of the
 // main pane (.2). The main pane is .2, so that if it exits there is no other pane to take its place.
@@ -29,10 +51,15 @@ type Tmux struct {
 
 // Must be more than config.MaxSize to give tmux a little room for the other two panes
 const (
+	requiredVersion = 2.6
 	terminalWidth       = "200"
 	terminalHeight      = "80"
 	checkMainPaneScript = "sh -c \"while true; do sleep 10; if ! tmux has-session -t %s.2; then exit; fi; done\""
 	configFile          = "set-option default-terminal xterm-256color" // must be set before new-session
+)
+
+var (
+	tmuxVersionRegex = regexp.MustCompile(`tmux (\d+\.\d+)`)
 )
 
 // NewTmux creates a new Tmux instance, but does not start the tmux

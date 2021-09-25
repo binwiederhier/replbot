@@ -56,6 +56,9 @@ func New() *cli.App {
 }
 
 func execRun(c *cli.Context) error {
+	if err := util.CheckTmuxVersion(); err != nil {
+		return err
+	}
 	token := c.String("bot-token")
 	scriptDir := c.String("script-dir")
 	timeout := c.Duration("idle-timeout")

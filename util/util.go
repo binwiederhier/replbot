@@ -45,7 +45,11 @@ func FileExists(filenames ...string) bool {
 // Run is a shortcut running an exec.Command
 func Run(command ...string) error {
 	cmd := exec.Command(command[0], command[1:]...)
-	return cmd.Run()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("command failed: %s\ncommand: %s\ncommand output: %s", err.Error(), strings.Join(command, " "), string(output))
+	}
+	return nil
 }
 
 // RunAll runs all the given commands
