@@ -11,6 +11,27 @@ import (
 	"strings"
 )
 
+// CheckTmuxVersion checks the version of tmux and returns an error if it's not supported
+func CheckTmuxVersion() error {
+	cmd := exec.Command("tmux", "-V")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return err
+	}
+	matches := tmuxVersionRegex.FindStringSubmatch(string(output))
+	if len(matches) <= 1 {
+		return errors.New("unexpected tmux version output")
+	}
+	version, err := strconv.ParseFloat(matches[1], 32)
+	if err != nil {
+		return err
+	}
+	if version < requiredVersion {
+		return fmt.Errorf("tmux version too low: tmux %.1f required, but found tmux %.1f", requiredVersion, version)
+	}
+	return nil
+}
+
 // Tmux represents a tmux(1) process with one window and three panes, to allow us to resize the terminal of the
 // main pane (.2). The main pane is .2, so that if it exits there is no other pane to take its place.
 //
@@ -30,6 +51,7 @@ type Tmux struct {
 
 // Must be more than config.MaxSize to give tmux a little room for the other two panes
 const (
+	requiredVersion = 2.6
 	terminalWidth       = "200"
 	terminalHeight      = "80"
 	checkMainPaneScript = "sh -c \"while true; do sleep 10; if ! tmux has-session -t %s.2; then exit; fi; done\""
@@ -50,10 +72,6 @@ func NewTmux(id string, width, height int) *Tmux {
 
 // Start starts the tmux using the given command and arguments
 func (s *Tmux) Start(env map[string]string, command ...string) error {
-	supportsHooks, err := supportsHooks()
-	if err != nil {
-		return err
-	}
 	pane0 := fmt.Sprintf("%s.0", s.id)
 	pane1 := fmt.Sprintf("%s.1", s.id)
 	pane2 := fmt.Sprintf("%s.2", s.id)
@@ -64,13 +82,11 @@ func (s *Tmux) Start(env map[string]string, command ...string) error {
 		c = append(c, []string{"tmux", "set-environment", "-t", s.id, k, v})
 	}
 	c = append(c, []string{"tmux", "set-option", "-t", s.id, "history-limit", "500000"}) // before split-window!
-	c = append(c, append([]string{"tmux", "split-window", "-h", "-t", pane1}, strings.Join(command, " "))) // FIXME Use QuoteCommand instead!
+	c = append(c, append([]string{"tmux", "split-window", "-h", "-t", pane1}, command...))
 	c = append(c, []string{"tmux", "resize-pane", "-t", pane2, "-x", strconv.Itoa(s.width), "-y", strconv.Itoa(s.height)})
 	c = append(c, []string{"tmux", "select-pane", "-t", pane2})
-	if supportsHooks {
-		c = append(c, []string{"tmux", "set-hook", "-t", pane2, "pane-died", fmt.Sprintf("capture-pane -S- -E-; save-buffer \"%s\"; kill-pane", s.recordingFile())})
-		c = append(c, []string{"tmux", "set-option", "-t", pane2, "remain-on-exit"})
-	}
+	c = append(c, []string{"tmux", "set-hook", "-t", pane2, "pane-died", fmt.Sprintf("capture-pane -S- -E-; save-buffer \"%s\"; kill-pane", s.recordingFile())})
+	c = append(c, []string{"tmux", "set-option", "-t", pane2, "remain-on-exit"})
 	return RunAll(c...)
 }
 
@@ -161,21 +177,4 @@ func (s *Tmux) bufferFile() string {
 
 func (s *Tmux) recordingFile() string {
 	return fmt.Sprintf("/tmp/%s.recording", s.id)
-}
-
-func supportsHooks() (bool, error) {
-	cmd := exec.Command("tmux", "-V")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return false, nil
-	}
-	matches := tmuxVersionRegex.FindStringSubmatch(string(output))
-	if len(matches) <= 1 {
-		return false, errors.New("unexpected tmux version output")
-	}
-	version, err := strconv.ParseFloat(matches[1], 32)
-	if err != nil {
-		return false, err
-	}
-	return version >= 2.6, nil
 }

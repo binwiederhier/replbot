@@ -1,7 +1,9 @@
 #!/bin/sh
 set -eu
 id replbot >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/replbot replbot
-getent group docker >/dev/null ||  usermod -a -G docker replbot
+if getent group docker >/dev/null; then
+  usermod -a -G docker replbot
+fi
 systemctl daemon-reload
 if systemctl is-active -q replbot; then
   systemctl restart replbot
