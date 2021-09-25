@@ -26,7 +26,7 @@ func CheckTmuxVersion() error {
 	if err != nil {
 		return err
 	}
-	if version < requiredVersion {
+	if version < requiredVersion-0.01 { // floats are fun
 		return fmt.Errorf("tmux version too low: tmux %.1f required, but found tmux %.1f", requiredVersion, version)
 	}
 	return nil
@@ -51,7 +51,7 @@ type Tmux struct {
 
 // Must be more than config.MaxSize to give tmux a little room for the other two panes
 const (
-	requiredVersion = 2.6
+	requiredVersion     = 2.6
 	terminalWidth       = "200"
 	terminalHeight      = "80"
 	checkMainPaneScript = "sh -c \"while true; do sleep 10; if ! tmux has-session -t %s.2; then exit; fi; done\""
