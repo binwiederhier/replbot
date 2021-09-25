@@ -99,12 +99,7 @@ func (s *Tmux) Start(env map[string]string, command ...string) error {
 	if err := script.Close(); err != nil {
 		return err
 	}
-	cmd := exec.Command(s.scriptFile())
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%s\ncommand output:\n%s", err.Error(), string(output))
-	}
-	return nil
+	return Run(s.scriptFile())
 }
 
 // Active checks if the tmux is still active
