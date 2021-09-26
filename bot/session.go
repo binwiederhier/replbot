@@ -31,23 +31,25 @@ import (
 const (
 	sessionStartedMessage = "🚀 REPL session started, %s. Type `!help` to see a list of available commands, or `!exit` to forcefully " +
 		"exit the REPL."
-	splitModeThreadMessage            = "Use this thread to enter your commands. Your output will appear in the main channel."
-	onlyMeModeMessage                 = "*Only you as the session owner* can send commands. Use the `!allow` command to let other users control the session."
-	everyoneModeMessage               = "*Everyone in this channel* can send commands. Use the `!deny` command specifically revoke access from users."
-	sessionExitedMessage              = "👋 REPL exited. See you later!"
-	sessionExitedWithRecordingMessage = "👋 REPL exited. You can find a recording of the session in the file below."
-	sessionAsciinemaLinkMessage       = "Here's a link to the recording: %s"
-	sessionAsciinemaExpiryMessage     = "(expires in %s)"
-	timeoutWarningMessage             = "⏱️ Are you still there, %s? Your session will time out in one minute. Type `!alive` to keep your session active."
-	forceCloseMessage                 = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
-	resizeCommandHelpMessage          = "Use the `!resize` command to resize the terminal, like so: !resize medium.\n\nAllowed sizes are `tiny`, `small`, `medium` or `large`."
-	messageLimitWarningMessage        = "Note that Discord has a message size limit of 2000 characters, so your messages may be truncated if they get to large."
-	usersAddedToAllowList             = "👍 Okay, I added the user(s) to the allow list."
-	usersAddedToDenyList              = "👍 Okay, I added the user(s) to the deny list."
-	cannotAddOwnerToDenyList          = "🙁 I don't think adding the session owner to the deny list is a good idea. I must protest."
-	recordingTooLargeMessage          = "🙁 I'm sorry, but you've produced too much output in this session. You may want to run a session with `norecord` to avoid this problem."
-	shareStartCommandMessage          = "To start your terminal sharing session, please run the following command from your terminal:\n\n```bash -c \"$(ssh -T -p %s %s@%s $USER)\"```"
-	allowCommandHelpMessage           = "To allow other users to interact with this session, use the `!allow` command like so: !allow %s\n\nYou may tag multiple users, or use the words " +
+	splitModeThreadMessage              = "Use this thread to enter your commands. Your output will appear in the main channel."
+	onlyMeModeMessage                   = "*Only you as the session owner* can send commands. Use the `!allow` command to let other users control the session."
+	everyoneModeMessage                 = "*Everyone in this channel* can send commands. Use the `!deny` command specifically revoke access from users."
+	sessionExitedMessage                = "👋 REPL exited. See you later!"
+	sessionExitedWithRecordingMessage   = "👋 REPL exited. You can find a recording of the session in the file below."
+	sessionAsciinemaLinkMessage         = "Here's a link to the recording: %s"
+	sessionAsciinemaExpiryMessage       = "(expires in %s)"
+	timeoutWarningMessage               = "⏱️ Are you still there, %s? Your session will time out in one minute. Type `!alive` to keep your session active."
+	forceCloseMessage                   = "🏃 REPLbot has to go. Urgent REPL-related business. Sorry about that!"
+	resizeCommandHelpMessage            = "Use the `!resize` command to resize the terminal, like so: !resize medium.\n\nAllowed sizes are `tiny`, `small`, `medium` or `large`."
+	messageLimitWarningMessage          = "Note that Discord has a message size limit of 2000 characters, so your messages may be truncated if they get to large."
+	usersAddedToAllowList               = "👍 Okay, I added the user(s) to the allow list."
+	usersAddedToDenyList                = "👍 Okay, I added the user(s) to the deny list."
+	cannotAddOwnerToDenyList            = "🙁 I don't think adding the session owner to the deny list is a good idea. I must protest."
+	recordingTooLargeMessage            = "🙁 I'm sorry, but you've produced too much output in this session. You may want to run a session with `norecord` to avoid this problem."
+	shareStartCommandMessage            = "To start your terminal sharing session, please run the following command from your terminal:\n\n```bash -c \"$(ssh -T -p %s %s@%s $USER)\"```"
+	sessionWithWebStartReadOnlyMessage  = "You can also view the session via http://%s/%s/. Use `!web rw` to switch the web terminal to read-write mode, or `!web off` to turn if off."
+	sessionWithWebStartReadWriteMessage = "You can also view *and control* the session via http://%s/%s/. Use `!web ro` to switch the web terminal to read-only mode, or `!web off` to turn if off."
+	allowCommandHelpMessage             = "To allow other users to interact with this session, use the `!allow` command like so: !allow %s\n\nYou may tag multiple users, or use the words " +
 		"`everyone`/`all` to allow all users, or `nobody`/`only-me` to only yourself access."
 	denyCommandHelpMessage = "To deny users from interacting with this session, use the `!deny` command like so: !deny %s\n\nYou may tag multiple users, or use the words " +
 		"`everyone`/`all` to deny everyone (except yourself), like so: !deny all"
@@ -57,17 +59,16 @@ const (
 		"representation of any byte), e.g. `Hi\\bI` will show up as `HI`. This is is similar to `echo -e` in a shell."
 	sendKeysHelpMessage = "Use any of the send-key commands (`!c`, `!esc`, ...) to send common keyboard shortcuts, e.g. `!d` to send Ctrl-D, or `!up` to send the up key.\n\n" +
 		"You may also combine them in a sequence, like so: `!c-b d` (Ctrl-B + d), or `!up !up !down !down !left !right !left !right b a`."
-	authModeChangeMessage                 = "👍 Okay, I updated the auth mode: "
-	sessionKeptAliveMessage               = "I'm glad you're still here 😀"
-	webCommandHelpMessage                 = "To enable a web-based terminal, simply type `!web rw` (read-write) or `!web ro` (read-only). Type `!web off` to turn if back off."
-	webStartedReadOnlyMessage             = "👍 Okay, I started a web terminal for you: http://%s/%s/\n\nThe terminal is *read-only*. Use `!web rw` to change it to read-write, and `!web off` to turn if off completely."
-	webStartedReadWriteMessage            = "👍 Okay, I started a web terminal for you: http://%s/%s/\n\n*Everyone in this channel* can write to this terminal. Use `!web ro` to change it to read-only, and `!web off` to turn if off completely."
-	webStoppedMessage                     = "👍 Okay, I stopped the web terminal."
-	webNotWorkingMessage                  = "🙁 I'm sorry but I can't start the web terminal for you."
-	webIndividualUsersNotSupportedMessage = "The web terminal *does not support* allowing/denying individual users. You may want to turn it off using `!web off` if you need granular permissions."
-	webAlreadyEnabledMessage              = "The web terminal is available at http://%s/%s/"
-	webAlreadyDisabledMessage             = "The web terminal is already disabled."
-	helpMessage                           = "Alright, buckle up. Here's a list of all the things you can do in this REPL session.\n\n" +
+	authModeChangeMessage   = "👍 Okay, I updated the auth mode: "
+	sessionKeptAliveMessage = "I'm glad you're still here 😀"
+	webStoppedMessage       = "👍 Okay, I stopped the web terminal."
+	webIsReadOnlyMessage    = "The terminal is *read-only*. Use `!web rw` to change it to read-write, and `!web off` to turn if off completely."
+	webIsWritableMessage    = "*Everyone in this channel* can write to this terminal. Use `!web ro` to change it to read-only, and `!web off` to turn if off completely."
+	webEnabledMessage       = "The web terminal is available at http://%s/%s/"
+	webDisabledMessage      = "The web terminal is disabled."
+	webHelpMessage          = "To enable it, simply type `!web rw` (read-write) or `!web ro` (read-only). Type `!web off` to turn if back off."
+	webNotWorkingMessage    = "🙁 I'm sorry but I can't start the web terminal for you."
+	helpMessage             = "Alright, buckle up. Here's a list of all the things you can do in this REPL session.\n\n" +
 		"Sending text:\n" +
 		"  `TEXT` - Sends _TEXT\\n_\n" +
 		"  `!n TEXT` - Sends _TEXT_ (no new line)\n" +
@@ -169,7 +170,7 @@ type session struct {
 	maxSize        *config.Size
 	shareConn      io.Closer
 	webCmd         *exec.Cmd
-	webPermitWrite bool
+	webWritable    bool
 	webPort        int
 	webPrefix      string
 	mu             sync.RWMutex
@@ -524,20 +525,14 @@ func (s *session) sessionStartedMessage() string {
 	switch s.conf.authMode {
 	case config.OnlyMe:
 		message += "\n\n" + onlyMeModeMessage
-		if s.conf.web {
-			message += "\n\n" + "You may also view the session here: http://plop.datto.lan/lalala"
-		}
 	case config.Everyone:
 		message += "\n\n" + everyoneModeMessage
-		if s.conf.web {
-			message += "\n\n" + "*Danger*: In addition to this chat, you can also control the session from here: http://plop.datto.lan/lalala"
-		}
 	}
 	if s.webCmd != nil {
-		if s.webPermitWrite {
-			message += "\n\n" + fmt.Sprintf(webStartedReadWriteMessage, s.conf.global.WebHost, s.webPort)
+		if s.webWritable {
+			message += "\n\n" + fmt.Sprintf(sessionWithWebStartReadWriteMessage, s.conf.global.WebHost, s.webPrefix)
 		} else {
-			message += "\n\n" + fmt.Sprintf(webStartedReadOnlyMessage, s.conf.global.WebHost, s.webPort)
+			message += "\n\n" + fmt.Sprintf(sessionWithWebStartReadOnlyMessage, s.conf.global.WebHost, s.webPrefix)
 		}
 	}
 	if s.shouldWarnMessageLength(s.conf.size) {
@@ -811,9 +806,6 @@ func (s *session) handleAllowCommand(input string) error {
 		s.authUsers[user] = true
 	}
 	message := usersAddedToAllowList
-	if s.webCmd != nil {
-		message += "\n\n" + webIndividualUsersNotSupportedMessage
-	}
 	return s.conn.Send(s.conf.control, message)
 }
 
@@ -835,9 +827,6 @@ func (s *session) handleDenyCommand(input string) error {
 		s.authUsers[user] = false
 	}
 	message := usersAddedToDenyList
-	if s.webCmd != nil {
-		message += "\n\n" + webIndividualUsersNotSupportedMessage
-	}
 	return s.conn.Send(s.conf.control, message)
 }
 
@@ -885,29 +874,42 @@ func (s *session) handleWebCommand(input string) error {
 	toggle := strings.TrimSpace(strings.TrimPrefix(input, "!web"))
 	s.mu.RLock()
 	enabled := s.webCmd != nil
-	permitWrite := s.webPermitWrite
+	writable := s.webWritable
 	s.mu.RUnlock()
 	switch toggle {
 	case "rw", "ro":
-		newPermitWrite := toggle == "rw"
-		if enabled && permitWrite == newPermitWrite {
-			return s.conn.Send(s.conf.control, fmt.Sprintf(webAlreadyEnabledMessage, s.conf.global.WebHost, s.webPrefix))
+		shouldBeWritable := toggle == "rw"
+		if enabled && writable == shouldBeWritable {
+			return s.sendWebHelpMessage(enabled, writable)
 		}
-		if err := s.startWeb(newPermitWrite); err != nil {
+		if err := s.startWeb(shouldBeWritable); err != nil {
 			return s.conn.Send(s.conf.control, webNotWorkingMessage)
 		}
-		if s.webPermitWrite {
-			return s.conn.Send(s.conf.control, fmt.Sprintf(webStartedReadWriteMessage, s.conf.global.WebHost, s.webPrefix))
-		}
-		return s.conn.Send(s.conf.control, fmt.Sprintf(webStartedReadOnlyMessage, s.conf.global.WebHost, s.webPrefix))
+		return s.sendWebHelpMessage(true, shouldBeWritable)
 	case "off":
 		if !enabled {
-			return s.conn.Send(s.conf.control, webAlreadyDisabledMessage)
+			return s.conn.Send(s.conf.control, webDisabledMessage)
 		}
-		return s.stopWeb()
+		if err := s.stopWeb(); err != nil {
+			return err
+		}
+		return s.conn.Send(s.conf.control, webStoppedMessage+"\n\n"+webHelpMessage)
 	default:
-		return s.conn.Send(s.conf.control, webCommandHelpMessage)
+		return s.sendWebHelpMessage(enabled, writable)
 	}
+}
+
+func (s *session) sendWebHelpMessage(enabled, writable bool) error {
+	if enabled {
+		message := fmt.Sprintf(webEnabledMessage, s.conf.global.WebHost, s.webPrefix)
+		if writable {
+			message += "\n\n" + webIsWritableMessage
+		} else {
+			message += "\n\n" + webIsReadOnlyMessage
+		}
+		return s.conn.Send(s.conf.control, message)
+	}
+	return s.conn.Send(s.conf.control, webDisabledMessage+"\n\n"+webHelpMessage)
 }
 
 func (s *session) startWeb(permitWrite bool) error {
@@ -927,7 +929,7 @@ func (s *session) startWeb(permitWrite bool) error {
 	if s.webPrefix == "" {
 		s.webPrefix = util.RandomString(10)
 	}
-	s.webPermitWrite = permitWrite
+	s.webWritable = permitWrite
 	if permitWrite {
 		s.webCmd = exec.Command("gotty", "--permit-write", "--address", "127.0.0.1", "--port", strconv.Itoa(s.webPort), "tmux", "attach", "-t", s.tmux.MainID())
 	} else {
@@ -950,7 +952,7 @@ func (s *session) stopWeb() error {
 		return err
 	}
 	s.webCmd = nil
-	return s.conn.Send(s.conf.control, webStoppedMessage)
+	return nil
 }
 
 func (s *session) handleResizeCommand(input string) error {

@@ -24,6 +24,9 @@ const (
 	// DefaultUploadRecording defines if session recording are uploaded to asciinema
 	DefaultUploadRecording = false
 
+	// DefaultWeb defines if sessions have a web terminal by default
+	DefaultWeb = false
+
 	// defaultRefreshInterval defines the interval at which the terminal refreshed
 	defaultRefreshInterval = 200 * time.Millisecond
 )
@@ -39,12 +42,13 @@ type Config struct {
 	DefaultWindowMode  WindowMode
 	DefaultAuthMode    AuthMode
 	DefaultSize        *Size
-	Cursor             time.Duration
+	DefaultWeb         bool
 	WebHost            string
 	ShareHost          string
 	ShareKeyFile       string
 	DefaultRecord      bool
 	UploadRecording    bool
+	Cursor             time.Duration
 	RefreshInterval    time.Duration
 	Debug              bool
 }
@@ -61,6 +65,7 @@ func New(token string) *Config {
 		DefaultAuthMode:    DefaultAuthMode,
 		DefaultSize:        DefaultSize,
 		DefaultRecord:      DefaultRecord,
+		DefaultWeb:         DefaultWeb,
 		UploadRecording:    DefaultUploadRecording,
 		RefreshInterval:    defaultRefreshInterval,
 	}

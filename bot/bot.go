@@ -37,6 +37,8 @@ const (
 	helpRequestedCommand            = "help"
 	recordCommand                   = "record"
 	noRecordCommand                 = "norecord"
+	webCommand                      = "web"
+	noWebCommand                    = "noweb"
 	shareCommand                    = "share"
 	shareServerScriptFile           = "/tmp/replbot_share_server.sh"
 )
@@ -206,6 +208,7 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 		global: b.config,
 		user:   ev.User,
 		record: b.config.DefaultRecord,
+		web:    b.config.DefaultWeb,
 	}
 	fields := strings.Fields(ev.Message)
 	for _, field := range fields {
@@ -224,6 +227,8 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 			conf.size = config.Sizes[field]
 		case recordCommand, noRecordCommand:
 			conf.record = field == recordCommand
+		case webCommand, noWebCommand:
+			conf.web = field == webCommand
 		default:
 			if b.config.ShareEnabled() && field == shareCommand {
 				relayPort, err := util.RandomPort()
