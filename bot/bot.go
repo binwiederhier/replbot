@@ -92,6 +92,7 @@ func New(conf *config.Config) (*Bot, error) {
 		conn:      conn,
 		sessions:  make(map[string]*session),
 		shareUser: make(map[string]*session),
+		webID:     make(map[string]*session),
 	}, nil
 }
 
@@ -398,25 +399,41 @@ func (b *Bot) runWebServer(ctx context.Context) error {
 }
 
 func (b *Bot) webHandler(w http.ResponseWriter, r *http.Request) {
+	if err := b.webHandlerInternal(w, r); err != nil {
+		log.Printf("[web] error: %s, returning 400", err.Error())
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+}
+
+func (b *Bot) webHandlerInternal(w http.ResponseWriter, r *http.Request) error {
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 3 { // must be /prefix/, not just /prefix
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return errors.New("invalid prefix")
 	}
 	prefix := parts[1]
-	if prefix != "a" {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	b.mu.RLock()
+	session := b.webID[prefix]
+	b.mu.RUnlock()
+	if session == nil {
+		return errors.New("session not found")
 	}
+	b.mu.RLock()
+	webPort := session.webPort
+	if webPort == 0 {
+		return errors.New("no active web session")
+	}
+	b.mu.RUnlock()
 	proxy := &httputil.ReverseProxy{Director: func(r *http.Request) {
+		log.Printf("[%s] proxying web request: %s", r.URL.Path)
 		r.URL.Scheme = "http"
-		r.URL.Host = "localhost:10001"
-		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/a")
-		r.URL.RawPath = strings.TrimPrefix(r.URL.Path, "/a")
+		r.URL.Host = fmt.Sprintf("127.0.0.1:%d", webPort)
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/"+prefix)
+		r.URL.RawPath = strings.TrimPrefix(r.URL.Path, "/"+prefix)
 		r.Header.Set("Origin", fmt.Sprintf("http://%s", b.config.WebHost))
-		log.Printf("webProxyRequest: host=%s path=%s", r.Host, r.URL.Path)
 	}}
 	proxy.ServeHTTP(w, r)
+	return nil
 }
 
 func (b *Bot) runShareServer(ctx context.Context) error {
