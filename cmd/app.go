@@ -35,6 +35,7 @@ func New() *cli.App {
 		altsrc.NewBoolFlag(&cli.BoolFlag{Name: "upload-recording", Aliases: []string{"z"}, EnvVars: []string{"REPLBOT_UPLOAD_RECORDING"}, Usage: "upload recorded sessions via 'asciinema upload'"}),
 		altsrc.NewBoolFlag(&cli.BoolFlag{Name: "no-upload-recording", Aliases: []string{"Z"}, EnvVars: []string{"REPLBOT_NO_UPLOAD_RECORDING"}, Usage: "do not upload recorded sessions via 'asciinema upload'"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "cursor", Aliases: []string{"C"}, EnvVars: []string{"REPLBOT_CURSOR"}, Value: "on", Usage: "cursor blink rate (on, off or duration)"}),
+		altsrc.NewStringFlag(&cli.StringFlag{Name: "web-host", Aliases: []string{"W"}, EnvVars: []string{"REPLBOT_WEB_ADDRESS"}, Usage: "hostname:port used to provide the web terminal feature"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "share-host", Aliases: []string{"H"}, EnvVars: []string{"REPLBOT_SHARE_HOST"}, Usage: "SSH hostname:port, used for terminal sharing"}),
 		altsrc.NewStringFlag(&cli.StringFlag{Name: "share-key-file", Aliases: []string{"K"}, EnvVars: []string{"REPLBOT_SHARE_KEY_FILE"}, Value: "/etc/replbot/hostkey", Usage: "SSH host key file, used for terminal sharing"}),
 	}
@@ -68,6 +69,7 @@ func execRun(c *cli.Context) error {
 	defaultWindowMode := config.WindowMode(c.String("default-window-mode"))
 	defaultAuthMode := config.AuthMode(c.String("default-auth-mode"))
 	cursor := c.String("cursor")
+	webHost := c.String("web-host")
 	shareHost := c.String("share-host")
 	shareKeyFile := c.String("share-key-file")
 	debug := c.Bool("debug")
@@ -128,6 +130,7 @@ func execRun(c *cli.Context) error {
 	conf.DefaultRecord = defaultRecord
 	conf.UploadRecording = uploadRecording
 	conf.Cursor = cursorRate
+	conf.WebHost = webHost
 	conf.ShareHost = shareHost
 	conf.ShareKeyFile = shareKeyFile
 	conf.Debug = debug

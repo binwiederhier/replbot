@@ -84,7 +84,7 @@ const (
 		"Other commands:\n" +
 		"  `!! ..` - Comment, ignored entirely\n" +
 		"  `!allow ..`, `!deny ..` - Allow/deny users\n" +
-		"  `!web` - Start web terminal\n" +
+		"  `!web` - Start/stop web terminal\n" +
 		"  `!resize ..` - Resize window\n" +
 		"  `!screen`, `!s` - Re-send terminal\n" +
 		"  `!alive` - Reset session timeout\n" +
@@ -187,7 +187,7 @@ type sessionConfig struct {
 	size        *config.Size
 	share       *shareConfig
 	record      bool
-	webTerm     bool
+	web         bool
 }
 
 type shareConfig struct {
@@ -269,6 +269,9 @@ func (s *session) Run() error {
 	defer log.Printf("[%s] Closed REPL session", s.conf.id)
 	env, err := s.getEnv()
 	if err != nil {
+		return err
+	}
+	if err := s.maybeStartWeb(); err != nil {
 		return err
 	}
 	if err := s.maybeSendStartShareMessage(); err != nil {
@@ -519,12 +522,12 @@ func (s *session) sessionStartedMessage() string {
 	switch s.conf.authMode {
 	case config.OnlyMe:
 		message += "\n\n" + onlyMeModeMessage
-		if s.conf.webTerm {
+		if s.conf.web {
 			message += "\n\n" + "You may also view the session here: http://plop.datto.lan/lalala"
 		}
 	case config.Everyone:
 		message += "\n\n" + everyoneModeMessage
-		if s.conf.webTerm {
+		if s.conf.web {
 			message += "\n\n" + "*Danger*: In addition to this chat, you can also control the session from here: http://plop.datto.lan/lalala"
 		}
 	}
@@ -718,6 +721,14 @@ func (s *session) sendExitedMessageWithRecording() error {
 	return s.conn.UploadFile(s.conf.control, message, recordingFileName, recordingFileType, file)
 }
 
+func (s *session) maybeStartWeb() error {
+	if !s.conf.web {
+		return nil
+	}
+	// FIXME
+	return s.maybeRestartGotty()
+}
+
 func (s *session) maybeSendStartShareMessage() error {
 	if s.conf.share == nil {
 		return nil
@@ -769,7 +780,7 @@ func (s *session) handleEscapeCommand(input string) error {
 	return s.tmux.Paste(input)
 }
 
-func (s *session) handleKeepaliveCommand(input string) error {
+func (s *session) handleKeepaliveCommand(_ string) error {
 	return s.conn.Send(s.conf.control, sessionKeptAliveMessage)
 }
 
@@ -885,6 +896,11 @@ func (s *session) handleWebCommand(input string) error {
 func (s *session) maybeRestartGotty() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	/*host, port, err := net.SplitHostPort(s.conf.global.WebHost)
+	if err != nil {
+		return err
+	}*/
+
 	if s.webCmd != nil && s.webCmd.Process != nil {
 		_ = s.webCmd.Process.Kill()
 	}

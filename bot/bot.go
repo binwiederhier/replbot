@@ -13,6 +13,8 @@ import (
 	"heckel.io/replbot/util"
 	"log"
 	"net"
+	"net/http"
+	"net/http/httputil"
 	"os"
 	"strings"
 	"sync"
@@ -62,6 +64,7 @@ type Bot struct {
 	conn      conn
 	sessions  map[string]*session
 	shareUser map[string]*session
+	webID     map[string]*session
 	cancelFn  context.CancelFunc
 	mu        sync.RWMutex
 }
@@ -108,6 +111,11 @@ func (b *Bot) Run() error {
 	if b.config.ShareHost != "" {
 		g.Go(func() error {
 			return b.runShareServer(ctx)
+		})
+	}
+	if b.config.WebHost != "" {
+		g.Go(func() error {
+			return b.runWebServer(ctx)
 		})
 	}
 	return g.Wait()
@@ -366,6 +374,49 @@ func (b *Bot) handleHelp(channel, thread string, err error) error {
 	}
 	message := fmt.Sprintf(messageTemplate, b.conn.MentionBot(), scripts[0], replList, b.config.DefaultControlMode, b.config.DefaultSize.Name, b.config.DefaultWindowMode, b.config.DefaultAuthMode, defaultRecordCommand)
 	return b.conn.Send(target, message)
+}
+
+func (b *Bot) runWebServer(ctx context.Context) error {
+	_, port, err := net.SplitHostPort(b.config.WebHost)
+	if err != nil {
+		return err
+	}
+	if port == "" {
+		port = "80"
+	}
+	errChan := make(chan error)
+	go func() {
+		http.HandleFunc("/", b.webHandler)
+		errChan <- http.ListenAndServe(":"+port, nil)
+	}()
+	select {
+	case err := <-errChan:
+		return err
+	case <-ctx.Done():
+		return nil
+	}
+}
+
+func (b *Bot) webHandler(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 3 { // must be /prefix/, not just /prefix
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	prefix := parts[1]
+	if prefix != "a" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	proxy := &httputil.ReverseProxy{Director: func(r *http.Request) {
+		r.URL.Scheme = "http"
+		r.URL.Host = "localhost:10001"
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/a")
+		r.URL.RawPath = strings.TrimPrefix(r.URL.Path, "/a")
+		r.Header.Set("Origin", fmt.Sprintf("http://%s", b.config.WebHost))
+		log.Printf("webProxyRequest: host=%s path=%s", r.Host, r.URL.Path)
+	}}
+	proxy.ServeHTTP(w, r)
 }
 
 func (b *Bot) runShareServer(ctx context.Context) error {

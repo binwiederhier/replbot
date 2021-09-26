@@ -40,6 +40,7 @@ type Config struct {
 	DefaultAuthMode    AuthMode
 	DefaultSize        *Size
 	Cursor             time.Duration
+	WebHost            string
 	ShareHost          string
 	ShareKeyFile       string
 	DefaultRecord      bool
