@@ -190,6 +190,7 @@ type sessionConfig struct {
 	share       *shareConfig
 	record      bool
 	web         bool
+	notifyWeb   func(s *session, enabled bool, prefix string)
 }
 
 type shareConfig struct {
@@ -493,6 +494,9 @@ func (s *session) shutdownHandler() error {
 	s.active = false
 	if s.shareConn != nil {
 		s.shareConn.Close()
+	}
+	if s.webCmd != nil {
+		s.conf.notifyWeb(s, false, s.webPrefix)
 	}
 	s.mu.Unlock()
 	return nil
@@ -939,6 +943,7 @@ func (s *session) startWeb(permitWrite bool) error {
 		s.webCmd = nil // Disable web!
 		return err
 	}
+	s.conf.notifyWeb(s, true, s.webPrefix)
 	return nil
 }
 
@@ -952,6 +957,7 @@ func (s *session) stopWeb() error {
 		return err
 	}
 	s.webCmd = nil
+	s.conf.notifyWeb(s, false, s.webPrefix)
 	return nil
 }
 

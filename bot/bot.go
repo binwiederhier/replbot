@@ -66,7 +66,7 @@ type Bot struct {
 	conn      conn
 	sessions  map[string]*session
 	shareUser map[string]*session
-	webID     map[string]*session
+	webPrefix map[string]*session
 	cancelFn  context.CancelFunc
 	mu        sync.RWMutex
 }
@@ -94,7 +94,7 @@ func New(conf *config.Config) (*Bot, error) {
 		conn:      conn,
 		sessions:  make(map[string]*session),
 		shareUser: make(map[string]*session),
-		webID:     make(map[string]*session),
+		webPrefix: make(map[string]*session),
 	}, nil
 }
 
@@ -205,10 +205,11 @@ func (b *Bot) maybeForwardMessage(ev *messageEvent) bool {
 
 func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 	conf := &sessionConfig{
-		global: b.config,
-		user:   ev.User,
-		record: b.config.DefaultRecord,
-		web:    b.config.DefaultWeb,
+		global:    b.config,
+		user:      ev.User,
+		record:    b.config.DefaultRecord,
+		web:       b.config.DefaultWeb,
+		notifyWeb: b.webUpdated,
 	}
 	fields := strings.Fields(ev.Message)
 	for _, field := range fields {
@@ -405,9 +406,8 @@ func (b *Bot) runWebServer(ctx context.Context) error {
 
 func (b *Bot) webHandler(w http.ResponseWriter, r *http.Request) {
 	if err := b.webHandlerInternal(w, r); err != nil {
-		log.Printf("[web] error: %s, returning 400", err.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		log.Printf("[web] error: %s, returning 404", err.Error())
+		http.NotFound(w, r)
 	}
 }
 
@@ -418,7 +418,7 @@ func (b *Bot) webHandlerInternal(w http.ResponseWriter, r *http.Request) error {
 	}
 	prefix := parts[1]
 	b.mu.RLock()
-	session := b.webID[prefix]
+	session := b.webPrefix[prefix]
 	b.mu.RUnlock()
 	if session == nil {
 		return errors.New("session not found")
@@ -430,7 +430,7 @@ func (b *Bot) webHandlerInternal(w http.ResponseWriter, r *http.Request) error {
 	}
 	b.mu.RUnlock()
 	proxy := &httputil.ReverseProxy{Director: func(r *http.Request) {
-		log.Printf("[%s] proxying web request: %s", r.URL.Path)
+		log.Printf("[%s] proxying web request: %s", session.conf.id, r.URL.Path)
 		r.URL.Scheme = "http"
 		r.URL.Host = fmt.Sprintf("127.0.0.1:%d", webPort)
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/"+prefix)
@@ -573,4 +573,14 @@ func (b *Bot) checkSessionAllowed(channel, thread string, conf *sessionConfig) (
 		return false, b.conn.Send(ch, maxUserSessionsExceededMessage)
 	}
 	return true, nil
+}
+
+func (b *Bot) webUpdated(s *session, enabled bool, prefix string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if enabled {
+		b.webPrefix[prefix] = s
+	} else {
+		delete(b.webPrefix, prefix)
+	}
 }
