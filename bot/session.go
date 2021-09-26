@@ -47,8 +47,8 @@ const (
 	cannotAddOwnerToDenyList            = "🙁 I don't think adding the session owner to the deny list is a good idea. I must protest."
 	recordingTooLargeMessage            = "🙁 I'm sorry, but you've produced too much output in this session. You may want to run a session with `norecord` to avoid this problem."
 	shareStartCommandMessage            = "To start your terminal sharing session, please run the following command from your terminal:\n\n```bash -c \"$(ssh -T -p %s %s@%s $USER)\"```"
-	sessionWithWebStartReadOnlyMessage  = "You can also view the session via http://%s/%s/. Use `!web rw` to switch the web terminal to read-write mode, or `!web off` to turn if off."
-	sessionWithWebStartReadWriteMessage = "You can also view *and control* the session via http://%s/%s/. Use `!web ro` to switch the web terminal to read-only mode, or `!web off` to turn if off."
+	sessionWithWebStartReadOnlyMessage  = "You can also view the session via http://%s/%s. Use `!web rw` to switch the web terminal to read-write mode, or `!web off` to turn if off."
+	sessionWithWebStartReadWriteMessage = "You can also view *and control* the session via http://%s/%s. Use `!web ro` to switch the web terminal to read-only mode, or `!web off` to turn if off."
 	allowCommandHelpMessage             = "To allow other users to interact with this session, use the `!allow` command like so: !allow %s\n\nYou may tag multiple users, or use the words " +
 		"`everyone`/`all` to allow all users, or `nobody`/`only-me` to only yourself access."
 	denyCommandHelpMessage = "To deny users from interacting with this session, use the `!deny` command like so: !deny %s\n\nYou may tag multiple users, or use the words " +
@@ -64,10 +64,11 @@ const (
 	webStoppedMessage       = "👍 Okay, I stopped the web terminal."
 	webIsReadOnlyMessage    = "The terminal is *read-only*. Use `!web rw` to change it to read-write, and `!web off` to turn if off completely."
 	webIsWritableMessage    = "*Everyone in this channel* can write to this terminal. Use `!web ro` to change it to read-only, and `!web off` to turn if off completely."
-	webEnabledMessage       = "The web terminal is available at http://%s/%s/"
+	webEnabledMessage       = "The web terminal is available at http://%s/%s"
 	webDisabledMessage      = "The web terminal is disabled."
 	webHelpMessage          = "To enable it, simply type `!web rw` (read-write) or `!web ro` (read-only). Type `!web off` to turn if back off."
-	webNotWorkingMessage    = "🙁 I'm sorry but I can't start the web terminal for you."
+	webNotWorkingMessage    = "🙁 I'm sorry, but I can't start the web terminal for you."
+	webNotSupportedMessage  = "🙁 I'm sorry, but the web terminal feature is not enabled."
 	helpMessage             = "Alright, buckle up. Here's a list of all the things you can do in this REPL session.\n\n" +
 		"Sending text:\n" +
 		"  `TEXT` - Sends _TEXT\\n_\n" +
@@ -495,9 +496,6 @@ func (s *session) shutdownHandler() error {
 	if s.shareConn != nil {
 		s.shareConn.Close()
 	}
-	if s.webCmd != nil {
-		s.conf.notifyWeb(s, false, s.webPrefix)
-	}
 	s.mu.Unlock()
 	return nil
 }
@@ -875,6 +873,9 @@ func (s *session) handleScreenCommand(_ string) error {
 }
 
 func (s *session) handleWebCommand(input string) error {
+	if s.conf.global.WebHost == "" {
+		return s.conn.Send(s.conf.control, webNotSupportedMessage)
+	}
 	toggle := strings.TrimSpace(strings.TrimPrefix(input, "!web"))
 	s.mu.RLock()
 	enabled := s.webCmd != nil
@@ -934,11 +935,16 @@ func (s *session) startWeb(permitWrite bool) error {
 		s.webPrefix = util.RandomString(10)
 	}
 	s.webWritable = permitWrite
-	if permitWrite {
-		s.webCmd = exec.Command("gotty", "--permit-write", "--address", "127.0.0.1", "--port", strconv.Itoa(s.webPort), "tmux", "attach", "-t", s.tmux.MainID())
-	} else {
-		s.webCmd = exec.Command("gotty", "--address", "localhost", "--port", strconv.Itoa(s.webPort), "tmux", "attach", "-t", s.tmux.MainID())
+	args := []string{
+		"--address", "127.0.0.1",
+		"--port", strconv.Itoa(s.webPort),
+		"--reconnect",
+		"tmux", "attach", "-t", s.tmux.MainID(),
 	}
+	if s.webWritable {
+		args = append([]string{"--permit-write"}, args...)
+	}
+	s.webCmd = exec.Command("gotty", args...)
 	if err := s.webCmd.Start(); err != nil {
 		s.webCmd = nil // Disable web!
 		return err

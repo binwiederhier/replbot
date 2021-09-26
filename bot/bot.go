@@ -27,9 +27,10 @@ const (
 		"the main `channel`, or in `split` mode, use the respective keywords (default: `%s`). To define the terminal size, use the words " +
 		"`tiny`, `small`, `medium` or `large` (default: `%s`). Use `full` or `trim` to set the window mode (default: `%s`), and `everyone` " +
 		"or `only-me` to define who can send commands (default: `%s`). Send `record` or `norecord` to define if your session should be " +
-		"recorded (default: `%s`). To start a private REPL session, just DM me."
+		"recorded (default: `%s`)."
 	shareMessage = "Using the word `share` will allow you to share your own terminal here in the chat. Terminal sharing " +
 		"sessions are always started in `only-me` mode, unless overridden."
+	webMessage                      = "Use the word `web` or `noweb` to enable a web-based terminal for this session (default: `%s`)."
 	unknownCommandMessage           = "I am not quite sure what you mean by _%s_ ⁉"
 	misconfiguredMessage            = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
 	maxTotalSessionsExceededMessage = "😭 There are too many active sessions. Please wait until another session is closed."
@@ -137,6 +138,9 @@ func (b *Bot) Stop() {
 		if sess.conf.share != nil {
 			delete(b.shareUser, sess.conf.share.user)
 		}
+		if sess.webPrefix != "" {
+			delete(b.webPrefix, sess.webPrefix)
+		}
 	}
 	b.cancelFn() // This must be at the end, see app.go
 }
@@ -228,8 +232,6 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 			conf.size = config.Sizes[field]
 		case recordCommand, noRecordCommand:
 			conf.record = field == recordCommand
-		case webCommand, noWebCommand:
-			conf.web = field == webCommand
 		default:
 			if b.config.ShareEnabled() && field == shareCommand {
 				relayPort, err := util.RandomPort()
@@ -251,6 +253,8 @@ func (b *Bot) parseSessionConfig(ev *messageEvent) (*sessionConfig, error) {
 					hostKeyPair:   hostKeyPair,
 					clientKeyPair: clientKeyPair,
 				}
+			} else if b.config.WebHost != "" && (field == webCommand || field == noWebCommand) {
+				conf.web = field == webCommand
 			} else if s := b.config.Script(field); conf.script == "" && s != "" {
 				conf.script = s
 			} else {
@@ -353,6 +357,9 @@ func (b *Bot) startSession(conf *sessionConfig) error {
 		if conf.share != nil {
 			delete(b.shareUser, conf.share.user)
 		}
+		if sess.webPrefix != "" {
+			delete(b.webPrefix, sess.webPrefix)
+		}
 		b.mu.Unlock()
 	}()
 	return nil
@@ -369,6 +376,13 @@ func (b *Bot) handleHelp(channel, thread string, err error) error {
 		messageTemplate = welcomeMessage + mentionMessage
 	} else {
 		messageTemplate = err.Error() + "\n\n" + mentionMessage
+	}
+	if b.config.WebHost != "" {
+		defaultWebCommand := webCommand
+		if !b.config.DefaultWeb {
+			defaultWebCommand = noWebCommand
+		}
+		messageTemplate += " " + fmt.Sprintf(webMessage, defaultWebCommand)
 	}
 	if b.config.ShareEnabled() {
 		messageTemplate += "\n\n" + shareMessage
@@ -413,24 +427,25 @@ func (b *Bot) webHandler(w http.ResponseWriter, r *http.Request) {
 
 func (b *Bot) webHandlerInternal(w http.ResponseWriter, r *http.Request) error {
 	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 3 { // must be /prefix/, not just /prefix
+	if len(parts) < 2 {
 		return errors.New("invalid prefix")
 	}
 	prefix := parts[1]
 	b.mu.RLock()
+	var webPort int
 	session := b.webPrefix[prefix]
+	if session != nil {
+		webPort = session.webPort
+	}
 	b.mu.RUnlock()
-	if session == nil {
+	if session == nil || webPort == 0 {
 		return errors.New("session not found")
 	}
-	b.mu.RLock()
-	webPort := session.webPort
-	if webPort == 0 {
-		return errors.New("no active web session")
+	if len(parts) < 3 { // must be /prefix/, not just /prefix
+		http.Redirect(w, r, r.URL.String()+"/", http.StatusTemporaryRedirect)
+		return nil
 	}
-	b.mu.RUnlock()
 	proxy := &httputil.ReverseProxy{Director: func(r *http.Request) {
-		log.Printf("[%s] proxying web request: %s", session.conf.id, r.URL.Path)
 		r.URL.Scheme = "http"
 		r.URL.Host = fmt.Sprintf("127.0.0.1:%d", webPort)
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/"+prefix)

@@ -126,6 +126,16 @@ bot-token: MUST_BE_SET
 #
 # web-address:
 
+# Start web terminal by default (only applicable if "web-address" is set). If turned on, a gotty web terminal
+# will be started by default for each session. This option defines the default behavior. It can be changed
+# using the "web" or "noweb" settings.
+#
+# Format:    true or false
+# Default:   false
+# Required:  No
+#
+# default-web: false
+
 # Timeout after which REPL sessions are terminated if there is no user input.
 #
 # Format:    <number>(hms), must be >1m

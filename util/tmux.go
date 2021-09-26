@@ -46,8 +46,12 @@ func CheckTmuxVersion() error {
 	return nil
 }
 
-// Tmux represents a tmux(1) process with one window and three panes, to allow us to resize the terminal of the
-// main pane (.2). The main pane is .2, so that if it exits there is no other pane to take its place.
+// Tmux represents a very special tmux(1) setup, specifially used for REPLbot. It consists of
+// two tmux sessions:
+// - session "replbot_$id_frame": session with one window and three panes to allow us to resize the terminal of the
+//   main pane (.2). The main pane is .2, so that if it exits there is no other pane to take its place, which is easily
+//   detectable by the other panes. The main pane (.2) connects to the main session (see below).
+// - session "replbot_$id_main": main session running the actual shell/REPL.
 type Tmux struct {
 	id            string
 	width, height int
@@ -179,6 +183,7 @@ func (s *Tmux) Stop() error {
 	return nil
 }
 
+// MainID returns the session identifier for the main tmux session
 func (s *Tmux) MainID() string {
 	return s.mainID()
 }
