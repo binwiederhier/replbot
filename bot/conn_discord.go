@@ -79,6 +79,10 @@ func (c *discordConn) SendWithID(channel *channelID, message string) (string, er
 	return msg.ID, nil
 }
 
+func (c *discordConn) SendEphemeral(_ *channelID, userID, message string) error {
+	return c.SendDM(userID, message) // Discord does not support ephemeral messages outside of slash commands
+}
+
 func (c *discordConn) SendDM(userID string, message string) error {
 	ch, err := c.session.UserChannelCreate(userID)
 	if err != nil {

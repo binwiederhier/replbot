@@ -67,6 +67,10 @@ func (c *memConn) SendWithID(channel *channelID, message string) (string, error)
 	return strconv.Itoa(c.currentID), nil
 }
 
+func (c *memConn) SendEphemeral(_ *channelID, userID, message string) error {
+	return c.SendDM(userID, message)
+}
+
 func (c *memConn) SendDM(userID string, message string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

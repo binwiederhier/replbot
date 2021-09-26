@@ -32,7 +32,7 @@ const (
 	sessionStartedMessage = "🚀 REPL session started, %s. Type `!help` to see a list of available commands, or `!exit` to forcefully " +
 		"exit the REPL."
 	splitModeThreadMessage            = "Use this thread to enter your commands. Your output will appear in the main channel."
-	onlyMeModeMessage                 = "Only you as the session owner can send commands. Use the `!allow` command to let other users control the session."
+	onlyMeModeMessage                 = "*Only you as the session owner* can send commands. Use the `!allow` command to let other users control the session."
 	everyoneModeMessage               = "*Everyone in this channel* can send commands. Use the `!deny` command specifically revoke access from users."
 	sessionExitedMessage              = "👋 REPL exited. See you later!"
 	sessionExitedWithRecordingMessage = "👋 REPL exited. You can find a recording of the session in the file below."
@@ -257,15 +257,15 @@ func (s *session) Run() error {
 	if err != nil {
 		return err
 	}
-	if err := s.maybeSendStartShareMessage(); err != nil {
-		return err
-	}
 	command := s.createCommand()
 	if err := s.tmux.Start(env, command...); err != nil {
 		log.Printf("[%s] Failed to start tmux: %s", s.conf.id, err.Error())
 		return err
 	}
 	if err := s.conn.Send(s.conf.control, s.sessionStartedMessage()); err != nil {
+		return err
+	}
+	if err := s.maybeSendStartShareMessage(); err != nil {
 		return err
 	}
 	s.g.Go(s.userInputLoop)
@@ -701,7 +701,7 @@ func (s *session) maybeSendStartShareMessage() error {
 		return err
 	}
 	message := fmt.Sprintf(shareStartCommandMessage, port, s.conf.share.user, host)
-	if err := s.conn.SendDM(s.conf.user, message); err != nil {
+	if err := s.conn.SendEphemeral(s.conf.control, s.conf.user, message); err != nil {
 		return err
 	}
 	return nil
