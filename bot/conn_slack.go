@@ -81,6 +81,22 @@ func (c *slackConn) SendWithID(channel *channelID, message string) (string, erro
 	}
 }
 
+func (c *slackConn) SendEphemeral(channel *channelID, userID, message string) error {
+	options := c.postOptions(channel, slack.MsgOptionText(message, false))
+	for {
+		_, err := c.rtm.PostEphemeral(channel.Channel, userID, options...)
+		if err == nil {
+			return nil
+		}
+		if e, ok := err.(*slack.RateLimitedError); ok {
+			log.Printf("error: %s; sleeping before re-sending", err.Error())
+			time.Sleep(e.RetryAfter + additionalRateLimitDuration)
+			continue
+		}
+		return err
+	}
+}
+
 func (c *slackConn) SendDM(userID string, message string) error {
 	ch, _, _, err := c.rtm.OpenConversation(&slack.OpenConversationParameters{
 		ReturnIM: true,
