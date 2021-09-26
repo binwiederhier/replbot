@@ -135,7 +135,7 @@ point in time, type `!exit` (or `!q`).
 ![replbot session help](assets/slack-session-help.png)
 
 ### Recording sessions
-Sessions can be recorded using `asciinema`, and can even be automatically to either [asciinema.org](https://asciinema.org/)
+Sessions can be recorded using `asciinema`, and can even be automatically uploaded to either [asciinema.org](https://asciinema.org/)
 or your private [asciinema-server](https://github.com/asciinema/asciinema-server) (see [install instructions](https://github.com/asciinema/asciinema-server/wiki/Installation-guide)).
 
 After a session exits, the recording is then attached to chat as a ZIP file and optionally as a link to the asciinema server.
