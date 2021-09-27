@@ -93,8 +93,8 @@ func execRun(c *cli.Context) error {
 		return errors.New("share key file must be set and exist if share host is set, check --share-key-file or REPLBOT_SHARE_KEY_FILE")
 	} else if maxUserSessions > maxTotalSessions {
 		return errors.New("max total sessions must be larger or equal to max user sessions")
-	} else if err := util.Run("gotty", "--version"); webHost != "" && err != nil {
-		return fmt.Errorf("cannot set --web-host; 'gotty --version' test failed: %s", err.Error())
+	} else if err := util.Run("ttyd", "--version"); webHost != "" && err != nil {
+		return fmt.Errorf("cannot set --web-host; 'ttyd --version' test failed: %s", err.Error())
 	}
 	cursorRate, err := parseCursorRate(cursor)
 	if err != nil {

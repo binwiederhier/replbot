@@ -121,7 +121,7 @@ I recorded, as well as the [ZIP archive](assets/slack-recording.zip) with the re
 
 ### Web terminal
 Entering commands via Slack or Discord can be quite cumbersome, so REPLbot provides a web-based terminal (powered by
-the amazingly awesome [gotty](https://github.com/yudai/gotty)). If enabled, a unique link is created for each session,
+the amazingly awesome [ttyd](https://github.com/tsl0922/ttyd)). If enabled, a unique link is created for each session,
 which provides a read-only or writable web terminal.
 
 ![replbot web terminal](assets/slack-web-terminal.png)
@@ -161,13 +161,16 @@ as `trim` mode can get awkward when the terminal is expanded and the collapsed a
 ![replbot window mode](assets/discord-window-mode.png)
 
 ## Installation
+Please check out the [releases page](https://github.com/binwiederhier/replbot/releases) for binaries and 
+deb/rpm packages.
+
 **Requirements**:
 - A modern-ish Linux, preferably Ubuntu 18.04+, since that's what I develop on -- though it also runs on other
   distros.
 - [tmux](https://github.com/tmux/tmux) >= 2.6 is required, which is part of Ubuntu 18.04 (but surprisingly not part of Amazon Linux!)
 - [docker](https://docs.docker.com/get-docker/) for almost all scripts REPLbot ships with
 - [asciinema](https://asciinema.org/) if you'd like to [record sessions](#recording-sessions)
-- [gotty](https://github.com/yudai/gotty) if you'd like to use the [web terminal](#web-terminal) feature
+- [ttyd](https://github.com/tsl0922/ttyd) if you'd like to use the [web terminal](#web-terminal) feature
 
 **Creating a REPLbot Slack app**:   
 REPLbot requires a Slack "Classic App (bot)", because of its use of the real time messaging (RTM)
@@ -200,20 +203,20 @@ curl -sSL https://archive.heckel.io/apt/pubkey.txt | sudo apt-key add -
 sudo apt install apt-transport-https
 sudo sh -c "echo 'deb [arch=amd64] https://archive.heckel.io/apt debian main' > /etc/apt/sources.list.d/archive.heckel.io.list"  
 sudo apt update
-sudo apt install replbot
+sudo apt install replbot asciinema
 ```
 
 **Debian/Ubuntu** (*manual install*)**:**
 ```bash
 sudo apt install tmux
-wget https://github.com/binwiederhier/replbot/releases/download/v0.6.0/replbot_0.6.0_amd64.deb
-dpkg -i replbot_0.6.0_amd64.deb
+wget https://github.com/binwiederhier/replbot/releases/download/v0.6.1/replbot_0.6.1_amd64.deb
+dpkg -i replbot_0.6.1_amd64.deb
 ```
 
 **Fedora/RHEL/CentOS:**
 ```bash
 # Make sure that "tmux" is installed
-rpm -ivh https://github.com/binwiederhier/replbot/releases/download/v0.6.0/replbot_0.6.0_amd64.rpm
+rpm -ivh https://github.com/binwiederhier/replbot/releases/download/v0.6.1/replbot_0.6.1_amd64.rpm
 ```
 
 **Docker:**   
@@ -238,8 +241,8 @@ go get -u heckel.io/replbot
 **Manual install** (*any x86_64-based Linux*)**:**
 ```bash
 # Make sure that "tmux" is installed
-wget https://github.com/binwiederhier/replbot/releases/download/v0.6.0/replbot_0.6.0_linux_x86_64.tar.gz
-sudo tar -C /usr/bin -zxf replbot_0.6.0_linux_x86_64.tar.gz replbot
+wget https://github.com/binwiederhier/replbot/releases/download/v0.6.1/replbot_0.6.1_linux_x86_64.tar.gz
+sudo tar -C /usr/bin -zxf replbot_0.6.1_linux_x86_64.tar.gz replbot
 ```
 
 ## Building

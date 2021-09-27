@@ -281,7 +281,7 @@ func (s *session) Run() error {
 		return err
 	}
 	if err := s.maybeStartWeb(); err != nil {
-		log.Printf("[%s] Cannot start gotty: %s", s.conf.id, err.Error())
+		log.Printf("[%s] Cannot start ttyd: %s", s.conf.id, err.Error())
 		// We just disabled it, so we continue here
 	}
 	if err := s.conn.Send(s.conf.control, s.sessionStartedMessage()); err != nil {
@@ -919,7 +919,7 @@ func (s *session) sendWebHelpMessage(enabled, writable bool) error {
 	return s.conn.Send(s.conf.control, webDisabledMessage+"\n\n"+webHelpMessage)
 }
 
-func (s *session) startWeb(permitWrite bool) error {
+func (s *session) startWeb(writable bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.webCmd != nil && s.webCmd.Process != nil {
@@ -936,18 +936,25 @@ func (s *session) startWeb(permitWrite bool) error {
 	if s.webPrefix == "" {
 		s.webPrefix = util.RandomString(10)
 	}
-	s.webWritable = permitWrite
-	args := []string{
-		"--address", "127.0.0.1",
-		"--port", strconv.Itoa(s.webPort),
-		"--reconnect",
-		"--title-format", "REPLbot session",
-		"tmux", "attach", "-t", s.tmux.MainID(),
-	}
+	s.webWritable = writable
+	var args []string
 	if s.webWritable {
-		args = append([]string{"--permit-write"}, args...)
+		args = []string{
+			"--interface", "lo",
+			"--port", strconv.Itoa(s.webPort),
+			"--check-origin",
+			"tmux", "attach", "-t", s.tmux.MainID(),
+		}
+	} else {
+		args = []string{
+			"--interface", "lo",
+			"--port", strconv.Itoa(s.webPort),
+			"--check-origin",
+			"--readonly",                                  // ttyd is read-only
+			"tmux", "attach", "-r", "-t", s.tmux.MainID(), // tmux is also read-only
+		}
 	}
-	s.webCmd = exec.Command("gotty", args...)
+	s.webCmd = exec.Command("ttyd", args...)
 	if err := s.webCmd.Start(); err != nil {
 		s.webCmd = nil // Disable web!
 		return err

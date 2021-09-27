@@ -439,7 +439,7 @@ func (b *Bot) webHandlerInternal(w http.ResponseWriter, r *http.Request) error {
 	}
 	b.mu.RUnlock()
 	if session == nil || webPort == 0 {
-		return errors.New("session not found")
+		return fmt.Errorf("session with prefix %s not found", prefix)
 	}
 	if len(parts) < 3 { // must be /prefix/, not just /prefix
 		http.Redirect(w, r, r.URL.String()+"/", http.StatusTemporaryRedirect)

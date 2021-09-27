@@ -212,11 +212,11 @@ func TestBotBashWebTerminal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(body), "js/gotty.js") {
+		if strings.Contains(string(body), "<html ") {
 			break
 		}
 		if i == 5 {
-			t.Fatal("unexpected response: 'js/gotty.js' not contained in: " + string(body))
+			t.Fatal("unexpected response: '<html ' not contained in: " + string(body))
 		}
 		time.Sleep(time.Second)
 	}
