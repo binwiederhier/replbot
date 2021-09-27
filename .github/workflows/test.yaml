@@ -13,8 +13,9 @@ jobs:
       - name: Install test dependencies
         run: |
           sudo apt-get install tmux vim asciinema
-          wget https://github.com/yudai/gotty/releases/download/v1.0.1/gotty_linux_amd64.tar.gz
-          sudo tar -C /usr/local/bin -zxvf gotty_linux_amd64.tar.gz
+          wget https://github.com/tsl0922/ttyd/releases/download/1.6.3/ttyd.x86_64
+          chmod +x ttyd.x86_64
+          sudo mv ttyd.x86_64 /usr/local/bin/ttyd
       - name: Run tests, formatting, vetting and linting
         run: make check
       - name: Run and upload coverage to codecov.io

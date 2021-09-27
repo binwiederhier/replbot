@@ -262,13 +262,18 @@ I welcome any and all contributions. Just create a PR or an issue, or talk to me
 ## License
 Made with ❤️ by [Philipp C. Heckel](https://heckel.io), distributed under the [Apache License 2.0](LICENSE).
 
-Third party libraries:
+Third party tools/libraries:
+* [tmux](https://github.com/tmux/tmux) (ISC) is used to run most of the show
+* [docker](https://docs.docker.com/get-docker/) is used for almost all scripts REPLbot ships with
+* [asciinema](https://asciinema.org/) (GPLv3) is used to record sessions
+* [ttyd](https://github.com/tsl0922/ttyd) (MIT) is used to run the web terminal
 * [github.com/urfave/cli/v2](https://github.com/urfave/cli/v2) (MIT) is used to drive the CLI
 * [discord-go](https://github.com/bwmarrin/discordgo) (BSD-3) is used for the Discord communication, specifically these two
   [these](https://github.com/bwmarrin/discordgo/pull/922) [two](https://github.com/bwmarrin/discordgo/pull/982) pull requests
   for thread support
 * [slack-go](https://github.com/slack-go/slack) (BSD-2) is used for the Slack communication
 * [gliderlabs/ssh](https://github.com/gliderlabs/ssh) (BSD-3) is used for remote port forwarding for terminal sharing
+* [stretchr/testify](http://github.com/stretchr/testify) (MIT) is used in most of the tests 
 
 Code and posts that helped:
 * [tmux sharing across hosts](https://gist.github.com/QuAzI/b6d29fd6239ed72c9c61870e7ee5ff90), thanks to [QuAzI](https://gist.github.com/QuAzI) 
