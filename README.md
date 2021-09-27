@@ -100,13 +100,6 @@ case "$1" in
 esac
 ```
 
-### Terminal sharing
-You can share your local terminal window in Slack or Discord using the `share` feature. It's quite cool, although it's 
-really got nothing to do with REPLs 🤷. It also has to be specifically configured in the [config.yml](config/config.yml) 
-file using the `share-host` option, since it needs direct communication between the client and REPLbot.
-
-![replbot terminal sharing](assets/slack-terminal-sharing.gif)
-
 ### Session commands
 When a session is started, you can get a list of available commands by typing `!help` (or `!h`). To exit a session at any
 point in time, type `!exit` (or `!q`).
@@ -139,6 +132,12 @@ command.
 
 ![replbot web terminal](assets/web-terminal.png)
 
+### Terminal sharing
+You can share your local terminal window in Slack or Discord using the `share` feature. It's quite cool, although it's
+really got nothing to do with REPLs 🤷. It also has to be specifically configured in the [config.yml](config/config.yml)
+file using the `share-host` option, since it needs direct communication between the client and REPLbot.
+
+![replbot terminal sharing](assets/slack-terminal-sharing.gif)
 
 ### Control mode
 You can specify if you want the session to be started in the main channel (`channel`), in a thread (`thread`),
