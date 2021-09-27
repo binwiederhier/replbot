@@ -47,8 +47,8 @@ const (
 	cannotAddOwnerToDenyList            = "🙁 I don't think adding the session owner to the deny list is a good idea. I must protest."
 	recordingTooLargeMessage            = "🙁 I'm sorry, but you've produced too much output in this session. You may want to run a session with `norecord` to avoid this problem."
 	shareStartCommandMessage            = "To start your terminal sharing session, please run the following command from your terminal:\n\n```bash -c \"$(ssh -T -p %s %s@%s $USER)\"```"
-	sessionWithWebStartReadOnlyMessage  = "You can also view the session via http://%s/%s. Use `!web rw` to switch the web terminal to read-write mode, or `!web off` to turn if off."
-	sessionWithWebStartReadWriteMessage = "You can also view *and control* the session via http://%s/%s. Use `!web ro` to switch the web terminal to read-only mode, or `!web off` to turn if off."
+	sessionWithWebStartReadOnlyMessage  = "Everyone can also view the session via http://%s/%s. Use `!web rw` to switch the web terminal to read-write mode, or `!web off` to turn if off."
+	sessionWithWebStartReadWriteMessage = "Everyone can also *view and control* the session via http://%s/%s. Use `!web ro` to switch the web terminal to read-only mode, or `!web off` to turn if off."
 	allowCommandHelpMessage             = "To allow other users to interact with this session, use the `!allow` command like so: !allow %s\n\nYou may tag multiple users, or use the words " +
 		"`everyone`/`all` to allow all users, or `nobody`/`only-me` to only yourself access."
 	denyCommandHelpMessage = "To deny users from interacting with this session, use the `!deny` command like so: !deny %s\n\nYou may tag multiple users, or use the words " +
@@ -488,13 +488,16 @@ func (s *session) shutdownHandler() error {
 	if err := s.conn.Archive(s.conf.control); err != nil {
 		log.Printf("[%s] Warning: unable to archive thread: %s", s.conf.id, err.Error())
 	}
-	os.Remove(s.sshUserFile())
-	os.Remove(s.sshClientKeyFile())
-	os.Remove(s.tmux.RecordingFile())
+	_ = os.Remove(s.sshUserFile())
+	_ = os.Remove(s.sshClientKeyFile())
+	_ = os.Remove(s.tmux.RecordingFile())
 	s.mu.Lock()
 	s.active = false
 	if s.shareConn != nil {
-		s.shareConn.Close()
+		_ = s.shareConn.Close()
+	}
+	if s.webCmd != nil && s.webCmd.Process != nil {
+		_ = s.webCmd.Process.Kill()
 	}
 	s.mu.Unlock()
 	return nil
@@ -838,7 +841,6 @@ func (s *session) resetAuthMode(authMode config.AuthMode) error {
 	s.conf.authMode = authMode
 	s.authUsers = make(map[string]bool)
 	if authMode == config.Everyone {
-		// FIXME add restartGotty() here
 		return s.conn.Send(s.conf.control, authModeChangeMessage+everyoneModeMessage)
 	}
 	return s.conn.Send(s.conf.control, authModeChangeMessage+onlyMeModeMessage)
@@ -939,6 +941,7 @@ func (s *session) startWeb(permitWrite bool) error {
 		"--address", "127.0.0.1",
 		"--port", strconv.Itoa(s.webPort),
 		"--reconnect",
+		"--title-format", "REPLbot session",
 		"tmux", "attach", "-t", s.tmux.MainID(),
 	}
 	if s.webWritable {

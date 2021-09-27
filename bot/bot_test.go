@@ -3,8 +3,12 @@ package bot
 import (
 	"github.com/stretchr/testify/assert"
 	"heckel.io/replbot/config"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 )
@@ -164,6 +168,55 @@ func TestBotBashDMChannelOnlyMeAllowDeny(t *testing.T) {
 		Message:     "echo i'm still not phil",
 	})
 	assert.True(t, conn.MessageContainsWait("2", "i'm still not phil"))
+}
+
+func TestBotBashWebTerminal(t *testing.T) {
+	conf := createConfig(t)
+	conf.WebHost = "localhost:12123"
+	conf.DefaultWeb = true
+	robot, err := New(conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go robot.Run()
+	defer robot.Stop()
+	conn := robot.conn.(*memConn)
+
+	// Start in channel mode with "only-me"
+	conn.Event(&messageEvent{
+		ID:          "user-1",
+		Channel:     "some-channel",
+		ChannelType: channelTypeChannel,
+		Thread:      "",
+		User:        "phil",
+		Message:     "@replbot bash", // 'web' is not mentioned, it's set by default
+	})
+	assert.True(t, conn.MessageContainsWait("1", "REPL session started, @phil"))
+	assert.True(t, conn.MessageContainsWait("1", "Everyone can also *view and control*"))
+	assert.True(t, conn.MessageContainsWait("1", "http://localhost:12123/")) // web terminal URL
+
+	// Check that web terminal actually returns HTML
+	for i := 0; ; i++ {
+		urlRegex := regexp.MustCompile(`(http://[/:\w]+)`)
+		matches := urlRegex.FindStringSubmatch(conn.Message("1").Message)
+		webTerminalURL := matches[1]
+		resp, err := http.Get(webTerminalURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(body), "js/gotty.js") {
+			break
+		}
+		if i == 5 {
+			t.Fatal("unexpected response: 'js/gotty.js' not contained in: " + string(body))
+		}
+		time.Sleep(time.Second)
+	}
 }
 
 func createConfig(t *testing.T) *config.Config {
