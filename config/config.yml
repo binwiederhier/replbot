@@ -120,13 +120,20 @@ bot-token: MUST_BE_SET
 #
 # If no port is provided, port 80 is assumed.
 #
+# For this option to work, you must have 'ttyd' (https://github.com/tsl0922/ttyd) installed somewhere
+# in your path. The easiest way to install it is like this:
+#
+#  $ wget https://github.com/tsl0922/ttyd/releases/download/1.6.3/ttyd.x86_64 \
+#      && chmod +x ttyd.x86_64 \
+#      && sudo mv ttyd.x86_64 /usr/local/bin/ttyd
+#
 # Format:    <hostname>[:<port>]
 # Default:   empty
 # Required:  No
 #
 # web-address:
 
-# Start web terminal by default (only applicable if "web-address" is set). If turned on, a gotty web terminal
+# Start web terminal by default (only applicable if "web-address" is set). If turned on, a ttyd web terminal
 # will be started by default for each session. This option defines the default behavior. It can be changed
 # using the "web" or "noweb" settings.
 #
