@@ -85,7 +85,21 @@ func (c *memConn) SendDM(userID string, message string) error {
 }
 
 func (c *memConn) UploadFile(channel *channelID, message string, filename string, filetype string, file io.Reader) error {
-	return c.Send(channel, message)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	contents, err := io.ReadAll(file)
+	if err != nil {
+		return err
+	}
+	c.currentID++
+	c.messages[strconv.Itoa(c.currentID)] = &messageEvent{
+		ID:      strconv.Itoa(c.currentID),
+		Channel: channel.Channel,
+		Thread:  channel.Thread,
+		Message: message,
+		File:    contents,
+	}
+	return nil
 }
 
 func (c *memConn) Update(channel *channelID, id string, message string) error {
@@ -100,7 +114,7 @@ func (c *memConn) Update(channel *channelID, id string, message string) error {
 	return nil
 }
 
-func (c *memConn) Archive(channel *channelID) error {
+func (c *memConn) Archive(_ *channelID) error {
 	return nil
 }
 
@@ -145,6 +159,7 @@ func (c *memConn) Message(id string) *messageEvent {
 		Thread:      m.Thread,
 		User:        m.User,
 		Message:     m.Message,
+		File:        m.File,
 	}
 }
 

@@ -9,6 +9,7 @@ type messageEvent struct {
 	Thread      string
 	User        string
 	Message     string
+	File        []byte // used for tests only
 }
 
 type channelJoinedEvent struct {

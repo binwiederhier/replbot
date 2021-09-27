@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"archive/zip"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"heckel.io/replbot/config"
 	"io"
@@ -182,7 +184,7 @@ func TestBotBashWebTerminal(t *testing.T) {
 	defer robot.Stop()
 	conn := robot.conn.(*memConn)
 
-	// Start in channel mode with "only-me"
+	// Start in channel mode with web terminal
 	conn.Event(&messageEvent{
 		ID:          "user-1",
 		Channel:     "some-channel",
@@ -194,6 +196,7 @@ func TestBotBashWebTerminal(t *testing.T) {
 	assert.True(t, conn.MessageContainsWait("1", "REPL session started, @phil"))
 	assert.True(t, conn.MessageContainsWait("1", "Everyone can also *view and control*"))
 	assert.True(t, conn.MessageContainsWait("1", "http://localhost:12123/")) // web terminal URL
+	assert.True(t, conn.MessageContainsWait("2", "$"))                       // this is stupid ...
 
 	// Check that web terminal actually returns HTML
 	for i := 0; ; i++ {
@@ -219,6 +222,73 @@ func TestBotBashWebTerminal(t *testing.T) {
 	}
 }
 
+func TestBotBashRecording(t *testing.T) {
+	conf := createConfig(t)
+	conf.DefaultRecord = false
+	robot, err := New(conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go robot.Run()
+	defer robot.Stop()
+	conn := robot.conn.(*memConn)
+
+	// Start in channel mode with 'record'
+	conn.Event(&messageEvent{
+		ID:          "msg-1",
+		Channel:     "some-channel",
+		ChannelType: channelTypeChannel,
+		Thread:      "",
+		User:        "phil",
+		Message:     "@replbot bash record",
+	})
+	assert.True(t, conn.MessageContainsWait("1", "REPL session started, @phil"))
+	assert.True(t, conn.MessageContainsWait("2", "$")) // this is stupid ...
+
+	// Send a super hard math problem
+	conn.Event(&messageEvent{
+		ID:          "msg-2",
+		Channel:     "some-channel",
+		ChannelType: channelTypeChannel,
+		Thread:      "msg-1", // split mode
+		User:        "phil",
+		Message:     "echo $((2 * 5 * 86))",
+	})
+	assert.True(t, conn.MessageContainsWait("2", "echo $((2 * 5 * 86))"))
+	assert.True(t, conn.MessageContainsWait("2", "860"))
+
+	// Quit session
+	conn.Event(&messageEvent{
+		ID:          "msg-3",
+		Channel:     "some-channel",
+		ChannelType: channelTypeChannel,
+		Thread:      "msg-1", // split mode
+		User:        "phil",
+		Message:     "exit",
+	})
+	assert.True(t, conn.MessageContainsWait("3", "REPL exited. You can find a recording of the session in the file below."))
+	assert.NotNil(t, conn.Message("3").File)
+
+	file := conn.Message("3").File
+	zipFilename := filepath.Join(t.TempDir(), "recording.zip")
+	if err := os.WriteFile(zipFilename, file, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	targetDir := t.TempDir()
+	if err := unzip(zipFilename, targetDir); err != nil {
+		t.Fatal(err)
+	}
+	readme, _ := os.ReadFile(filepath.Join(targetDir, "REPLbot session", "README.md"))
+	terminal, _ := os.ReadFile(filepath.Join(targetDir, "REPLbot session", "terminal.txt"))
+	replay, _ := os.ReadFile(filepath.Join(targetDir, "REPLbot session", "replay.asciinema"))
+	assert.Contains(t, string(readme), "This ZIP archive contains")
+	assert.Contains(t, string(terminal), "echo $((2 * 5 * 86))")
+	assert.Contains(t, string(terminal), "860")
+	assert.Contains(t, string(replay), "echo $((2 * 5 * 86))")
+	assert.Contains(t, string(replay), "860")
+}
+
 func createConfig(t *testing.T) *config.Config {
 	tempDir := t.TempDir()
 	for name, script := range testScripts {
@@ -231,4 +301,70 @@ func createConfig(t *testing.T) *config.Config {
 	conf.RefreshInterval = 30 * time.Millisecond
 	conf.ScriptDir = tempDir
 	return conf
+}
+
+// unzip extract a zip archive
+// from: https://stackoverflow.com/a/24792688/1440785
+func unzip(src, dest string) error {
+	r, err := zip.OpenReader(src)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := r.Close(); err != nil {
+			panic(err)
+		}
+	}()
+
+	os.MkdirAll(dest, 0755)
+
+	// Closure to address file descriptors issue with all the deferred .Close() methods
+	extractAndWriteFile := func(f *zip.File) error {
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := rc.Close(); err != nil {
+				panic(err)
+			}
+		}()
+
+		path := filepath.Join(dest, f.Name)
+
+		// Check for ZipSlip (Directory traversal)
+		if !strings.HasPrefix(path, filepath.Clean(dest)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path: %s", path)
+		}
+
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(path, 0755)
+		} else {
+			os.MkdirAll(filepath.Dir(path), 0755)
+			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if err := f.Close(); err != nil {
+					panic(err)
+				}
+			}()
+
+			_, err = io.Copy(f, rc)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	for _, f := range r.File {
+		err := extractAndWriteFile(f)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
