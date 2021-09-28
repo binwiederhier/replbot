@@ -104,11 +104,6 @@ const (
 )
 
 var (
-	// consoleCodeRegex is a regex describing console escape sequences that we're stripping out. This regex
-	// only matches ECMA-48 CSI sequences (ESC [ ... <char>), which is enough since, we're using tmux's capture-pane.
-	// See https://man7.org/linux/man-pages/man4/console_codes.4.html
-	consoleCodeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-
 	// sendKeysMapping is a translation table that translates input commands "!<command>" to something that can be
 	// send via tmux's send-keys command, see https://man7.org/linux/man-pages/man1/tmux.1.html#KEY_BINDINGS
 	sendKeysMapping = map[string]string{
@@ -399,7 +394,7 @@ func (s *session) commandOutputLoop() error {
 		select {
 		case <-s.ctx.Done():
 			if lastID != "" {
-				_ = s.conn.Update(s.conf.terminal, lastID, util.FormatMarkdownCode(addExitedMessage(sanitizeWindow(last)))) // Show "(REPL exited.)" in terminal
+				_ = s.conn.Update(s.conf.terminal, lastID, util.FormatMarkdownCode(addExitedMessage(sanitizeWindow(removeTmuxBorder(last))))) // Show "(REPL exited.)" in terminal
 			}
 			return errExit
 		case <-s.forceResend:
@@ -420,11 +415,11 @@ func (s *session) maybeRefreshTerminal(last, lastID string) (string, string, err
 	current, err := s.tmux.Capture()
 	if err != nil {
 		if lastID != "" {
-			_ = s.conn.Update(s.conf.terminal, lastID, util.FormatMarkdownCode(addExitedMessage(sanitizeWindow(last)))) // Show "(REPL exited.)" in terminal
+			_ = s.conn.Update(s.conf.terminal, lastID, util.FormatMarkdownCode(addExitedMessage(sanitizeWindow(removeTmuxBorder(last))))) // Show "(REPL exited.)" in terminal
 		}
 		return "", "", errExit // The command may have ended, gracefully exit
 	}
-	current = s.maybeAddCursor(s.maybeTrimWindow(sanitizeWindow(current)))
+	current = s.maybeAddCursor(s.maybeTrimWindow(sanitizeWindow(removeTmuxBorder(current))))
 	if current == last {
 		return last, lastID, nil
 	}

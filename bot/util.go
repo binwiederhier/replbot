@@ -9,9 +9,15 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 var (
+	// consoleCodeRegex is a regex describing console escape sequences that we're stripping out. This regex
+	// only matches ECMA-48 CSI sequences (ESC [ ... <char>), which is enough since, we're using tmux's capture-pane.
+	// See https://man7.org/linux/man-pages/man4/console_codes.4.html
+	consoleCodeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
 	unquoteReplacer = strings.NewReplacer(
 		"\\n", "\n", // new line
 		"\\r", "\r", // line feed
@@ -19,6 +25,8 @@ var (
 		"\\b", "\b", // backspace
 	)
 	unquoteHexCharRegex = regexp.MustCompile(`\\x[a-fA-F0-9]{2}`)
+
+	tmuxWindowRegex = regexp.MustCompile(`│·*$|─+$|─*┘·*$|·+$|·*\(size \d+x\d+ from a smaller client\)\s*$`)
 )
 
 func addCursor(window string, x, y int) string {
@@ -97,6 +105,14 @@ func sanitizeWindow(window string) string {
 		sanitized = fmt.Sprintf("(screen is empty) %s", sanitized)
 	}
 	return sanitized
+}
+
+func removeTmuxBorder(window string) string {
+	lines := strings.Split(window, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimRightFunc(tmuxWindowRegex.ReplaceAllString(lines[i], ""), unicode.IsSpace)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func zipAppendFile(zw *zip.Writer, name string, filename string) error {
