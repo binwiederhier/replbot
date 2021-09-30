@@ -131,9 +131,9 @@ bot-token: MUST_BE_SET
 # Default:   empty
 # Required:  No
 #
-# web-address:
+# web-host:
 
-# Start web terminal by default (only applicable if "web-address" is set). If turned on, a ttyd web terminal
+# Start web terminal by default (only applicable if "web-host" is set). If turned on, a ttyd web terminal
 # will be started by default for each session. This option defines the default behavior. It can be changed
 # using the "web" or "noweb" settings.
 #
