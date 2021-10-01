@@ -62,6 +62,8 @@ func execRun(c *cli.Context) error {
 	if err := util.CheckTmuxVersion(); err != nil {
 		return err
 	}
+
+	// Read all the options
 	token := c.String("bot-token")
 	scriptDir := c.String("script-dir")
 	timeout := c.Duration("idle-timeout")
@@ -75,35 +77,6 @@ func execRun(c *cli.Context) error {
 	shareHost := c.String("share-host")
 	shareKeyFile := c.String("share-key-file")
 	debug := c.Bool("debug")
-	if token == "" || token == "MUST_BE_SET" {
-		return errors.New("missing bot token, pass --bot-token, set REPLBOT_BOT_TOKEN env variable or bot-token config option")
-	} else if _, err := os.Stat(scriptDir); err != nil {
-		return fmt.Errorf("cannot find REPL directory %s, set --script-dir, set REPLBOT_SCRIPT_DIR env variable, or script-dir config option", scriptDir)
-	} else if timeout < time.Minute {
-		return fmt.Errorf("idle timeout has to be at least one minute")
-	} else if entries, err := os.ReadDir(scriptDir); err != nil || len(entries) == 0 {
-		return errors.New("cannot read script directory, or directory empty")
-	} else if defaultControlMode != config.Channel && defaultControlMode != config.Thread && defaultControlMode != config.Split {
-		return errors.New("default mode must be 'channel', 'thread' or 'split'")
-	} else if defaultWindowMode != config.Full && defaultWindowMode != config.Trim {
-		return errors.New("default window mode must be 'full' or 'trim'")
-	} else if defaultAuthMode != config.OnlyMe && defaultAuthMode != config.Everyone {
-		return errors.New("default window mode must be 'full' or 'trim'")
-	} else if shareHost != "" && (shareKeyFile == "" || !util.FileExists(shareKeyFile)) {
-		return errors.New("share key file must be set and exist if share host is set, check --share-key-file or REPLBOT_SHARE_KEY_FILE")
-	} else if maxUserSessions > maxTotalSessions {
-		return errors.New("max total sessions must be larger or equal to max user sessions")
-	} else if err := util.Run("ttyd", "--version"); webHost != "" && err != nil {
-		return fmt.Errorf("cannot set --web-host; 'ttyd --version' test failed: %s", err.Error())
-	}
-	cursorRate, err := parseCursorRate(cursor)
-	if err != nil {
-		return err
-	}
-	defaultSize, err := config.ParseSize(c.String("default-size"))
-	if err != nil {
-		return err
-	}
 	var defaultRecord bool
 	if c.IsSet("no-default-record") {
 		defaultRecord = false
@@ -127,6 +100,39 @@ func execRun(c *cli.Context) error {
 		uploadRecording = true
 	} else {
 		uploadRecording = config.DefaultUploadRecording
+	}
+
+	// Validate options
+	if token == "" || token == "MUST_BE_SET" {
+		return errors.New("missing bot token, pass --bot-token, set REPLBOT_BOT_TOKEN env variable or bot-token config option")
+	} else if _, err := os.Stat(scriptDir); err != nil {
+		return fmt.Errorf("cannot find REPL directory %s, set --script-dir, set REPLBOT_SCRIPT_DIR env variable, or script-dir config option", scriptDir)
+	} else if timeout < time.Minute {
+		return fmt.Errorf("idle timeout has to be at least one minute")
+	} else if entries, err := os.ReadDir(scriptDir); err != nil || len(entries) == 0 {
+		return errors.New("cannot read script directory, or directory empty")
+	} else if defaultControlMode != config.Channel && defaultControlMode != config.Thread && defaultControlMode != config.Split {
+		return errors.New("default mode must be 'channel', 'thread' or 'split'")
+	} else if defaultWindowMode != config.Full && defaultWindowMode != config.Trim {
+		return errors.New("default window mode must be 'full' or 'trim'")
+	} else if defaultAuthMode != config.OnlyMe && defaultAuthMode != config.Everyone {
+		return errors.New("default window mode must be 'full' or 'trim'")
+	} else if shareHost != "" && (shareKeyFile == "" || !util.FileExists(shareKeyFile)) {
+		return errors.New("share key file must be set and exist if share host is set, check --share-key-file or REPLBOT_SHARE_KEY_FILE")
+	} else if maxUserSessions > maxTotalSessions {
+		return errors.New("max total sessions must be larger or equal to max user sessions")
+	} else if err := util.Run("ttyd", "--version"); webHost != "" && err != nil {
+		return fmt.Errorf("cannot set --web-host; 'ttyd --version' test failed: %s", err.Error())
+	} else if webHost == "" && defaultWeb {
+		return fmt.Errorf("cannot set --default-web if --web-host is not set")
+	}
+	cursorRate, err := parseCursorRate(cursor)
+	if err != nil {
+		return err
+	}
+	defaultSize, err := config.ParseSize(c.String("default-size"))
+	if err != nil {
+		return err
 	}
 
 	// Create main bot

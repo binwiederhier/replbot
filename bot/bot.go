@@ -28,9 +28,9 @@ const (
 		"`tiny`, `small`, `medium` or `large` (default: `%s`). Use `full` or `trim` to set the window mode (default: `%s`), and `everyone` " +
 		"or `only-me` to define who can send commands (default: `%s`). Send `record` or `norecord` to define if your session should be " +
 		"recorded (default: `%s`)."
+	webMessage   = "Use the word `web` or `noweb` to enable a web-based terminal for this session (default: `%s`)."
 	shareMessage = "Using the word `share` will allow you to share your own terminal here in the chat. Terminal sharing " +
 		"sessions are always started in `only-me` mode, unless overridden."
-	webMessage                      = "Use the word `web` or `noweb` to enable a web-based terminal for this session (default: `%s`)."
 	unknownCommandMessage           = "I am not quite sure what you mean by _%s_ ⁉"
 	misconfiguredMessage            = "😭 Oh no. It looks like REPLbot is misconfigured. I couldn't find any scripts to run."
 	maxTotalSessionsExceededMessage = "😭 There are too many active sessions. Please wait until another session is closed."
