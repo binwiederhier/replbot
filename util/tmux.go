@@ -7,44 +7,16 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
 )
 
-const (
-	requiredVersion = 2.6 // see issue #
-)
-
 var (
-	tmuxVersionRegex = regexp.MustCompile(`tmux (\d+\.\d+)`)
-
 	//go:embed tmux.sh.gotmpl
 	scriptSource   string
 	scriptTemplate = template.Must(template.New("tmux_script").Parse(scriptSource))
 )
-
-// CheckTmuxVersion checks the version of tmux and returns an error if it's not supported
-func CheckTmuxVersion() error {
-	cmd := exec.Command("tmux", "-V")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return err
-	}
-	matches := tmuxVersionRegex.FindStringSubmatch(string(output))
-	if len(matches) <= 1 {
-		return errors.New("unexpected tmux version output")
-	}
-	version, err := strconv.ParseFloat(matches[1], 32)
-	if err != nil {
-		return err
-	}
-	if version < requiredVersion-0.01 { // floats are fun
-		return fmt.Errorf("tmux version too low: tmux %.1f required, but found tmux %.1f", requiredVersion, version)
-	}
-	return nil
-}
 
 // Tmux represents a very special tmux(1) setup, specifially used for REPLbot. It consists of
 // two tmux sessions:
@@ -58,13 +30,14 @@ type Tmux struct {
 }
 
 type tmuxScriptParams struct {
-	MainID, FrameID  string
-	Width, Height    int
-	Env              map[string]string
-	Command          string
-	ConfigFile       string
-	CaptureFile      string
-	LaunchScriptFile string
+	MainID, FrameID    string
+	Width, Height      int
+	Env                map[string]string
+	Command            string
+	ConfigFile         string
+	CaptureFile        string
+	LaunchScriptFile   string
+	SupportsWindowSize bool
 }
 
 // NewTmux creates a new Tmux instance, but does not start the tmux
@@ -86,15 +59,16 @@ func (s *Tmux) Start(env map[string]string, command ...string) error {
 	}
 	defer script.Close()
 	params := &tmuxScriptParams{
-		MainID:           s.mainID(),
-		FrameID:          s.frameID(),
-		Width:            s.width,
-		Height:           s.height,
-		Env:              env,
-		Command:          QuoteCommand(command),
-		ConfigFile:       s.configFile(),
-		CaptureFile:      s.captureFile(),
-		LaunchScriptFile: s.launchScriptFile(),
+		MainID:             s.mainID(),
+		FrameID:            s.frameID(),
+		Width:              s.width,
+		Height:             s.height,
+		Env:                env,
+		Command:            QuoteCommand(command),
+		ConfigFile:         s.configFile(),
+		CaptureFile:        s.captureFile(),
+		LaunchScriptFile:   s.launchScriptFile(),
+		SupportsWindowSize: supportsTmuxWindowSize(),
 	}
 	if err := scriptTemplate.Execute(script, params); err != nil {
 		return err

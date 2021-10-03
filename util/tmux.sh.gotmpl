@@ -11,6 +11,7 @@ command="{{.Command}}"
 config_file="{{.ConfigFile}}"
 capture_file="{{.CaptureFile}}"
 launch_script_file="{{.LaunchScriptFile}}"
+supports_window_size="{{if .SupportsWindowSize}}true{{end}}"
 
 # Set up cleanup hooks
 cleanup_on_failure() {
@@ -43,6 +44,9 @@ tmux set-option -t "${main_id}" status off
 tmux set-option -t "${main_id}" prefix none
 tmux set-option -t "${main_id}" remain-on-exit
 tmux set-hook -t "${main_id}" pane-died "capture-pane -S- -E-; save-buffer '${capture_file}'; kill-pane"
+if [ -n "${supports_window_size}" ]; then
+  tmux set-option -t "${main_id}" window-size smallest # default is 'latest' as of tmux >= 2.9
+fi
 
 # Start frame tmux session attaches to main session, allows resizing window
 tmux -f "${config_file}" new-session -s "${frame_id}" -d -x 200 -y 80 sh -c "while true; do sleep 10; if ! tmux has-session -t '${main_id}'; then exit; fi; done"
@@ -51,6 +55,9 @@ tmux split-window -v -t "${frame_id}.0" sh -c "while true; do sleep 10; if ! tmu
 tmux split-window -h -t "${frame_id}.1" sh -c "unset TMUX; tmux attach -t '${main_id}'"
 tmux resize-pane -t "${frame_id}.2" -x "${window_width}" -y "${window_height}"
 tmux select-pane -t "${frame_id}.2"
+if [ -n "${supports_window_size}" ]; then
+  tmux set-option -t "${frame_id}" window-size smallest # default is 'latest' as of tmux >= 2.9
+fi
 
 # Clean exit
 rm -f "${config_file}" "${launch_script_file}"
