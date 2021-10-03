@@ -209,14 +209,14 @@ sudo apt install replbot asciinema
 **Debian/Ubuntu** (*manual install*)**:**
 ```bash
 sudo apt install tmux
-wget https://github.com/binwiederhier/replbot/releases/download/v0.6.3/replbot_0.6.3_amd64.deb
-dpkg -i replbot_0.6.3_amd64.deb
+wget https://github.com/binwiederhier/replbot/releases/download/v0.6.4/replbot_0.6.4_amd64.deb
+dpkg -i replbot_0.6.4_amd64.deb
 ```
 
 **Fedora/RHEL/CentOS:**
 ```bash
 # Make sure that "tmux" is installed
-rpm -ivh https://github.com/binwiederhier/replbot/releases/download/v0.6.3/replbot_0.6.3_amd64.rpm
+rpm -ivh https://github.com/binwiederhier/replbot/releases/download/v0.6.4/replbot_0.6.4_amd64.rpm
 ```
 
 **Docker:**   
@@ -227,18 +227,23 @@ on the host. This is a security risk and considered bad practice, but it's the o
 
 ```bash
 # Config and scripts live on the host
-wget https://github.com/binwiederhier/replbot/archive/refs/tags/v0.6.3.tar.gz
-tar zxvf v0.6.3.tar.gz
+wget https://github.com/binwiederhier/replbot/archive/refs/tags/v0.6.4.tar.gz
+tar zxvf v0.6.4.tar.gz
 sudo mkdir /etc/replbot
-sudo cp -a replbot-0.6.3/config/{script.d,config.yml} /etc/replbot
+sudo cp -a replbot-0.6.4/config/{script.d,config.yml} /etc/replbot
 vi /etc/replbot/config.yml
   # Configure at least "bot-token"
+  # To support web terminal, set "web-host" (e.g. to localhost:31001)
+  # To support sharing, set "share-host" (e.g. to localhost:31002)
   
-# Then you can start the REPLbot docker image
+# Then you can start the REPLbot docker image (assuming web-host listening
+# at 31001 and share-host at 31002)
 docker run --rm -it \
   -v /etc/replbot:/etc/replbot \
   -v ~/.asciinema:/root/.config/asciinema \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  -p 31001:31001 \
+  -p 31002:31002 \
   binwiederhier/replbot
 ```
 
@@ -255,8 +260,8 @@ go get -u heckel.io/replbot
 **Manual install** (*any x86_64-based Linux*)**:**
 ```bash
 # Make sure that "tmux" is installed
-wget https://github.com/binwiederhier/replbot/releases/download/v0.6.3/replbot_0.6.3_linux_x86_64.tar.gz
-sudo tar -C /usr/bin -zxf replbot_0.6.3_linux_x86_64.tar.gz replbot
+wget https://github.com/binwiederhier/replbot/releases/download/v0.6.4/replbot_0.6.4_linux_x86_64.tar.gz
+sudo tar -C /usr/bin -zxf replbot_0.6.4_linux_x86_64.tar.gz replbot
 ```
 
 ## Building
