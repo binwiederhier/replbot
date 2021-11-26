@@ -4,7 +4,7 @@
 [![Tests](https://github.com/binwiederhier/replbot/workflows/test/badge.svg)](https://github.com/binwiederhier/replbot/actions)
 [![Go Report Card](https://goreportcard.com/badge/github.com/binwiederhier/replbot)](https://goreportcard.com/report/github.com/binwiederhier/replbot)
 [![codecov](https://codecov.io/gh/binwiederhier/replbot/branch/master/graph/badge.svg?token=bdrFZttMsk)](https://codecov.io/gh/binwiederhier/replbot)
-[![Slack channel](https://img.shields.io/badge/slack-@gophers/replbot-success.svg?logo=slack)](https://gophers.slack.com/archives/C02ABHKDCN7)
+[![Slack channel](https://img.shields.io/badge/slack-@gophers/binwiederhier-success.svg?logo=slack)](https://gophers.slack.com/archives/C01JMTPGF2Q)
 
 REPLbot is a bot for Slack and Discord that allows you to control a [REPL](https://en.m.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop) 
 or shell from a chat. It comes with a few REPLs (Go 🥳, Java, NodeJS, PHP, Python, Ruby, Scala, Kotlin, C++, Ubuntu, Debian, Alpine, Arch Linux, Amazon Linux, CentOS & Fedora), 
